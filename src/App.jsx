@@ -183,6 +183,11 @@ export default function App() {
     }, true);
   };
 
+  const handleUpdateValue = async (item, newValue) => {
+    await window.api.saveItem({ ...item, value: newValue });
+    loadData();
+  };
+
   const handleImport = async () => {
     const result = await window.api.importZip();
     if (result.ok) {
@@ -285,10 +290,8 @@ export default function App() {
     const q = search.toLowerCase();
     return items.filter((item) => {
       const matchesCategory = activeCategory === ALL_CATEGORY || item.category === activeCategory;
-      const locationText = item.location ? Object.values(item.location).filter(Boolean).join(' ').toLowerCase() : '';
       const matchesSearch = !q || item.name.toLowerCase().includes(q) ||
-        (item.notes || '').toLowerCase().includes(q) ||
-        locationText.includes(q);
+        (item.notes || '').toLowerCase().includes(q);
       return matchesCategory && matchesSearch;
     }).sort((a, b) => a.name.localeCompare(b.name));
   }, [items, activeCategory, search]);
@@ -547,6 +550,7 @@ export default function App() {
                 item={item}
                 onEdit={handleEdit}
                 onDelete={handleDelete}
+                onUpdateValue={handleUpdateValue}
               />
             ))}
           </div>

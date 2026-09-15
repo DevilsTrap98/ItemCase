@@ -437,7 +437,6 @@ ipcMain.handle('data:importZip', async () => {
 
 const CSV_FIXED_COLUMNS = [
   'name', 'category', 'condition', 'quantity', 'purchasePrice', 'value', 'notes',
-  'shelf', 'box', 'folder', 'page', 'slot',
   'storyPlace', 'storyDate', 'storyGift', 'storyFirstPiece', 'storyText', 'showcase'
 ];
 
@@ -516,7 +515,6 @@ ipcMain.handle('data:exportCsv', async () => {
     const row = [
       item.name || '', item.category || '', item.condition || '', item.quantity ?? 1,
       item.purchasePrice ?? '', item.value ?? '', item.notes || '',
-      item.location?.shelf || '', item.location?.box || '', item.location?.folder || '', item.location?.page || '', item.location?.slot || '',
       item.story?.place || '', item.story?.date || '', item.story?.isGift ? 'true' : 'false', item.story?.isFirstPiece ? 'true' : 'false', item.story?.text || '',
       item.showcase ? 'true' : 'false',
       ...customKeyList.map((k) => item.customFields?.[k] ?? '')
@@ -599,9 +597,6 @@ ipcMain.handle('data:importCsv', async () => {
       notes: get('notes'),
       imagePath: null,
       showcase: csvToBool(get('showcase')),
-      location: {
-        shelf: get('shelf'), box: get('box'), folder: get('folder'), page: get('page'), slot: get('slot')
-      },
       story: {
         place: get('storyPlace'), date: get('storyDate'),
         isGift: csvToBool(get('storyGift')), isFirstPiece: csvToBool(get('storyFirstPiece')),

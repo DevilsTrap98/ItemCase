@@ -9,8 +9,7 @@ const ACHIEVEMENT_DEFS = [
   { id: 'items500', icon: '👑', check: (s) => s.totalItems >= 500 },
   { id: 'categories3', icon: '🎨', check: (s) => s.categoryCount >= 3 },
   { id: 'photos5', icon: '📸', check: (s) => s.itemsWithImages >= 5 },
-  { id: 'completeSet', icon: '🏆', check: (s) => s.hasCompleteSet },
-  { id: 'location5', icon: '📍', check: (s) => s.itemsWithLocation >= 5 }
+  { id: 'completeSet', icon: '🏆', check: (s) => s.hasCompleteSet }
 ];
 
 function levelFromXp(xp) {
@@ -30,10 +29,6 @@ export default function CollectorLevel({ items, categories, categoryTargets, onC
     const uniqueItems = items.length;
     const categoryCount = categories.length;
     const itemsWithImages = items.filter((i) => i.imagePath).length;
-    const itemsWithLocation = items.filter((i) => {
-      const loc = i.location;
-      return loc && Object.values(loc).some((v) => v && String(v).trim());
-    }).length;
     const totalValue = items.reduce((sum, i) => sum + (Number(i.value) || 0) * (Number(i.quantity) || 1), 0);
     const totalProfit = items.reduce((sum, i) => {
       const purchase = Number(i.purchasePrice) || 0;
@@ -55,7 +50,7 @@ export default function CollectorLevel({ items, categories, categoryTargets, onC
 
     const hasCompleteSet = setProgress.some((s) => s.pct >= 100);
 
-    return { totalItems, uniqueItems, categoryCount, itemsWithImages, itemsWithLocation, totalValue, totalProfit, setProgress, hasCompleteSet };
+    return { totalItems, uniqueItems, categoryCount, itemsWithImages, totalValue, totalProfit, setProgress, hasCompleteSet };
   }, [items, categories, categoryTargets]);
 
   const xp = stats.totalItems * 10 + stats.categoryCount * 15 + stats.itemsWithImages * 5;

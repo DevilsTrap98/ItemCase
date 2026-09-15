@@ -67,12 +67,10 @@ export default function CollectionDNA({ items, categoryFields, onClose }) {
       ? purchasePrices.reduce((s, v) => s + v, 0) / purchasePrices.length
       : null;
 
-    const shelfCounts = {};
-    items.forEach((i) => {
-      const shelf = (i.location?.shelf || '').trim();
-      if (shelf) shelfCounts[shelf] = (shelfCounts[shelf] || 0) + 1;
-    });
-    const topShelf = topEntry(shelfCounts);
+    const mostValuableItem = items.reduce((best, i) => {
+      const v = Number(i.value) || 0;
+      return !best || v > (Number(best.value) || 0) ? i : best;
+    }, null);
 
     const createdDates = items.map((i) => i.createdAt).filter(Boolean).sort();
     const collectingSince = createdDates.length ? createdDates[0] : null;
@@ -89,7 +87,7 @@ export default function CollectionDNA({ items, categoryFields, onClose }) {
       total,
       categoryBreakdown,
       avgPurchasePrice,
-      topShelf,
+      mostValuableItem,
       collectingSince,
       giftCount,
       firstPieceItem,
@@ -155,8 +153,8 @@ export default function CollectionDNA({ items, categoryFields, onClose }) {
                   <span className="stat-label">{t('dna.collectingSince')}</span>
                 </div>
                 <div className="level-stat">
-                  <span className="stat-value">{dna.topShelf ? dna.topShelf.value : '–'}</span>
-                  <span className="stat-label">{t('dna.favoriteShelf')}</span>
+                  <span className="stat-value">{dna.mostValuableItem ? dna.mostValuableItem.name : '–'}</span>
+                  <span className="stat-label">{t('dna.mostValuable')}</span>
                 </div>
               </div>
 

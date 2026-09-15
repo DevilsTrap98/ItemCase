@@ -648,13 +648,6 @@ button {
   font-weight: 700;
 }
 
-.card-location {
-  font-size: 11px;
-  color: var(--text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
 .card-body {
   padding: 12px;
@@ -729,6 +722,43 @@ button {
   font-weight: 700;
   color: var(--accent);
   font-size: 13px;
+}
+
+.card-value-edit {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 3px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px 6px;
+  cursor: text;
+  width: fit-content;
+}
+
+.card-value-edit:focus-within {
+  border-color: var(--accent);
+}
+
+.card-value-currency {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.card-value-input {
+  width: 64px;
+  border: none;
+  background: transparent;
+  padding: 2px 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.card-value-input:focus {
+  border-color: transparent;
 }
 
 .card-delta {
@@ -877,9 +907,6 @@ input:focus, select:focus, textarea:focus {
   gap: 12px;
 }
 
-.form-grid-5 {
-  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
-}
 
 .field-hint {
   font-size: 11px;

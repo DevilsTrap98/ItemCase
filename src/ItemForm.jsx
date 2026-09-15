@@ -12,7 +12,6 @@ const emptyItem = {
   notes: '',
   imagePath: null,
   showcase: false,
-  location: { shelf: '', box: '', folder: '', page: '', slot: '' },
   story: { place: '', date: '', isGift: false, isFirstPiece: false, text: '' },
   customFields: {}
 };
@@ -31,7 +30,6 @@ export default function ItemForm({ item, categories, categoryFields, onSave, onC
       setForm({
         ...emptyItem,
         ...item,
-        location: { ...emptyItem.location, ...(item.location || {}) },
         story: { ...emptyItem.story, ...(item.story || {}) },
         customFields: { ...(item.customFields || {}) }
       });
@@ -47,7 +45,6 @@ export default function ItemForm({ item, categories, categoryFields, onSave, onC
   }, [item]);
 
   const update = (field, val) => setForm((f) => ({ ...f, [field]: val }));
-  const updateLocation = (field, val) => setForm((f) => ({ ...f, location: { ...f.location, [field]: val } }));
   const updateStory = (field, val) => setForm((f) => ({ ...f, story: { ...f.story, [field]: val } }));
   const updateCustomField = (key, val) => setForm((f) => ({ ...f, customFields: { ...f.customFields, [key]: val } }));
 
@@ -180,32 +177,6 @@ export default function ItemForm({ item, categories, categoryFields, onSave, onC
               </div>
             </fieldset>
           )}
-
-          <fieldset className="form-fieldset">
-            <legend>{t('form.locationTitle')}</legend>
-            <div className="form-grid form-grid-5">
-              <label>
-                {t('form.locationShelf')}
-                <input type="text" value={form.location.shelf} onChange={(e) => updateLocation('shelf', e.target.value)} />
-              </label>
-              <label>
-                {t('form.locationBox')}
-                <input type="text" value={form.location.box} onChange={(e) => updateLocation('box', e.target.value)} />
-              </label>
-              <label>
-                {t('form.locationFolder')}
-                <input type="text" value={form.location.folder} onChange={(e) => updateLocation('folder', e.target.value)} />
-              </label>
-              <label>
-                {t('form.locationPage')}
-                <input type="text" value={form.location.page} onChange={(e) => updateLocation('page', e.target.value)} />
-              </label>
-              <label>
-                {t('form.locationSlot')}
-                <input type="text" value={form.location.slot} onChange={(e) => updateLocation('slot', e.target.value)} />
-              </label>
-            </div>
-          </fieldset>
 
           <fieldset className="form-fieldset">
             <legend>📜 {t('form.storyTitle')}</legend>
