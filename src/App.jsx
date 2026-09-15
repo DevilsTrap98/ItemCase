@@ -28,7 +28,7 @@ function CategoryThumb({ fileName, onClick, title }) {
 }
 
 function CategoryOverviewCard({
-  name, fileName, onClick, countLabel,
+  name, fileName, onClick, countLabel, valueLabel,
   onDragStart, onDragOver, onDragLeave, onDrop, onDragEnd, isDragging, isDropTarget
 }) {
   const src = useImagePath(fileName);
@@ -49,7 +49,10 @@ function CategoryOverviewCard({
       style={src ? { backgroundImage: `linear-gradient(rgba(15,16,20,0.35), rgba(15,16,20,0.78)), url(${src})` } : undefined}
     >
       <span className="category-overview-name">{name}</span>
-      <span className="category-overview-count">{countLabel}</span>
+      <span className="category-overview-meta">
+        <span className="category-overview-count">{countLabel}</span>
+        <span className="category-overview-value">{valueLabel}</span>
+      </span>
     </button>
   );
 }
@@ -304,6 +307,14 @@ export default function App() {
     return counts;
   }, [items]);
 
+  const categoryValues = useMemo(() => {
+    const totals = {};
+    items.forEach((i) => {
+      totals[i.category] = (totals[i.category] || 0) + (Number(i.value) || 0) * (Number(i.quantity) || 1);
+    });
+    return totals;
+  }, [items]);
+
   const showCategoryOverview = activeCategory === ALL_CATEGORY && !search.trim() && !showShowcase && categories.length > 0;
 
   const categoryBgFile = activeCategory !== ALL_CATEGORY ? categoryImages[activeCategory] : null;
@@ -321,6 +332,7 @@ export default function App() {
   }
 
   const initials = (user.name || 'U').split(' ').map((p) => p[0]).join('').slice(0, 2).toUpperCase();
+  const currencyFmt = (n) => n.toLocaleString(lang === 'en' ? 'en-US' : 'de-DE', { style: 'currency', currency: user.currency || 'EUR' });
 
   return (
     <div className="app">
@@ -336,9 +348,7 @@ export default function App() {
             <span className="stat-label">{t('sidebar.totalItems')}</span>
           </div>
           <div className="stat">
-            <span className="stat-value">
-              {stats.totalValue.toLocaleString(lang === 'en' ? 'en-US' : 'de-DE', { style: 'currency', currency: user.currency || 'EUR' })}
-            </span>
+            <span className="stat-value">{currencyFmt(stats.totalValue)}</span>
             <span className="stat-label">{t('sidebar.totalValue')}</span>
           </div>
         </div>
@@ -510,6 +520,7 @@ export default function App() {
                 name={cat}
                 fileName={categoryImages[cat]}
                 countLabel={t('category.itemCount', { count: categoryCounts[cat] || 0 })}
+                valueLabel={currencyFmt(categoryValues[cat] || 0)}
                 onClick={() => setActiveCategory(cat)}
                 isDragging={draggedCategory === cat}
                 isDropTarget={dragOverCategory === cat && draggedCategory !== cat}
