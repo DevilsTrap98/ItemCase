@@ -338,7 +338,6 @@ export default function App() {
   const titleBar = (
     <div className="titlebar">
       <img src={logoMark} alt="" className="titlebar-logo" />
-      <span>{t('app.brand')}</span>
     </div>
   );
 
