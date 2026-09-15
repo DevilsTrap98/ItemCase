@@ -1,0 +1,47 @@
+{
+  "name": "collector-app",
+  "version": "1.0.0",
+  "description": "Desktop-Sammlungsverwaltung für Karten, Münzen und mehr",
+  "main": "electron/main.js",
+  "author": "Christian Demberger",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:electron\"",
+    "dev:renderer": "vite",
+    "dev:electron": "wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .",
+    "build:renderer": "vite build",
+    "build": "npm run build:renderer && electron-builder",
+    "pack": "npm run build:renderer && electron-builder --dir"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "concurrently": "^8.2.2",
+    "cross-env": "^7.0.3",
+    "electron": "^31.3.1",
+    "electron-builder": "^24.13.3",
+    "png-to-ico": "^3.0.2",
+    "sharp": "^0.35.4",
+    "vite": "^5.4.1",
+    "wait-on": "^7.2.0"
+  },
+  "dependencies": {
+    "adm-zip": "^0.6.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "build": {
+    "appId": "com.itemcase.desktop",
+    "productName": "ItemCase",
+    "files": [
+      "dist/**/*",
+      "electron/**/*"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico"
+    }
+  }
+}
