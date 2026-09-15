@@ -8,6 +8,8 @@ import CollectorLevel from './CollectorLevel.jsx';
 import QuoteOfTheDay from './QuoteOfTheDay.jsx';
 import FeedbackModal from './FeedbackModal.jsx';
 import ConfirmDialog from './ConfirmDialog.jsx';
+import CollectionDNA from './CollectionDNA.jsx';
+import ImportExportModal from './ImportExportModal.jsx';
 import { useI18n } from './i18n.jsx';
 import logoMark from './assets/logo-mark.png';
 import useImagePath from './useImagePath.js';
@@ -21,6 +23,33 @@ function CategoryThumb({ fileName, onClick, title }) {
   return (
     <button type="button" className="category-thumb" onClick={onClick} title={title}>
       {src ? <img src={src} alt="" /> : <span className="category-thumb-placeholder">🖼</span>}
+    </button>
+  );
+}
+
+function CategoryOverviewCard({
+  name, fileName, onClick, countLabel,
+  onDragStart, onDragOver, onDragLeave, onDrop, onDragEnd, isDragging, isDropTarget
+}) {
+  const src = useImagePath(fileName);
+  const classNames = ['category-overview-card'];
+  if (isDragging) classNames.push('dragging');
+  if (isDropTarget) classNames.push('drop-target');
+  return (
+    <button
+      type="button"
+      draggable
+      className={classNames.join(' ')}
+      onClick={onClick}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
+      style={src ? { backgroundImage: `linear-gradient(rgba(15,16,20,0.35), rgba(15,16,20,0.78)), url(${src})` } : undefined}
+    >
+      <span className="category-overview-name">{name}</span>
+      <span className="category-overview-count">{countLabel}</span>
     </button>
   );
 }
@@ -55,9 +84,13 @@ export default function App() {
   const [showLevel, setShowLevel] = useState(false);
   const [showShowcase, setShowShowcase] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
+  const [showDNA, setShowDNA] = useState(false);
+  const [showImportExport, setShowImportExport] = useState(false);
+  const [draggedCategory, setDraggedCategory] = useState(null);
+  const [dragOverCategory, setDragOverCategory] = useState(null);
   const [dialog, setDialog] = useState(null);
 
-  const askConfirm = (message, onConfirm) => setDialog({ message, onConfirm, alertOnly: false });
+  const askConfirm = (message, onConfirm, danger = false) => setDialog({ message, onConfirm, alertOnly: false, danger });
   const showAlert = (message) => setDialog({ message, onConfirm: null, alertOnly: true });
 
   const handleLogin = (userData) => {
@@ -144,7 +177,7 @@ export default function App() {
     askConfirm(`"${item.name}" ${t('card.deleteConfirm')}`, async () => {
       await window.api.deleteItem(item.id);
       loadData();
-    });
+    }, true);
   };
 
   const handleImport = async () => {
@@ -154,6 +187,16 @@ export default function App() {
       loadData();
     } else if (result.reason === 'invalid') {
       showAlert(t('import.invalid'));
+    }
+  };
+
+  const handleImportCsv = async () => {
+    const result = await window.api.importCsv();
+    if (result.ok) {
+      showAlert(`${result.count} ${t('import.csvSuccess')}`);
+      loadData();
+    } else if (result.reason === 'invalid') {
+      showAlert(t('import.csvInvalid'));
     }
   };
 
@@ -190,11 +233,33 @@ export default function App() {
   };
 
   const handleDeleteCategory = (cat) => {
-    askConfirm(`"${cat}" ${t('sidebar.deleteCategoryConfirm')}`, async () => {
+    const count = categoryCounts[cat] || 0;
+    const message = count > 0
+      ? `"${cat}" ${t('sidebar.deleteCategoryConfirmWithItems', { count })}`
+      : `"${cat}" ${t('sidebar.deleteCategoryConfirm')}`;
+    askConfirm(message, async () => {
       await window.api.deleteCategory(cat);
       if (activeCategory === cat) setActiveCategory(ALL_CATEGORY);
       loadData();
-    });
+    }, true);
+  };
+
+  const handleReorderCategories = async (newOrder) => {
+    setCategories(newOrder);
+    await window.api.setCategoryOrder(newOrder);
+  };
+
+  const handleCategoryDrop = (targetCat) => {
+    setDragOverCategory(null);
+    if (!draggedCategory || draggedCategory === targetCat) { setDraggedCategory(null); return; }
+    const newOrder = [...categories];
+    const fromIdx = newOrder.indexOf(draggedCategory);
+    const toIdx = newOrder.indexOf(targetCat);
+    if (fromIdx === -1 || toIdx === -1) { setDraggedCategory(null); return; }
+    newOrder.splice(fromIdx, 1);
+    newOrder.splice(toIdx, 0, draggedCategory);
+    setDraggedCategory(null);
+    handleReorderCategories(newOrder);
   };
 
   const handleSetCategoryImage = async (cat) => {
@@ -238,6 +303,8 @@ export default function App() {
     items.forEach((i) => { counts[i.category] = (counts[i.category] || 0) + 1; });
     return counts;
   }, [items]);
+
+  const showCategoryOverview = activeCategory === ALL_CATEGORY && !search.trim() && !showShowcase && categories.length > 0;
 
   const categoryBgFile = activeCategory !== ALL_CATEGORY ? categoryImages[activeCategory] : null;
   const categoryBgSrc = useImagePath(categoryBgFile);
@@ -383,6 +450,10 @@ export default function App() {
             🏆
           </button>
 
+          <button className="icon-btn topbar-icon-btn" onClick={() => setShowDNA(true)} title={t('topbar.dna')}>
+            🧬
+          </button>
+
           <div className="user-menu-wrap">
             <button className="avatar avatar-btn" onClick={() => setShowUserMenu((v) => !v)}>
               {avatarSrc ? <img src={avatarSrc} alt="" /> : initials}
@@ -402,11 +473,8 @@ export default function App() {
                     💬 {t('userMenu.feedback')}
                   </button>
                   <div className="user-menu-divider" />
-                  <button onClick={() => { window.api.exportZip(); setShowUserMenu(false); }}>
-                    ⬆️ {t('sidebar.export')}
-                  </button>
-                  <button onClick={() => { handleImport(); setShowUserMenu(false); }}>
-                    ⬇️ {t('sidebar.import')}
+                  <button onClick={() => { setShowImportExport(true); setShowUserMenu(false); }}>
+                    📦 {t('userMenu.importExport')}
                   </button>
                   <div className="user-menu-divider" />
                   <button className="danger" onClick={handleLogout}>
@@ -434,6 +502,25 @@ export default function App() {
               ))}
             </div>
           )
+        ) : showCategoryOverview ? (
+          <div className="category-overview-grid">
+            {categories.map((cat) => (
+              <CategoryOverviewCard
+                key={cat}
+                name={cat}
+                fileName={categoryImages[cat]}
+                countLabel={t('category.itemCount', { count: categoryCounts[cat] || 0 })}
+                onClick={() => setActiveCategory(cat)}
+                isDragging={draggedCategory === cat}
+                isDropTarget={dragOverCategory === cat && draggedCategory !== cat}
+                onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; setDraggedCategory(cat); }}
+                onDragOver={(e) => { e.preventDefault(); if (dragOverCategory !== cat) setDragOverCategory(cat); }}
+                onDragLeave={() => setDragOverCategory((c) => (c === cat ? null : c))}
+                onDrop={(e) => { e.preventDefault(); handleCategoryDrop(cat); }}
+                onDragEnd={() => { setDraggedCategory(null); setDragOverCategory(null); }}
+              />
+            ))}
+          </div>
         ) : filteredItems.length === 0 ? (
           <div className="empty-state">
             <p>{t('empty.noItems')}</p>
@@ -493,6 +580,24 @@ export default function App() {
         />
       )}
 
+      {showDNA && (
+        <CollectionDNA
+          items={items}
+          categoryFields={categoryFields}
+          onClose={() => setShowDNA(false)}
+        />
+      )}
+
+      {showImportExport && (
+        <ImportExportModal
+          onExportZip={() => { window.api.exportZip(); setShowImportExport(false); }}
+          onImportZip={() => { handleImport(); setShowImportExport(false); }}
+          onExportCsv={() => { window.api.exportCsv(); setShowImportExport(false); }}
+          onImportCsv={() => { handleImportCsv(); setShowImportExport(false); }}
+          onClose={() => setShowImportExport(false)}
+        />
+      )}
+
       {showFeedback && (
         <FeedbackModal
           user={user}
@@ -504,6 +609,7 @@ export default function App() {
         <ConfirmDialog
           message={dialog.message}
           alertOnly={dialog.alertOnly}
+          danger={dialog.danger}
           onConfirm={() => { const fn = dialog.onConfirm; setDialog(null); fn && fn(); }}
           onCancel={() => setDialog(null)}
         />

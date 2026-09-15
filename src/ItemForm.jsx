@@ -13,6 +13,7 @@ const emptyItem = {
   imagePath: null,
   showcase: false,
   location: { shelf: '', box: '', folder: '', page: '', slot: '' },
+  story: { place: '', date: '', isGift: false, isFirstPiece: false, text: '' },
   customFields: {}
 };
 
@@ -31,6 +32,7 @@ export default function ItemForm({ item, categories, categoryFields, onSave, onC
         ...emptyItem,
         ...item,
         location: { ...emptyItem.location, ...(item.location || {}) },
+        story: { ...emptyItem.story, ...(item.story || {}) },
         customFields: { ...(item.customFields || {}) }
       });
       if (item.imagePath) {
@@ -46,6 +48,7 @@ export default function ItemForm({ item, categories, categoryFields, onSave, onC
 
   const update = (field, val) => setForm((f) => ({ ...f, [field]: val }));
   const updateLocation = (field, val) => setForm((f) => ({ ...f, location: { ...f.location, [field]: val } }));
+  const updateStory = (field, val) => setForm((f) => ({ ...f, story: { ...f.story, [field]: val } }));
   const updateCustomField = (key, val) => setForm((f) => ({ ...f, customFields: { ...f.customFields, [key]: val } }));
 
   const handlePickImage = async () => {
@@ -202,6 +205,56 @@ export default function ItemForm({ item, categories, categoryFields, onSave, onC
                 <input type="text" value={form.location.slot} onChange={(e) => updateLocation('slot', e.target.value)} />
               </label>
             </div>
+          </fieldset>
+
+          <fieldset className="form-fieldset">
+            <legend>📜 {t('form.storyTitle')}</legend>
+            <div className="form-grid">
+              <label>
+                {t('form.storyPlace')}
+                <input
+                  type="text"
+                  value={form.story.place}
+                  onChange={(e) => updateStory('place', e.target.value)}
+                  placeholder={t('form.storyPlacePlaceholder')}
+                />
+              </label>
+              <label>
+                {t('form.storyDate')}
+                <input
+                  type="date"
+                  value={form.story.date}
+                  onChange={(e) => updateStory('date', e.target.value)}
+                />
+              </label>
+            </div>
+            <div style={{ display: 'flex', gap: 20, marginTop: 4 }}>
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={!!form.story.isGift}
+                  onChange={(e) => updateStory('isGift', e.target.checked)}
+                />
+                🎁 {t('form.storyGift')}
+              </label>
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={!!form.story.isFirstPiece}
+                  onChange={(e) => updateStory('isFirstPiece', e.target.checked)}
+                />
+                🥇 {t('form.storyFirstPiece')}
+              </label>
+            </div>
+            <label style={{ marginTop: 10 }}>
+              {t('form.storyText')}
+              <textarea
+                rows="3"
+                value={form.story.text}
+                onChange={(e) => updateStory('text', e.target.value)}
+                placeholder={t('form.storyTextPlaceholder')}
+              />
+            </label>
           </fieldset>
 
           <label>

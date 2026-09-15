@@ -10,9 +10,12 @@ contextBridge.exposeInMainWorld('api', {
   setCategoryImage: (name, fileName) => ipcRenderer.invoke('categories:setImage', { name, fileName }),
   setCategoryFields: (name, fields) => ipcRenderer.invoke('categories:setFields', { name, fields }),
   setCategoryTarget: (name, target) => ipcRenderer.invoke('categories:setTarget', { name, target }),
+  setCategoryOrder: (order) => ipcRenderer.invoke('categories:setOrder', order),
   pickImage: () => ipcRenderer.invoke('image:pick'),
   getImagePath: (fileName) => ipcRenderer.invoke('image:getPath', fileName),
   sendFeedback: (payload) => ipcRenderer.invoke('feedback:send', payload),
   exportZip: () => ipcRenderer.invoke('data:exportZip'),
-  importZip: () => ipcRenderer.invoke('data:importZip')
+  importZip: () => ipcRenderer.invoke('data:importZip'),
+  exportCsv: () => ipcRenderer.invoke('data:exportCsv'),
+  importCsv: () => ipcRenderer.invoke('data:importCsv')
 });

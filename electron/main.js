@@ -176,9 +176,17 @@ ipcMain.handle('categories:rename', (_event, { oldName, newName }) => {
 ipcMain.handle('categories:delete', (_event, category) => {
   const db = readDb();
   db.categories = db.categories.filter((c) => c !== category);
-  db.items = db.items.map((item) => (
-    item.category === category ? { ...item, category: '' } : item
-  ));
+
+  db.items.forEach((item) => {
+    if (item.category !== category) return;
+    if (item.imagePath) {
+      const fullPath = path.join(imagesDir, item.imagePath);
+      if (fs.existsSync(fullPath)) {
+        try { fs.unlinkSync(fullPath); } catch (e) {}
+      }
+    }
+  });
+  db.items = db.items.filter((item) => item.category !== category);
 
   const catImage = db.categoryImages[category];
   if (catImage) {
@@ -213,6 +221,18 @@ ipcMain.handle('categories:setTarget', (_event, { name, target }) => {
     db.categoryTargets[name] = num;
   } else {
     delete db.categoryTargets[name];
+  }
+  writeDb(db);
+  return db;
+});
+
+ipcMain.handle('categories:setOrder', (_event, order) => {
+  const db = readDb();
+  if (Array.isArray(order)) {
+    const known = new Set(db.categories);
+    const cleaned = order.filter((c) => known.has(c));
+    db.categories.forEach((c) => { if (!cleaned.includes(c)) cleaned.push(c); });
+    db.categories = cleaned;
   }
   writeDb(db);
   return db;
@@ -411,4 +431,190 @@ ipcMain.handle('data:importZip', async () => {
 
   writeDb(db);
   return { ok: true, count: importedItems.length };
+});
+
+// ---- CSV Import/Export ----
+
+const CSV_FIXED_COLUMNS = [
+  'name', 'category', 'condition', 'quantity', 'purchasePrice', 'value', 'notes',
+  'shelf', 'box', 'folder', 'page', 'slot',
+  'storyPlace', 'storyDate', 'storyGift', 'storyFirstPiece', 'storyText', 'showcase'
+];
+
+function csvEscape(value) {
+  const str = value === null || value === undefined ? '' : String(value);
+  if (/[",\n\r]/.test(str)) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+}
+
+function parseCsv(text) {
+  const firstLine = text.split(/\r?\n/, 1)[0] || '';
+  const delimiter = (firstLine.match(/;/g) || []).length > (firstLine.match(/,/g) || []).length ? ';' : ',';
+
+  const rows = [];
+  let row = [];
+  let field = '';
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (inQuotes) {
+      if (char === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; } else { inQuotes = false; }
+      } else {
+        field += char;
+      }
+    } else if (char === '"') {
+      inQuotes = true;
+    } else if (char === delimiter) {
+      row.push(field); field = '';
+    } else if (char === '\n' || char === '\r') {
+      if (char === '\r' && text[i + 1] === '\n') i++;
+      row.push(field); field = '';
+      rows.push(row); row = [];
+    } else {
+      field += char;
+    }
+  }
+  if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row); }
+  return rows.filter((r) => !(r.length === 1 && r[0] === ''));
+}
+
+function csvToBool(v) {
+  return ['true', '1', 'ja', 'yes', 'x'].includes(String(v).trim().toLowerCase());
+}
+
+function csvToNumber(v) {
+  if (v === undefined || v === null || v === '') return '';
+  const str = String(v).trim();
+  const normalized = /\./.test(str) ? str : str.replace(',', '.');
+  const n = parseFloat(normalized);
+  return Number.isNaN(n) ? '' : n;
+}
+
+ipcMain.handle('data:exportCsv', async () => {
+  const result = await dialog.showSaveDialog({
+    title: 'Sammlung als CSV exportieren',
+    defaultPath: 'sammlung-export.csv',
+    filters: [{ name: 'CSV', extensions: ['csv'] }]
+  });
+  if (result.canceled || !result.filePath) return false;
+
+  const db = readDb();
+
+  const customLabels = {};
+  Object.values(db.categoryFields || {}).forEach((fields) => {
+    (fields || []).forEach((f) => { customLabels[f.key] = f.label; });
+  });
+  const customKeyList = Object.keys(customLabels);
+
+  const header = [...CSV_FIXED_COLUMNS, ...customKeyList.map((k) => customLabels[k])];
+  const lines = [header.map(csvEscape).join(',')];
+
+  db.items.forEach((item) => {
+    const row = [
+      item.name || '', item.category || '', item.condition || '', item.quantity ?? 1,
+      item.purchasePrice ?? '', item.value ?? '', item.notes || '',
+      item.location?.shelf || '', item.location?.box || '', item.location?.folder || '', item.location?.page || '', item.location?.slot || '',
+      item.story?.place || '', item.story?.date || '', item.story?.isGift ? 'true' : 'false', item.story?.isFirstPiece ? 'true' : 'false', item.story?.text || '',
+      item.showcase ? 'true' : 'false',
+      ...customKeyList.map((k) => item.customFields?.[k] ?? '')
+    ];
+    lines.push(row.map(csvEscape).join(','));
+  });
+
+  fs.writeFileSync(result.filePath, `﻿${lines.join('\r\n')}`, 'utf-8');
+  return true;
+});
+
+ipcMain.handle('data:importCsv', async () => {
+  const result = await dialog.showOpenDialog({
+    title: 'Sammlung aus CSV importieren',
+    properties: ['openFile'],
+    filters: [{ name: 'CSV', extensions: ['csv'] }]
+  });
+  if (result.canceled || result.filePaths.length === 0) return { ok: false, reason: 'canceled' };
+
+  let text;
+  try {
+    text = fs.readFileSync(result.filePaths[0], 'utf-8').replace(/^﻿/, '');
+  } catch (e) {
+    return { ok: false, reason: 'invalid' };
+  }
+
+  const rows = parseCsv(text);
+  if (rows.length < 2) return { ok: false, reason: 'invalid' };
+
+  const header = rows[0].map((h) => h.trim());
+  const fixedIndex = {};
+  CSV_FIXED_COLUMNS.forEach((col) => {
+    const idx = header.findIndex((h) => h.toLowerCase() === col.toLowerCase());
+    if (idx >= 0) fixedIndex[col] = idx;
+  });
+  const usedIndexes = new Set(Object.values(fixedIndex));
+  const extraColumns = header
+    .map((h, idx) => ({ h, idx }))
+    .filter(({ h, idx }) => h && !usedIndexes.has(idx));
+
+  if (fixedIndex.name === undefined) return { ok: false, reason: 'invalid' };
+
+  const db = readDb();
+  const now = new Date().toISOString();
+  let count = 0;
+
+  rows.slice(1).forEach((cols) => {
+    const get = (col) => (fixedIndex[col] !== undefined ? (cols[fixedIndex[col]] || '').trim() : '');
+    const name = get('name');
+    if (!name) return;
+
+    const category = get('category') || 'Sonstiges';
+    if (!db.categories.includes(category)) db.categories.push(category);
+
+    const customFields = {};
+    if (extraColumns.length > 0) {
+      const existingFields = db.categoryFields[category] || [];
+      extraColumns.forEach(({ h, idx }) => {
+        const rawVal = (cols[idx] || '').trim();
+        if (!rawVal) return;
+        let field = existingFields.find((f) => f.label === h);
+        if (!field) {
+          const key = h.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || `feld_${idx}`;
+          field = { key, label: h, type: 'text' };
+          if (!existingFields.some((f) => f.key === field.key)) existingFields.push(field);
+        }
+        customFields[field.key] = rawVal;
+      });
+      db.categoryFields[category] = existingFields;
+    }
+
+    db.items.push({
+      id: crypto.randomUUID(),
+      name,
+      category,
+      condition: get('condition') || 'nearMint',
+      quantity: csvToNumber(get('quantity')) || 1,
+      purchasePrice: csvToNumber(get('purchasePrice')),
+      value: csvToNumber(get('value')),
+      notes: get('notes'),
+      imagePath: null,
+      showcase: csvToBool(get('showcase')),
+      location: {
+        shelf: get('shelf'), box: get('box'), folder: get('folder'), page: get('page'), slot: get('slot')
+      },
+      story: {
+        place: get('storyPlace'), date: get('storyDate'),
+        isGift: csvToBool(get('storyGift')), isFirstPiece: csvToBool(get('storyFirstPiece')),
+        text: get('storyText')
+      },
+      customFields,
+      createdAt: now,
+      updatedAt: now,
+      valueHistory: []
+    });
+    count++;
+  });
+
+  writeDb(db);
+  return { ok: true, count };
 });

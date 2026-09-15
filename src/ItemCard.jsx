@@ -37,9 +37,14 @@ export default function ItemCard({ item, onEdit, onDelete, readOnly }) {
         <div className="card-meta">
           <span className="chip">{item.category}</span>
           {item.condition && <span className="chip chip-outline">{t(`condition.${item.condition}`)}</span>}
+          {item.story?.isFirstPiece && <span className="chip chip-outline">🥇 {t('card.firstPiece')}</span>}
+          {item.story?.isGift && <span className="chip chip-outline">🎁 {t('card.gift')}</span>}
         </div>
         {!readOnly && breadcrumb && <div className="card-location" title={breadcrumb}>📍 {breadcrumb}</div>}
         {!readOnly && item.notes && <div className="card-notes">{item.notes}</div>}
+        {readOnly && item.story?.text && (
+          <div className="card-story">“{item.story.text}”</div>
+        )}
         {readOnly ? (
           <div className="card-footer">
             <span className="card-value">{currencyFmt(value)}</span>

@@ -484,6 +484,84 @@ button {
 
 .btn-secondary:hover { background: var(--bg-card); }
 
+.btn-danger {
+  background: var(--danger);
+  border: none;
+  color: white;
+  padding: 10px 18px;
+  border-radius: var(--btn-radius);
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13.5px;
+}
+
+.btn-danger:hover { filter: brightness(1.1); }
+
+.confirm-modal-danger {
+  border-color: var(--danger) !important;
+  text-align: center;
+}
+
+.confirm-danger-icon {
+  font-size: 28px;
+  margin-bottom: 6px;
+}
+
+.confirm-modal-danger .confirm-message {
+  font-weight: 600;
+}
+
+.category-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.category-overview-card {
+  height: 140px;
+  border-radius: var(--card-radius);
+  border: var(--card-border-width) solid var(--card-border-color);
+  background: var(--bg-card);
+  background-size: cover;
+  background-position: center;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: flex-start;
+  padding: 14px;
+  gap: 4px;
+  transition: transform 0.12s ease, border-color 0.12s ease;
+  text-align: left;
+}
+
+.category-overview-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+
+.category-overview-card.dragging {
+  opacity: 0.4;
+}
+
+.category-overview-card.drop-target {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.category-overview-name {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--text);
+  text-transform: var(--heading-transform);
+  letter-spacing: var(--heading-letter-spacing);
+}
+
+.category-overview-count {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -607,6 +685,18 @@ button {
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.card-story {
+  font-size: 12px;
+  font-style: italic;
+  color: var(--text-muted);
+  border-left: 2px solid var(--accent);
+  padding-left: 8px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
 }
 
@@ -796,6 +886,68 @@ input:focus, select:focus, textarea:focus {
   font-size: 12px;
   color: var(--text-muted);
   padding: 0 6px;
+}
+
+.ie-row-title {
+  font-weight: 600;
+  font-size: 13.5px;
+  margin-bottom: 4px;
+}
+
+.ie-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.ie-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 13px 14px;
+  border-radius: 14px !important;
+  font-size: 13.5px;
+  font-weight: 600;
+  text-transform: none !important;
+  letter-spacing: normal !important;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  transition: transform 0.08s ease, filter 0.12s ease;
+}
+
+.ie-btn:hover {
+  transform: translateY(-1px);
+}
+
+.ie-btn-icon {
+  font-size: 15px;
+}
+
+.ie-btn-secondary {
+  background: var(--bg-card);
+  color: var(--text);
+}
+
+.ie-btn-secondary:hover {
+  border-color: var(--accent);
+}
+
+.ie-btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.ie-btn-primary:hover {
+  filter: brightness(1.08);
+}
+
+@media (max-width: 460px) {
+  .ie-actions {
+    grid-template-columns: 1fr;
+  }
 }
 
 .custom-field-rows {
@@ -1468,4 +1620,67 @@ input:focus, select:focus, textarea:focus {
   justify-content: space-between;
   font-size: 12px;
   margin-bottom: 4px;
+}
+
+/* ---- Collection DNA ---- */
+
+.dna-bar {
+  display: flex;
+  height: 14px;
+  border-radius: 999px;
+  overflow: hidden;
+  margin-top: 8px;
+  background: var(--bg-card);
+}
+
+.dna-bar-segment {
+  height: 100%;
+}
+
+.dna-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.dna-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dna-legend-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dna-traits {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dna-trait {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--card-radius);
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
+.dna-trait-label {
+  color: var(--text-muted);
+}
+
+.dna-trait-value {
+  margin-left: auto;
+  font-weight: 600;
 }
