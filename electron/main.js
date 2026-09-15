@@ -42,6 +42,9 @@ function writeDb(data) {
   fs.writeFileSync(dbFile, JSON.stringify(data, null, 2));
 }
 
+const isWindows = process.platform === 'win32';
+const TITLEBAR_HEIGHT = 36;
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1200,
@@ -51,6 +54,10 @@ function createWindow() {
     title: 'ItemCase',
     backgroundColor: '#1b1d22',
     icon: path.join(__dirname, '..', 'build', process.platform === 'win32' ? 'icon.ico' : 'icon.png'),
+    ...(isWindows ? {
+      titleBarStyle: 'hidden',
+      titleBarOverlay: { color: '#6c8cff', symbolColor: '#ffffff', height: TITLEBAR_HEIGHT }
+    } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -254,6 +261,15 @@ ipcMain.handle('categories:setImage', (_event, { name, fileName }) => {
   }
   writeDb(db);
   return db;
+});
+
+ipcMain.handle('window:setTitleBarColor', (event, { color, symbolColor }) => {
+  if (!isWindows) return false;
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win && typeof win.setTitleBarOverlay === 'function') {
+    win.setTitleBarOverlay({ color, symbolColor: symbolColor || '#ffffff', height: TITLEBAR_HEIGHT });
+  }
+  return true;
 });
 
 ipcMain.handle('image:pick', async () => {

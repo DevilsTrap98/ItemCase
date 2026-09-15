@@ -156,11 +156,37 @@ html, body {
   overflow: hidden;
 }
 
-#root { height: 100vh; }
+#root {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.titlebar {
+  flex-shrink: 0;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 700;
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.titlebar-logo {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
 
 .app {
   display: flex;
-  height: 100vh;
+  flex: 1;
+  min-height: 0;
   background-image: var(--app-bg-pattern);
   background-size: var(--app-bg-size, auto);
   background-position: var(--app-bg-position, 0 0);
@@ -1038,7 +1064,8 @@ input:focus, select:focus, textarea:focus {
 /* ---- Auth screen ---- */
 
 .auth-screen {
-  height: 100vh;
+  flex: 1;
+  min-height: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1166,7 +1193,7 @@ input:focus, select:focus, textarea:focus {
 
 .lang-switch {
   position: fixed;
-  top: 20px;
+  top: 56px;
   right: 20px;
   display: flex;
   gap: 4px;

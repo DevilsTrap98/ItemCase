@@ -1,17 +1,10 @@
 import React, { useState } from 'react';
 import { useI18n } from './i18n.jsx';
-import { DESIGN_THEME_COLOR_MAP, ALL_BACKGROUND_OPTIONS, BACKGROUND_PREVIEWS } from './theme-defaults.js';
+import { DESIGN_THEME_COLOR_MAP, ALL_BACKGROUND_OPTIONS, BACKGROUND_PREVIEWS, COLOR_THEME_HEX } from './theme-defaults.js';
 import useImagePath from './useImagePath.js';
 
 const colorThemeIds = ['indigo', 'emerald', 'rose', 'amber', 'sky', 'violet'];
-const colorThemeSwatches = {
-  indigo: '#6c8cff',
-  emerald: '#34d399',
-  rose: '#f472b6',
-  amber: '#f5a524',
-  sky: '#38bdf8',
-  violet: '#a78bfa'
-};
+const colorThemeSwatches = COLOR_THEME_HEX;
 
 const designThemeIds = ['classic', 'comic', 'cardstyle', 'coin', 'scifi', 'football'];
 const designThemeIcons = {

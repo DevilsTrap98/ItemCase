@@ -6,6 +6,17 @@ import bgFootball2 from './assets/backgrounds/football2.jpg';
 import bgCardstyle from './assets/backgrounds/cardstyle.jpg';
 import bgCardstyle2 from './assets/backgrounds/cardstyle2.jpg';
 
+// Hex-Werte der Farbthemen (für native UI-Elemente wie die Windows-Titelleiste,
+// die keine CSS-Variablen lesen können).
+export const COLOR_THEME_HEX = {
+  indigo: '#6c8cff',
+  emerald: '#34d399',
+  rose: '#f472b6',
+  amber: '#f5a524',
+  sky: '#38bdf8',
+  violet: '#a78bfa'
+};
+
 // Empfohlene (aber nicht verbindliche) Farbe pro Design-Stil.
 // Wird nur angewendet, wenn der Nutzer die Auto-Kopplung nicht deaktiviert hat.
 export const DESIGN_THEME_COLOR_MAP = {

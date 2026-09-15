@@ -13,7 +13,7 @@ import ImportExportModal from './ImportExportModal.jsx';
 import { useI18n } from './i18n.jsx';
 import logoMark from './assets/logo-mark.png';
 import useImagePath from './useImagePath.js';
-import { BACKGROUND_PATTERNS, DESIGN_THEME_BACKGROUND_MAP } from './theme-defaults.js';
+import { BACKGROUND_PATTERNS, DESIGN_THEME_BACKGROUND_MAP, COLOR_THEME_HEX } from './theme-defaults.js';
 
 const USER_STORAGE_KEY = 'collectorapp_user';
 const ALL_CATEGORY = '__all__';
@@ -115,6 +115,11 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.setAttribute('data-color-theme', user?.colorTheme || 'indigo');
+  }, [user?.colorTheme]);
+
+  useEffect(() => {
+    const hex = COLOR_THEME_HEX[user?.colorTheme] || COLOR_THEME_HEX.indigo;
+    window.api?.setTitleBarColor?.(hex, '#ffffff');
   }, [user?.colorTheme]);
 
   useEffect(() => {
@@ -330,15 +335,29 @@ export default function App() {
   } : undefined;
   const avatarSrc = useImagePath(user?.avatarImage);
 
+  const titleBar = (
+    <div className="titlebar">
+      <img src={logoMark} alt="" className="titlebar-logo" />
+      <span>{t('app.brand')}</span>
+    </div>
+  );
+
   if (!user) {
-    return <AuthScreen onLogin={handleLogin} />;
+    return (
+      <>
+        {titleBar}
+        <AuthScreen onLogin={handleLogin} />
+      </>
+    );
   }
 
   const initials = (user.name || 'U').split(' ').map((p) => p[0]).join('').slice(0, 2).toUpperCase();
   const currencyFmt = (n) => n.toLocaleString(lang === 'en' ? 'en-US' : 'de-DE', { style: 'currency', currency: user.currency || 'EUR' });
 
   return (
-    <div className="app">
+    <>
+      {titleBar}
+      <div className="app">
       <aside className="sidebar">
         <div className="logo">
           <img src={logoMark} alt="" className="logo-icon" />
@@ -629,6 +648,7 @@ export default function App() {
           onCancel={() => setDialog(null)}
         />
       )}
-    </div>
+      </div>
+    </>
   );
 }

@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
+  setTitleBarColor: (color, symbolColor) => ipcRenderer.invoke('window:setTitleBarColor', { color, symbolColor }),
   getAll: () => ipcRenderer.invoke('items:getAll'),
   saveItem: (item) => ipcRenderer.invoke('items:save', item),
   deleteItem: (id) => ipcRenderer.invoke('items:delete', id),
