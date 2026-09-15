@@ -13,7 +13,7 @@ import ImportExportModal from './ImportExportModal.jsx';
 import { useI18n } from './i18n.jsx';
 import logoMark from './assets/logo-mark.png';
 import useImagePath from './useImagePath.js';
-import { BACKGROUND_PATTERNS, DESIGN_THEME_BACKGROUND_MAP, COLOR_THEME_HEX } from './theme-defaults.js';
+import { BACKGROUND_PATTERNS, DESIGN_THEME_BACKGROUND_MAP, COLOR_THEME_HEX, CASE_DESIGNS } from './theme-defaults.js';
 
 const USER_STORAGE_KEY = 'collectorapp_user';
 const ALL_CATEGORY = '__all__';
@@ -75,6 +75,7 @@ export default function App() {
   const [categoryImages, setCategoryImages] = useState({});
   const [categoryFields, setCategoryFields] = useState({});
   const [categoryTargets, setCategoryTargets] = useState({});
+  const [categoryCaseDesigns, setCategoryCaseDesigns] = useState({});
   const [activeCategory, setActiveCategory] = useState(ALL_CATEGORY);
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
@@ -168,6 +169,7 @@ export default function App() {
     setCategoryImages(db.categoryImages || {});
     setCategoryFields(db.categoryFields || {});
     setCategoryTargets(db.categoryTargets || {});
+    setCategoryCaseDesigns(db.categoryCaseDesigns || {});
   };
 
   useEffect(() => {
@@ -283,11 +285,12 @@ export default function App() {
     }
   };
 
-  const handleSaveCategoryFields = async (fields, target) => {
+  const handleSaveCategoryFields = async (fields, target, caseDesign) => {
     const cat = managingFieldsFor;
     setManagingFieldsFor(null);
     await window.api.setCategoryFields(cat, fields);
     await window.api.setCategoryTarget(cat, target);
+    await window.api.setCategoryCaseDesign(cat, caseDesign);
     loadData();
   };
 
@@ -528,6 +531,7 @@ export default function App() {
                 <ItemCard
                   key={item.id}
                   item={item}
+                  caseDesignSrc={CASE_DESIGNS[categoryCaseDesigns[item.category]]}
                   readOnly
                 />
               ))}
@@ -566,6 +570,7 @@ export default function App() {
               <ItemCard
                 key={item.id}
                 item={item}
+                caseDesignSrc={CASE_DESIGNS[categoryCaseDesigns[item.category]]}
                 onEdit={handleEdit}
                 onDelete={handleDelete}
                 onUpdateValue={handleUpdateValue}
@@ -599,6 +604,7 @@ export default function App() {
           category={managingFieldsFor}
           fields={categoryFields[managingFieldsFor]}
           target={categoryTargets[managingFieldsFor]}
+          caseDesign={categoryCaseDesigns[managingFieldsFor]}
           onSave={handleSaveCategoryFields}
           onClose={() => setManagingFieldsFor(null)}
         />

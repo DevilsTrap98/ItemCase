@@ -20,7 +20,8 @@ function ensureDirs() {
       categories: ['Karten', 'Münzen', 'Comics', 'Sonstiges'],
       categoryImages: {},
       categoryFields: {},
-      categoryTargets: {}
+      categoryTargets: {},
+      categoryCaseDesigns: {}
     }, null, 2));
   }
 }
@@ -32,9 +33,10 @@ function readDb() {
     if (!db.categoryImages) db.categoryImages = {};
     if (!db.categoryFields) db.categoryFields = {};
     if (!db.categoryTargets) db.categoryTargets = {};
+    if (!db.categoryCaseDesigns) db.categoryCaseDesigns = {};
     return db;
   } catch (e) {
-    return { items: [], categories: [], categoryImages: {}, categoryFields: {}, categoryTargets: {} };
+    return { items: [], categories: [], categoryImages: {}, categoryFields: {}, categoryTargets: {}, categoryCaseDesigns: {} };
   }
 }
 
@@ -174,6 +176,10 @@ ipcMain.handle('categories:rename', (_event, { oldName, newName }) => {
       db.categoryTargets[trimmed] = db.categoryTargets[oldName];
       delete db.categoryTargets[oldName];
     }
+    if (db.categoryCaseDesigns[oldName]) {
+      db.categoryCaseDesigns[trimmed] = db.categoryCaseDesigns[oldName];
+      delete db.categoryCaseDesigns[oldName];
+    }
   }
 
   writeDb(db);
@@ -205,7 +211,19 @@ ipcMain.handle('categories:delete', (_event, category) => {
   }
   delete db.categoryFields[category];
   delete db.categoryTargets[category];
+  delete db.categoryCaseDesigns[category];
 
+  writeDb(db);
+  return db;
+});
+
+ipcMain.handle('categories:setCaseDesign', (_event, { name, caseDesign }) => {
+  const db = readDb();
+  if (caseDesign) {
+    db.categoryCaseDesigns[name] = caseDesign;
+  } else {
+    delete db.categoryCaseDesigns[name];
+  }
   writeDb(db);
   return db;
 });
@@ -441,6 +459,14 @@ ipcMain.handle('data:importZip', async () => {
     Object.entries(imported.categoryTargets).forEach(([catName, target]) => {
       if (Number(target) > 0 && db.categories.includes(catName) && !db.categoryTargets[catName]) {
         db.categoryTargets[catName] = Number(target);
+      }
+    });
+  }
+
+  if (imported.categoryCaseDesigns && typeof imported.categoryCaseDesigns === 'object') {
+    Object.entries(imported.categoryCaseDesigns).forEach(([catName, caseDesign]) => {
+      if (caseDesign && db.categories.includes(catName) && !db.categoryCaseDesigns[catName]) {
+        db.categoryCaseDesigns[catName] = caseDesign;
       }
     });
   }

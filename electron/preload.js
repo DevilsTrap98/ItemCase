@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('api', {
   setCategoryImage: (name, fileName) => ipcRenderer.invoke('categories:setImage', { name, fileName }),
   setCategoryFields: (name, fields) => ipcRenderer.invoke('categories:setFields', { name, fields }),
   setCategoryTarget: (name, target) => ipcRenderer.invoke('categories:setTarget', { name, target }),
+  setCategoryCaseDesign: (name, caseDesign) => ipcRenderer.invoke('categories:setCaseDesign', { name, caseDesign }),
   setCategoryOrder: (order) => ipcRenderer.invoke('categories:setOrder', order),
   pickImage: () => ipcRenderer.invoke('image:pick'),
   getImagePath: (fileName) => ipcRenderer.invoke('image:getPath', fileName),

@@ -5,6 +5,11 @@ import bgFootball from './assets/backgrounds/football.jpg';
 import bgFootball2 from './assets/backgrounds/football2.jpg';
 import bgCardstyle from './assets/backgrounds/cardstyle.jpg';
 import bgCardstyle2 from './assets/backgrounds/cardstyle2.jpg';
+import case0 from './assets/cases/case0.webp';
+import case1 from './assets/cases/case1.webp';
+import case2 from './assets/cases/case2.webp';
+import case3 from './assets/cases/case3.webp';
+import case4 from './assets/cases/case4.webp';
 
 // Hex-Werte der Farbthemen (für native UI-Elemente wie die Windows-Titelleiste,
 // die keine CSS-Variablen lesen können).
@@ -84,3 +89,15 @@ export const ALL_BACKGROUND_OPTIONS = [
   'comicImg', 'cardstyleImg', 'cardstyleImg2', 'coinImg', 'scifiImg', 'footballImg', 'footballImg2',
   'dots', 'grid', 'glow', 'pitch'
 ];
+
+// Rahmen/Case-Designs, die pro Kategorie über den Item-Bildern angezeigt werden können
+// (transparente Bildmitte, dekorativer Rahmen drumherum).
+export const CASE_DESIGNS = {
+  crystal: case0,
+  premium: case1,
+  scifi: case2,
+  football: case3,
+  fantasy: case4
+};
+
+export const CASE_DESIGN_IDS = ['crystal', 'premium', 'scifi', 'football', 'fantasy'];

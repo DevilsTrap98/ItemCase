@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
 import { useI18n } from './i18n.jsx';
+import { CASE_DESIGNS, CASE_DESIGN_IDS } from './theme-defaults.js';
 
 let uid = 0;
 const nextId = () => `f${Date.now()}_${uid++}`;
 
-export default function CategoryFieldsModal({ category, fields, target, onSave, onClose }) {
+export default function CategoryFieldsModal({ category, fields, target, caseDesign, onSave, onClose }) {
   const { t } = useI18n();
   const [items, setItems] = useState(
     (fields || []).map((f) => ({ ...f, _id: nextId() }))
   );
   const [targetValue, setTargetValue] = useState(target || '');
+  const [caseDesignValue, setCaseDesignValue] = useState(caseDesign || '');
 
   const addField = () => {
     setItems((list) => [...list, { _id: nextId(), key: nextId(), label: '', type: 'text' }]);
@@ -28,7 +30,7 @@ export default function CategoryFieldsModal({ category, fields, target, onSave, 
     const cleanFields = items
       .filter((f) => f.label.trim())
       .map((f) => ({ key: f.key, label: f.label.trim(), type: f.type }));
-    onSave(cleanFields, targetValue);
+    onSave(cleanFields, targetValue, caseDesignValue);
   };
 
   return (
@@ -75,6 +77,34 @@ export default function CategoryFieldsModal({ category, fields, target, onSave, 
             />
           </label>
           <div className="field-hint">{t('catFields.targetHint')}</div>
+
+          <label>
+            {t('catFields.caseDesignLabel')}
+            <div className="field-hint" style={{ marginTop: 0, marginBottom: 6 }}>{t('catFields.caseDesignHint')}</div>
+          </label>
+          <div className="color-theme-grid background-grid case-design-grid">
+            <button
+              type="button"
+              className={!caseDesignValue ? 'color-swatch bg-swatch case-swatch active' : 'color-swatch bg-swatch case-swatch'}
+              onClick={() => setCaseDesignValue('')}
+            >
+              <span className="case-swatch-none">✕</span>
+              <span className="bg-swatch-label bg-swatch-label-plain">{t('catFields.caseDesignNone')}</span>
+              {!caseDesignValue && <span className="color-swatch-check">✓</span>}
+            </button>
+            {CASE_DESIGN_IDS.map((id) => (
+              <button
+                type="button"
+                key={id}
+                className={caseDesignValue === id ? 'color-swatch bg-swatch case-swatch active' : 'color-swatch bg-swatch case-swatch'}
+                style={{ backgroundImage: `url(${CASE_DESIGNS[id]})` }}
+                onClick={() => setCaseDesignValue(id)}
+              >
+                <span className="bg-swatch-label">{t(`catFields.caseDesign.${id}`)}</span>
+                {caseDesignValue === id && <span className="color-swatch-check">✓</span>}
+              </button>
+            ))}
+          </div>
 
           <div className="modal-actions">
             <button type="button" className="btn-secondary" onClick={onClose}>{t('catFields.close')}</button>

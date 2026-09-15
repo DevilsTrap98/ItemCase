@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useI18n } from './i18n.jsx';
 import useImagePath from './useImagePath.js';
 
-export default function ItemCard({ item, onEdit, onDelete, onUpdateValue, readOnly }) {
+export default function ItemCard({ item, onEdit, onDelete, onUpdateValue, caseDesignSrc, readOnly }) {
   const { lang, t } = useI18n();
   const imgSrc = useImagePath(item.imagePath);
 
@@ -32,6 +32,7 @@ export default function ItemCard({ item, onEdit, onDelete, onUpdateValue, readOn
         ) : (
           <div className="card-image-placeholder">{t('card.noImage')}</div>
         )}
+        {caseDesignSrc && <img src={caseDesignSrc} alt="" className="card-case-overlay" />}
         {quantity > 1 && <span className="badge-qty">x{quantity}</span>}
         {item.showcase && <span className="badge-showcase">★ {t('card.showcaseBadge')}</span>}
       </div>
