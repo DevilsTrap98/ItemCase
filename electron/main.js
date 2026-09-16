@@ -11,6 +11,60 @@ const userDataDir = app.getPath('userData');
 const imagesDir = path.join(userDataDir, 'images');
 const dbFile = path.join(userDataDir, 'collection.json');
 
+function demoCatalogEntries() {
+  const now = new Date().toISOString();
+  return [
+    {
+      id: 'demo-switch-oled',
+      name: 'Nintendo Switch OLED',
+      brand: 'Nintendo',
+      category: 'Konsolen',
+      releaseYear: 2021,
+      ean: '045496453435',
+      isbn: '',
+      manufacturerNumber: 'HEG-001',
+      imagePath: null,
+      status: 'approved',
+      contributor: 'ItemCase Team',
+      rightsConfirmed: true,
+      licenseVersion: '1.0',
+      submittedAt: now
+    },
+    {
+      id: 'demo-lego-falcon',
+      name: 'LEGO Star Wars Millennium Falcon',
+      brand: 'LEGO',
+      category: 'Bausets',
+      releaseYear: 2020,
+      ean: '',
+      isbn: '',
+      manufacturerNumber: '75257',
+      imagePath: null,
+      status: 'approved',
+      contributor: 'ItemCase Team',
+      rightsConfirmed: true,
+      licenseVersion: '1.0',
+      submittedAt: now
+    },
+    {
+      id: 'demo-zelda-botw',
+      name: 'The Legend of Zelda: Breath of the Wild',
+      brand: 'Nintendo',
+      category: 'Spiele',
+      releaseYear: 2017,
+      ean: '045496590420',
+      isbn: '',
+      manufacturerNumber: '',
+      imagePath: null,
+      status: 'approved',
+      contributor: 'ItemCase Team',
+      rightsConfirmed: true,
+      licenseVersion: '1.0',
+      submittedAt: now
+    }
+  ];
+}
+
 function ensureDirs() {
   if (!fs.existsSync(userDataDir)) fs.mkdirSync(userDataDir, { recursive: true });
   if (!fs.existsSync(imagesDir)) fs.mkdirSync(imagesDir, { recursive: true });
@@ -21,7 +75,8 @@ function ensureDirs() {
       categoryImages: {},
       categoryFields: {},
       categoryTargets: {},
-      categoryCaseDesigns: {}
+      categoryCaseDesigns: {},
+      communityCatalog: demoCatalogEntries()
     }, null, 2));
   }
 }
@@ -34,9 +89,10 @@ function readDb() {
     if (!db.categoryFields) db.categoryFields = {};
     if (!db.categoryTargets) db.categoryTargets = {};
     if (!db.categoryCaseDesigns) db.categoryCaseDesigns = {};
+    if (!db.communityCatalog) db.communityCatalog = demoCatalogEntries();
     return db;
   } catch (e) {
-    return { items: [], categories: [], categoryImages: {}, categoryFields: {}, categoryTargets: {}, categoryCaseDesigns: {} };
+    return { items: [], categories: [], categoryImages: {}, categoryFields: {}, categoryTargets: {}, categoryCaseDesigns: {}, communityCatalog: [] };
   }
 }
 
@@ -215,6 +271,30 @@ ipcMain.handle('categories:delete', (_event, category) => {
 
   writeDb(db);
   return db;
+});
+
+ipcMain.handle('catalog:submit', (_event, payload) => {
+  const db = readDb();
+  const now = new Date().toISOString();
+  const entry = {
+    id: crypto.randomUUID(),
+    name: payload.name || '',
+    brand: payload.brand || '',
+    category: payload.category || '',
+    releaseYear: payload.releaseYear || '',
+    ean: payload.ean || '',
+    isbn: payload.isbn || '',
+    manufacturerNumber: payload.manufacturerNumber || '',
+    imagePath: payload.imagePath || null,
+    status: 'pending',
+    contributor: payload.contributor || '',
+    rightsConfirmed: !!payload.rightsConfirmed,
+    licenseVersion: payload.licenseVersion || '1.0',
+    submittedAt: now
+  };
+  db.communityCatalog.push(entry);
+  writeDb(db);
+  return db.communityCatalog;
 });
 
 ipcMain.handle('categories:setCaseDesign', (_event, { name, caseDesign }) => {

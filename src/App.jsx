@@ -10,6 +10,7 @@ import FeedbackModal from './FeedbackModal.jsx';
 import ConfirmDialog from './ConfirmDialog.jsx';
 import CollectionDNA from './CollectionDNA.jsx';
 import ImportExportModal from './ImportExportModal.jsx';
+import CommunityCatalogModal from './CommunityCatalogModal.jsx';
 import { useI18n } from './i18n.jsx';
 import logoMark from './assets/logo-mark.png';
 import useImagePath from './useImagePath.js';
@@ -76,6 +77,8 @@ export default function App() {
   const [categoryFields, setCategoryFields] = useState({});
   const [categoryTargets, setCategoryTargets] = useState({});
   const [categoryCaseDesigns, setCategoryCaseDesigns] = useState({});
+  const [communityCatalog, setCommunityCatalog] = useState([]);
+  const [showCommunityCatalog, setShowCommunityCatalog] = useState(false);
   const [activeCategory, setActiveCategory] = useState(ALL_CATEGORY);
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
@@ -170,6 +173,7 @@ export default function App() {
     setCategoryFields(db.categoryFields || {});
     setCategoryTargets(db.categoryTargets || {});
     setCategoryCaseDesigns(db.categoryCaseDesigns || {});
+    setCommunityCatalog(db.communityCatalog || []);
   };
 
   useEffect(() => {
@@ -213,6 +217,36 @@ export default function App() {
     } else if (result.reason === 'invalid') {
       showAlert(t('import.csvInvalid'));
     }
+  };
+
+  const handleAdoptCatalogItem = async (entry) => {
+    await window.api.saveItem({
+      name: entry.name,
+      category: entry.category || categories[0] || 'Sonstiges',
+      condition: 'nearMint',
+      quantity: 1,
+      value: '',
+      purchasePrice: '',
+      notes: '',
+      imagePath: entry.imagePath || null,
+      showcase: false,
+      story: { place: '', date: '', isGift: false, isFirstPiece: false, text: '' },
+      customFields: {},
+      catalogInfo: {
+        brand: entry.brand || '',
+        releaseYear: entry.releaseYear || '',
+        ean: entry.ean || '',
+        isbn: entry.isbn || '',
+        manufacturerNumber: entry.manufacturerNumber || ''
+      },
+      catalogItemId: entry.id
+    });
+    loadData();
+  };
+
+  const handleSubmitToCatalog = async (payload) => {
+    await window.api.submitToCatalog(payload);
+    loadData();
   };
 
   const handleEdit = (item) => {
@@ -472,6 +506,10 @@ export default function App() {
             {t('topbar.newItem')}
           </button>
 
+          <button className="btn-secondary" onClick={() => setShowCommunityCatalog(true)}>
+            📚 {t('topbar.communityCatalog')}
+          </button>
+
           <button
             className={showShowcase ? 'btn-secondary active' : 'btn-secondary'}
             onClick={() => setShowShowcase((v) => !v)}
@@ -634,6 +672,17 @@ export default function App() {
           onExportCsv={() => { window.api.exportCsv(); setShowImportExport(false); }}
           onImportCsv={() => { handleImportCsv(); setShowImportExport(false); }}
           onClose={() => setShowImportExport(false)}
+        />
+      )}
+
+      {showCommunityCatalog && (
+        <CommunityCatalogModal
+          catalog={communityCatalog}
+          categories={categories}
+          user={user}
+          onAdopt={handleAdoptCatalogItem}
+          onSubmit={handleSubmitToCatalog}
+          onClose={() => setShowCommunityCatalog(false)}
         />
       )}
 
