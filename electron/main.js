@@ -120,7 +120,7 @@ function createWindow() {
     icon: path.join(__dirname, '..', 'build', process.platform === 'win32' ? 'icon.ico' : 'icon.png'),
     ...(isWindows ? {
       titleBarStyle: 'hidden',
-      titleBarOverlay: { color: '#6c8cff', symbolColor: '#ffffff', height: TITLEBAR_HEIGHT }
+      titleBarOverlay: { color: '#1c1e25', symbolColor: '#ffffff', height: TITLEBAR_HEIGHT }
     } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
