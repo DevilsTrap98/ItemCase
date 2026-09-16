@@ -2461,6 +2461,11 @@ input:focus, select:focus, textarea:focus {
   font-weight: 700;
 }
 
+.friend-avatar.group-avatar {
+  font-size: 15px;
+  border-radius: 10px;
+}
+
 .friend-avatar.small {
   width: 26px;
   height: 26px;

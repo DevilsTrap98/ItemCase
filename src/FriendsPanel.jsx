@@ -1,7 +1,7 @@
 import React from 'react';
 import { useI18n } from './i18n.jsx';
 
-export default function FriendsPanel({ friends, onOpenChat }) {
+export default function FriendsPanel({ friends, groups, onOpenChat }) {
   const { t } = useI18n();
   const online = friends.filter((f) => f.online);
   const offline = friends.filter((f) => !f.online);
@@ -44,6 +44,21 @@ export default function FriendsPanel({ friends, onOpenChat }) {
                 <span className="friend-info">
                   <span className="friend-name">{f.name}</span>
                   <span className="friend-status-text">{f.statusText}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {groups && groups.length > 0 && (
+          <div className="friends-group">
+            <div className="friends-group-label">{t('friends.groups', { count: groups.length })}</div>
+            {groups.map((g) => (
+              <button type="button" key={g.id} className="friend-item group-item">
+                <span className="friend-avatar group-avatar">{g.icon}</span>
+                <span className="friend-info">
+                  <span className="friend-name">{g.name}</span>
+                  <span className="friend-status-text">{t('friends.memberCount', { count: g.memberCount })}</span>
                 </span>
               </button>
             ))}

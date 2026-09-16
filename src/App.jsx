@@ -14,7 +14,7 @@ import CommunityCatalogModal from './CommunityCatalogModal.jsx';
 import UpgradeModal from './UpgradeModal.jsx';
 import FriendsPanel from './FriendsPanel.jsx';
 import ChatWindow from './ChatWindow.jsx';
-import { MOCK_FRIENDS } from './friends-mock.js';
+import { MOCK_FRIENDS, MOCK_GROUPS } from './friends-mock.js';
 import { useI18n } from './i18n.jsx';
 import logoMark from './assets/logo-mark.png';
 import useImagePath from './useImagePath.js';
@@ -692,7 +692,7 @@ export default function App() {
         )}
         </main>
 
-        <FriendsPanel friends={MOCK_FRIENDS} onOpenChat={handleOpenChat} />
+        <FriendsPanel friends={MOCK_FRIENDS} groups={MOCK_GROUPS} onOpenChat={handleOpenChat} />
         </div>
       </div>
 
