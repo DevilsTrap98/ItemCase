@@ -16,6 +16,7 @@ import logoMark from './assets/logo-mark.png';
 import useImagePath from './useImagePath.js';
 import { BACKGROUND_PATTERNS, DESIGN_THEME_BACKGROUND_MAP, COLOR_THEME_HEX, CASE_DESIGNS } from './theme-defaults.js';
 import { SUGGESTED_CATEGORIES } from './category-defaults.js';
+import { getTariff } from './tariff-defaults.js';
 
 const USER_STORAGE_KEY = 'collectorapp_user';
 const ALL_CATEGORY = '__all__';
@@ -184,6 +185,10 @@ export default function App() {
   }, []);
 
   const handleSave = async (item) => {
+    if (!item.id && isOverItemLimit) {
+      showAlert(t('tariff.overLimitBlocked', { limit: tariff.itemLimit }));
+      return;
+    }
     await window.api.saveItem(item);
     setShowForm(false);
     setEditingItem(null);
@@ -363,6 +368,9 @@ export default function App() {
     return { totalItems, totalValue, uniqueItems: items.length };
   }, [items]);
 
+  const tariff = getTariff(user?.tariff);
+  const isOverItemLimit = items.length > tariff.itemLimit;
+
   const categoryCounts = useMemo(() => {
     const counts = {};
     items.forEach((i) => { counts[i.category] = (counts[i.category] || 0) + 1; });
@@ -525,7 +533,12 @@ export default function App() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-          <button className="btn-primary" onClick={() => { setEditingItem(null); setShowForm(true); }}>
+          <button
+            className="btn-primary"
+            disabled={isOverItemLimit}
+            title={isOverItemLimit ? t('tariff.overLimitBlocked', { limit: tariff.itemLimit }) : undefined}
+            onClick={() => { setEditingItem(null); setShowForm(true); }}
+          >
             {t('topbar.newItem')}
           </button>
 
@@ -580,6 +593,12 @@ export default function App() {
             )}
           </div>
         </div>
+
+        {isOverItemLimit && (
+          <div className="tariff-banner">
+            {t('tariff.overLimitBanner', { count: items.length, limit: tariff.itemLimit })}
+          </div>
+        )}
 
         {showShowcase ? (
           showcaseItems.length === 0 ? (
@@ -654,6 +673,7 @@ export default function App() {
       {showSettings && (
         <SettingsModal
           user={user}
+          itemCount={items.length}
           onSave={handleSaveUser}
           onLogout={handleLogout}
           onClose={() => setShowSettings(false)}

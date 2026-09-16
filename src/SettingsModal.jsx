@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useI18n } from './i18n.jsx';
 import { DESIGN_THEME_COLOR_MAP, ALL_BACKGROUND_OPTIONS, BACKGROUND_PREVIEWS, COLOR_THEME_HEX } from './theme-defaults.js';
+import { TARIFF_IDS, TARIFFS, getTariff } from './tariff-defaults.js';
 import useImagePath from './useImagePath.js';
 
 const colorThemeIds = ['indigo', 'emerald', 'rose', 'amber', 'sky', 'violet'];
@@ -25,7 +26,7 @@ const backgroundIcons = {
   pitch: '🌱'
 };
 
-export default function SettingsModal({ user, onSave, onLogout, onClose }) {
+export default function SettingsModal({ user, itemCount, onSave, onLogout, onClose }) {
   const { lang, setLang, t } = useI18n();
   const [tab, setTab] = useState('profile');
   const [name, setName] = useState(user.name || '');
@@ -75,6 +76,12 @@ export default function SettingsModal({ user, onSave, onLogout, onClose }) {
   const handleToggleAutoBackground = (checked) => {
     setAutoBackground(checked);
     onSave({ ...user, autoBackground: checked });
+  };
+
+  const currentTariff = getTariff(user.tariff);
+
+  const handleSelectTariff = (id) => {
+    onSave({ ...user, tariff: id });
   };
 
   const initials = (name || 'U').split(' ').map((p) => p[0]).join('').slice(0, 2).toUpperCase();
@@ -139,6 +146,9 @@ export default function SettingsModal({ user, onSave, onLogout, onClose }) {
             </button>
             <button className={tab === 'preferences' ? 'settings-nav-item active' : 'settings-nav-item'} onClick={() => setTab('preferences')}>
               {t('settings.preferences')}
+            </button>
+            <button className={tab === 'tariff' ? 'settings-nav-item active' : 'settings-nav-item'} onClick={() => setTab('tariff')}>
+              {t('settings.tariff')}
             </button>
             <button className="settings-nav-item danger" onClick={onLogout}>
               {t('settings.logout')}
@@ -334,6 +344,43 @@ export default function SettingsModal({ user, onSave, onLogout, onClose }) {
                   <button type="submit" className="btn-primary">{t('settings.save')}</button>
                 </div>
               </form>
+            )}
+
+            {tab === 'tariff' && (
+              <div className="form">
+                <h3>{t('settings.tariffTitle')}</h3>
+                <p className="field-hint" style={{ marginTop: 0 }}>{t('settings.tariffHint')}</p>
+                <p className="field-hint">{t('settings.tariffUsage', { count: itemCount, limit: currentTariff.itemLimit })}</p>
+
+                <div className="tariff-grid">
+                  {TARIFF_IDS.map((id) => {
+                    const tariffInfo = TARIFFS[id];
+                    const isActive = (user.tariff || 'free') === id;
+                    return (
+                      <div key={id} className={isActive ? 'tariff-card active' : 'tariff-card'}>
+                        <div className="tariff-card-name">{t(`tariff.${id}.name`)}</div>
+                        <div className="tariff-card-price">
+                          {tariffInfo.priceMonth === 0
+                            ? t('tariff.free.price')
+                            : `${tariffInfo.priceMonth.toFixed(2)} €/${t('tariff.perMonth')}`}
+                        </div>
+                        {tariffInfo.priceYear > 0 && (
+                          <div className="field-hint">{tariffInfo.priceYear.toFixed(2)} €/{t('tariff.perYear')}</div>
+                        )}
+                        <div className="tariff-card-limit">{t('tariff.itemLimitLabel', { limit: tariffInfo.itemLimit })}</div>
+                        <button
+                          type="button"
+                          className={isActive ? 'btn-secondary' : 'btn-primary'}
+                          disabled={isActive}
+                          onClick={() => handleSelectTariff(id)}
+                        >
+                          {isActive ? t('tariff.current') : t('tariff.select')}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             )}
           </div>
         </div>

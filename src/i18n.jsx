@@ -204,6 +204,10 @@ export const translations = {
     'settings.profile': 'Profil',
     'settings.security': 'Sicherheit',
     'settings.preferences': 'Präferenzen',
+    'settings.tariff': 'Tarif',
+    'settings.tariffTitle': 'Tarif & Speicherplatz',
+    'settings.tariffHint': 'Lokale Vorschau: Es gibt noch kein echtes Bezahlsystem. Diese Auswahl simuliert nur, welcher Tarif aktiv wäre, damit die Limits schon jetzt getestet werden können.',
+    'settings.tariffUsage': '{count} von {limit} Items in deinem aktuellen Tarif verwendet.',
     'settings.logout': 'Abmelden',
     'settings.name': 'Name',
     'settings.email': 'E-Mail',
@@ -317,7 +321,19 @@ export const translations = {
     'achievement.completeSet.desc': 'Eine Kategorie zu 100% erreicht',
 
     'showcase.empty': 'Noch keine Items im Showcase. Aktiviere "Im Showcase präsentieren" beim Bearbeiten eines Items.',
-    'showcase.title': 'Showcase'
+    'showcase.title': 'Showcase',
+
+    'tariff.free.name': 'Free',
+    'tariff.collectorPlus.name': 'Collector+',
+    'tariff.collectorPro.name': 'Collector Pro',
+    'tariff.free.price': 'Kostenlos',
+    'tariff.perMonth': 'Monat',
+    'tariff.perYear': 'Jahr',
+    'tariff.itemLimitLabel': 'bis {limit} Items',
+    'tariff.current': 'Aktueller Tarif',
+    'tariff.select': 'Auswählen',
+    'tariff.overLimitBanner': 'Deine Sammlung hat {count} Items – mehr als dein Tarif erlaubt ({limit}). Du kannst vorhandene Items weiterhin ansehen und entfernen, aber keine neuen hinzufügen, bis du auf {limit} reduzierst oder in den Einstellungen einen größeren Tarif wählst.',
+    'tariff.overLimitBlocked': 'Dein Tarif erlaubt maximal {limit} Items. Entferne Items oder wähle in den Einstellungen einen größeren Tarif, um weitere hinzuzufügen.'
   },
 
   en: {
@@ -521,6 +537,10 @@ export const translations = {
     'settings.profile': 'Profile',
     'settings.security': 'Security',
     'settings.preferences': 'Preferences',
+    'settings.tariff': 'Plan',
+    'settings.tariffTitle': 'Plan & storage',
+    'settings.tariffHint': 'Local preview: there is no real billing system yet. This selection only simulates which plan would be active, so the limits can already be tested.',
+    'settings.tariffUsage': '{count} of {limit} items used in your current plan.',
     'settings.logout': 'Log out',
     'settings.name': 'Name',
     'settings.email': 'Email',
@@ -634,7 +654,19 @@ export const translations = {
     'achievement.completeSet.desc': 'Reached 100% on a category',
 
     'showcase.empty': 'No items in the showcase yet. Enable "Feature in Showcase" while editing an item.',
-    'showcase.title': 'Showcase'
+    'showcase.title': 'Showcase',
+
+    'tariff.free.name': 'Free',
+    'tariff.collectorPlus.name': 'Collector+',
+    'tariff.collectorPro.name': 'Collector Pro',
+    'tariff.free.price': 'Free',
+    'tariff.perMonth': 'month',
+    'tariff.perYear': 'year',
+    'tariff.itemLimitLabel': 'up to {limit} items',
+    'tariff.current': 'Current plan',
+    'tariff.select': 'Select',
+    'tariff.overLimitBanner': 'Your collection has {count} items – more than your plan allows ({limit}). You can still view and remove existing items, but can\'t add new ones until you reduce to {limit} or pick a larger plan in settings.',
+    'tariff.overLimitBlocked': 'Your plan allows up to {limit} items. Remove items or pick a larger plan in settings to add more.'
   }
 };
 
@@ -662,7 +694,7 @@ export function LanguageProvider({ children }) {
     let str = dict[key] ?? translations.de[key] ?? key;
     if (params) {
       Object.entries(params).forEach(([k, v]) => {
-        str = str.replace(`{${k}}`, v);
+        str = str.split(`{${k}}`).join(v);
       });
     }
     return str;
