@@ -219,8 +219,8 @@ html, body {
   align-items: center;
   gap: 8px;
   padding: 0 12px;
-  background: var(--accent);
-  color: #fff;
+  background: var(--bg-elevated);
+  color: var(--text);
   font-size: 12.5px;
   font-weight: 700;
   -webkit-app-region: drag;
@@ -2333,4 +2333,235 @@ input:focus, select:focus, textarea:focus {
 
 .upgrade-usage {
   margin-top: 14px;
+}
+
+.topbar-icon-btn.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.friends-panel {
+  width: 220px;
+  flex-shrink: 0;
+  background: var(--bg-elevated);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.friends-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 16px 14px 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.friends-panel-title {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.friends-panel-preview {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 3px;
+}
+
+.friends-panel-body {
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.friends-group-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  padding: 0 4px;
+}
+
+.friend-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  padding: 8px;
+  border-radius: var(--card-radius);
+  cursor: pointer;
+  text-align: left;
+}
+
+.friend-item:hover {
+  background: var(--bg-card);
+}
+
+.friend-item.offline {
+  opacity: 0.6;
+}
+
+.friend-avatar {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.friend-avatar.small {
+  width: 26px;
+  height: 26px;
+  font-size: 10.5px;
+}
+
+.friend-status-dot {
+  position: absolute;
+  bottom: -1px;
+  right: -1px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  border: 2px solid var(--bg-elevated);
+}
+
+.friend-status-dot.online {
+  background: #22c55e;
+}
+
+.friend-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.friend-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.friend-status-text {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-dock {
+  position: fixed;
+  bottom: 0;
+  right: 20px;
+  display: flex;
+  flex-direction: row-reverse;
+  gap: 10px;
+  z-index: 20;
+}
+
+.chat-window {
+  width: 260px;
+  height: 340px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: 10px 10px 0 0;
+  box-shadow: var(--card-shadow);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.chat-window-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+}
+
+.chat-window-name {
+  flex: 1;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-window-close {
+  flex-shrink: 0;
+  font-size: 11px;
+}
+
+.chat-window-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.chat-window-empty {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  text-align: center;
+  margin-top: auto;
+  margin-bottom: auto;
+}
+
+.chat-bubble {
+  align-self: flex-start;
+  max-width: 80%;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 6px 10px;
+  font-size: 12px;
+  word-break: break-word;
+}
+
+.chat-bubble.mine {
+  align-self: flex-end;
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.chat-window-input {
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.chat-window-input input {
+  flex: 1;
+  padding: 7px 10px;
+  font-size: 12px;
+}
+
+.chat-send-btn {
+  padding: 7px 12px;
+  font-size: 12px;
 }

@@ -12,6 +12,9 @@ import CollectionDNA from './CollectionDNA.jsx';
 import ImportExportModal from './ImportExportModal.jsx';
 import CommunityCatalogModal from './CommunityCatalogModal.jsx';
 import UpgradeModal from './UpgradeModal.jsx';
+import FriendsPanel from './FriendsPanel.jsx';
+import ChatWindow from './ChatWindow.jsx';
+import { MOCK_FRIENDS } from './friends-mock.js';
 import { useI18n } from './i18n.jsx';
 import logoMark from './assets/logo-mark.png';
 import useImagePath from './useImagePath.js';
@@ -98,6 +101,8 @@ export default function App() {
   const [showDNA, setShowDNA] = useState(false);
   const [showImportExport, setShowImportExport] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
+  const [showFriends, setShowFriends] = useState(false);
+  const [openChats, setOpenChats] = useState([]);
   const [draggedCategory, setDraggedCategory] = useState(null);
   const [dragOverCategory, setDragOverCategory] = useState(null);
   const [dialog, setDialog] = useState(null);
@@ -113,6 +118,14 @@ export default function App() {
   const handleSaveUser = (updatedUser) => {
     setUser(updatedUser);
     localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(updatedUser));
+  };
+
+  const handleOpenChat = (friendId) => {
+    setOpenChats((ids) => (ids.includes(friendId) ? ids : [...ids, friendId]));
+  };
+
+  const handleCloseChat = (friendId) => {
+    setOpenChats((ids) => ids.filter((id) => id !== friendId));
   };
 
   const handleLogout = () => {
@@ -532,6 +545,14 @@ export default function App() {
         <QuoteOfTheDay />
       </aside>
 
+      {showFriends && (
+        <FriendsPanel
+          friends={MOCK_FRIENDS}
+          onOpenChat={handleOpenChat}
+          onClose={() => setShowFriends(false)}
+        />
+      )}
+
       <main className="main" style={mainStyle}>
         <div className="topbar">
           <input
@@ -568,6 +589,14 @@ export default function App() {
 
           <button className="icon-btn topbar-icon-btn" onClick={() => setShowDNA(true)} title={t('topbar.dna')}>
             🧬
+          </button>
+
+          <button
+            className={showFriends ? 'icon-btn topbar-icon-btn active' : 'icon-btn topbar-icon-btn'}
+            onClick={() => setShowFriends((v) => !v)}
+            title={t('friends.title')}
+          >
+            👥
           </button>
 
           <div className="user-menu-wrap">
@@ -770,6 +799,16 @@ export default function App() {
           onConfirm={() => { const fn = dialog.onConfirm; setDialog(null); fn && fn(); }}
           onCancel={() => setDialog(null)}
         />
+      )}
+
+      {openChats.length > 0 && (
+        <div className="chat-dock">
+          {openChats.map((friendId) => {
+            const friend = MOCK_FRIENDS.find((f) => f.id === friendId);
+            if (!friend) return null;
+            return <ChatWindow key={friendId} friend={friend} onClose={() => handleCloseChat(friendId)} />;
+          })}
+        </div>
       )}
       </div>
     </>
