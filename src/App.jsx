@@ -548,7 +548,7 @@ export default function App() {
         <QuoteOfTheDay />
       </aside>
 
-      <main className="main" style={mainStyle}>
+      <div className="content-column">
         <div className="topbar">
           <input
             type="text"
@@ -630,6 +630,8 @@ export default function App() {
           </div>
         )}
 
+        <div className="content-row">
+        <main className="main" style={mainStyle}>
         {showShowcase ? (
           showcaseItems.length === 0 ? (
             <div className="empty-state">
@@ -688,9 +690,11 @@ export default function App() {
             ))}
           </div>
         )}
-      </main>
+        </main>
 
-      <FriendsPanel friends={MOCK_FRIENDS} onOpenChat={handleOpenChat} />
+        <FriendsPanel friends={MOCK_FRIENDS} onOpenChat={handleOpenChat} />
+        </div>
+      </div>
 
       {showForm && (
         <ItemForm
