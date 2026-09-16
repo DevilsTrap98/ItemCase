@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { useI18n } from './i18n.jsx';
 import quotesRaw from './assets/quotes.txt?raw';
 
 function parseQuotes(raw) {
@@ -24,6 +25,7 @@ function dayOfYear() {
 }
 
 export default function QuoteOfTheDay() {
+  const { t } = useI18n();
   const quote = useMemo(() => {
     const quotes = parseQuotes(quotesRaw);
     if (quotes.length === 0) return null;
@@ -35,6 +37,7 @@ export default function QuoteOfTheDay() {
 
   return (
     <div className="quote-of-the-day">
+      <div className="quote-title">{t('quote.title')}</div>
       <span className="quote-text">{quote.text}</span>
       {quote.source && <span className="quote-source">— {quote.source}</span>}
     </div>

@@ -30,6 +30,7 @@ export const translations = {
     'auth.defaultName': 'Sammler',
 
     'sidebar.all': 'Alle',
+    'quote.title': 'Tägliches Zitat',
     'sidebar.totalItems': 'Items gesamt',
     'sidebar.totalValue': 'Gesamtwert',
     'sidebar.export': 'Sammlung exportieren (ZIP)',
@@ -337,6 +338,7 @@ export const translations = {
     'auth.defaultName': 'Collector',
 
     'sidebar.all': 'All',
+    'quote.title': 'Daily Quote',
     'sidebar.totalItems': 'Total items',
     'sidebar.totalValue': 'Total value',
     'sidebar.export': 'Export collection (ZIP)',

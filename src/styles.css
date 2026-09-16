@@ -455,6 +455,16 @@ html, body {
   line-height: 1.4;
 }
 
+.quote-title {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  opacity: 0.7;
+  margin-bottom: 6px;
+}
+
 .quote-mark {
   color: var(--accent);
   font-size: 16px;
