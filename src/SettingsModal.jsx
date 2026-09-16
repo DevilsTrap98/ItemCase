@@ -350,7 +350,11 @@ export default function SettingsModal({ user, itemCount, onSave, onLogout, onClo
               <div className="form">
                 <h3>{t('settings.tariffTitle')}</h3>
                 <p className="field-hint" style={{ marginTop: 0 }}>{t('settings.tariffHint')}</p>
-                <p className="field-hint">{t('settings.tariffUsage', { count: itemCount, limit: currentTariff.itemLimit })}</p>
+                <p className="field-hint">
+                  {currentTariff.itemLimit === Infinity
+                    ? t('tariff.usageUnlimited', { count: itemCount })
+                    : t('settings.tariffUsage', { count: itemCount, limit: currentTariff.itemLimit })}
+                </p>
 
                 <div className="tariff-grid">
                   {TARIFF_IDS.map((id) => {
@@ -367,7 +371,11 @@ export default function SettingsModal({ user, itemCount, onSave, onLogout, onClo
                         {tariffInfo.priceYear > 0 && (
                           <div className="field-hint">{tariffInfo.priceYear.toFixed(2)} €/{t('tariff.perYear')}</div>
                         )}
-                        <div className="tariff-card-limit">{t('tariff.itemLimitLabel', { limit: tariffInfo.itemLimit })}</div>
+                        <div className="tariff-card-limit">
+                          {tariffInfo.itemLimit === Infinity
+                            ? t('tariff.unlimited')
+                            : t('tariff.itemLimitLabel', { limit: tariffInfo.itemLimit })}
+                        </div>
                         <button
                           type="button"
                           className={isActive ? 'btn-secondary' : 'btn-primary'}

@@ -36,7 +36,9 @@ export default function UpgradeModal({ user, itemCount, onSelectTariff, onClose 
                 {info.priceYear > 0 && (
                   <div className="field-hint">{info.priceYear.toFixed(2)} €/{t('tariff.perYear')}</div>
                 )}
-                <div className="upgrade-plan-limit">{t('tariff.itemLimitLabel', { limit: info.itemLimit })}</div>
+                <div className="upgrade-plan-limit">
+                  {info.itemLimit === Infinity ? t('tariff.unlimited') : t('tariff.itemLimitLabel', { limit: info.itemLimit })}
+                </div>
                 <button
                   type="button"
                   className={isActive ? 'btn-secondary' : 'btn-primary'}
@@ -73,7 +75,11 @@ export default function UpgradeModal({ user, itemCount, onSelectTariff, onClose 
           </table>
         </div>
 
-        <p className="field-hint upgrade-usage">{t('settings.tariffUsage', { count: itemCount, limit: TARIFFS[currentTariff].itemLimit })}</p>
+        <p className="field-hint upgrade-usage">
+          {TARIFFS[currentTariff].itemLimit === Infinity
+            ? t('tariff.usageUnlimited', { count: itemCount })
+            : t('settings.tariffUsage', { count: itemCount, limit: TARIFFS[currentTariff].itemLimit })}
+        </p>
 
         <div className="modal-actions">
           <button type="button" className="btn-secondary" onClick={onClose}>{t('catalog.close')}</button>
