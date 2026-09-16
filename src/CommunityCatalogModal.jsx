@@ -110,10 +110,14 @@ export default function CommunityCatalogModal({ catalog, catalogCategories, item
   };
 
   const filterCategories = useMemo(() => {
-    const set = new Set();
-    catalog.forEach((entry) => { if (entry.category) set.add(entry.category); });
-    (catalogCategories || []).forEach((cat) => set.add(cat));
-    return Array.from(set).sort();
+    const extra = new Set();
+    catalog.forEach((entry) => {
+      if (entry.category && !SUGGESTED_CATEGORIES.includes(entry.category)) extra.add(entry.category);
+    });
+    (catalogCategories || []).forEach((cat) => {
+      if (!SUGGESTED_CATEGORIES.includes(cat)) extra.add(cat);
+    });
+    return [...SUGGESTED_CATEGORIES, ...Array.from(extra).sort()];
   }, [catalog, catalogCategories]);
 
   const handleProposeCategorySubmit = (e) => {
