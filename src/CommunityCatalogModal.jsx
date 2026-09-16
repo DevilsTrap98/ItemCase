@@ -72,6 +72,7 @@ export default function CommunityCatalogModal({ catalog, catalogCategories, item
   const [form, setForm] = useState(emptySubmission);
   const [imgPreview, setImgPreview] = useState(null);
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
+  const [imageRightsConfirmed, setImageRightsConfirmed] = useState(false);
   const [error, setError] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [showCategoryForm, setShowCategoryForm] = useState(false);
@@ -104,6 +105,7 @@ export default function CommunityCatalogModal({ catalog, catalogCategories, item
     } else {
       setImgPreview(null);
     }
+    setImageRightsConfirmed(false);
   };
 
   const filterCategories = useMemo(() => {
@@ -147,6 +149,7 @@ export default function CommunityCatalogModal({ catalog, catalogCategories, item
       update('imagePath', fileName);
       const dataUrl = await window.api.getImagePath(fileName);
       setImgPreview(dataUrl);
+      setImageRightsConfirmed(false);
     }
   };
 
@@ -155,6 +158,10 @@ export default function CommunityCatalogModal({ catalog, catalogCategories, item
     if (!form.name.trim()) return;
     if (!rightsConfirmed) {
       setError(t('catalog.rightsRequired'));
+      return;
+    }
+    if (form.imagePath && !imageRightsConfirmed) {
+      setError(t('catalog.imageRightsRequired'));
       return;
     }
     setError('');
@@ -167,6 +174,7 @@ export default function CommunityCatalogModal({ catalog, catalogCategories, item
     setForm(emptySubmission);
     setImgPreview(null);
     setRightsConfirmed(false);
+    setImageRightsConfirmed(false);
     setSelectedItemId('');
     setSubmitted(true);
   };
@@ -357,6 +365,20 @@ export default function CommunityCatalogModal({ catalog, catalogCategories, item
                   {t('catalog.rightsConfirm')}
                 </label>
               </div>
+
+              {form.imagePath && (
+                <div className="catalog-rights-box">
+                  <span className="catalog-rights-icon">📷</span>
+                  <label className="checkbox-row catalog-rights-label">
+                    <input
+                      type="checkbox"
+                      checked={imageRightsConfirmed}
+                      onChange={(e) => { setImageRightsConfirmed(e.target.checked); setError(''); }}
+                    />
+                    {t('catalog.imageRightsConfirm')}
+                  </label>
+                </div>
+              )}
               {error && <p className="field-hint catalog-error">{error}</p>}
 
               <div className="modal-actions">
