@@ -15,6 +15,7 @@ import { useI18n } from './i18n.jsx';
 import logoMark from './assets/logo-mark.png';
 import useImagePath from './useImagePath.js';
 import { BACKGROUND_PATTERNS, DESIGN_THEME_BACKGROUND_MAP, COLOR_THEME_HEX, CASE_DESIGNS } from './theme-defaults.js';
+import { SUGGESTED_CATEGORIES } from './category-defaults.js';
 
 const USER_STORAGE_KEY = 'collectorapp_user';
 const ALL_CATEGORY = '__all__';
@@ -491,6 +492,7 @@ export default function App() {
             <form className="category-edit-row" onSubmit={handleAddCategory}>
               <input
                 type="text"
+                list="sidebar-category-suggestions"
                 autoFocus
                 value={newCategoryName}
                 onChange={(e) => setNewCategoryName(e.target.value)}
@@ -498,6 +500,11 @@ export default function App() {
                 onBlur={handleAddCategory}
                 onKeyDown={(e) => { if (e.key === 'Escape') { setAddingCategory(false); setNewCategoryName(''); } }}
               />
+              <datalist id="sidebar-category-suggestions">
+                {SUGGESTED_CATEGORIES.filter((c) => !categories.includes(c)).map((c) => (
+                  <option key={c} value={c} />
+                ))}
+              </datalist>
             </form>
           ) : (
             <button className="category-add-btn" onClick={() => setAddingCategory(true)}>

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useI18n } from './i18n.jsx';
+import { SUGGESTED_CATEGORIES } from './category-defaults.js';
 
 const emptyItem = {
   id: null,
@@ -106,10 +107,17 @@ export default function ItemForm({ item, categories, categoryFields, onSave, onC
                   <div className="inline-row">
                     <input
                       type="text"
+                      list="new-category-suggestions"
                       value={newCategory}
                       onChange={(e) => setNewCategory(e.target.value)}
                       placeholder={t('form.newCategoryPlaceholder')}
+                      autoFocus
                     />
+                    <datalist id="new-category-suggestions">
+                      {SUGGESTED_CATEGORIES.filter((c) => !categories.includes(c)).map((c) => (
+                        <option key={c} value={c} />
+                      ))}
+                    </datalist>
                     <button type="button" className="link-btn" onClick={() => setShowNewCategory(false)}>{t('form.cancelNewCategory')}</button>
                   </div>
                 )}

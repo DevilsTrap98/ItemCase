@@ -71,7 +71,7 @@ function ensureDirs() {
   if (!fs.existsSync(dbFile)) {
     fs.writeFileSync(dbFile, JSON.stringify({
       items: [],
-      categories: ['Karten', 'Münzen', 'Comics', 'Sonstiges'],
+      categories: ['🎬 Filme & Serien', '🎮 Videospiele', '🃏 Trading Cards', '📚 Comics & Manga', '📦 Sonstige Sammlerstücke'],
       categoryImages: {},
       categoryFields: {},
       categoryTargets: {},

@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useI18n } from './i18n.jsx';
 import useImagePath from './useImagePath.js';
 import CatalogPhotoModal from './CatalogPhotoModal.jsx';
+import { SUGGESTED_CATEGORIES } from './category-defaults.js';
 
 const ALL_CAT = '__all__';
 
@@ -246,6 +247,7 @@ export default function CommunityCatalogModal({ catalog, catalogCategories, item
                     <form className="catalog-propose-category-form" onSubmit={handleProposeCategorySubmit}>
                       <input
                         type="text"
+                        list="catalog-category-suggestions"
                         autoFocus
                         className="catalog-propose-category-input"
                         placeholder={t('catalog.proposeCategoryPlaceholder')}
@@ -253,6 +255,11 @@ export default function CommunityCatalogModal({ catalog, catalogCategories, item
                         onChange={(e) => setNewCategoryName(e.target.value)}
                         onKeyDown={(e) => { if (e.key === 'Escape') { setShowCategoryForm(false); setNewCategoryName(''); } }}
                       />
+                      <datalist id="catalog-category-suggestions">
+                        {SUGGESTED_CATEGORIES.filter((c) => !filterCategories.includes(c)).map((c) => (
+                          <option key={c} value={c} />
+                        ))}
+                      </datalist>
                       <button type="submit" className="btn-primary catalog-propose-category-btn">{t('catalog.proposeCategoryAction')}</button>
                       <button type="button" className="btn-secondary catalog-propose-category-btn" onClick={() => { setShowCategoryForm(false); setNewCategoryName(''); }}>{t('catalog.proposeCategoryCancel')}</button>
                     </form>
