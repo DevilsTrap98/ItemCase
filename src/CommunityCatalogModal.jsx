@@ -63,7 +63,7 @@ function CatalogCard({ entry, onAdopt, adopted, onOpenPhotoForm, photoSubmitted,
   );
 }
 
-export default function CommunityCatalogModal({ catalog, categories, catalogCategories, user, onAdopt, onSubmit, onProposePhoto, onProposeCategory, onClose }) {
+export default function CommunityCatalogModal({ catalog, catalogCategories, items, user, onAdopt, onSubmit, onProposePhoto, onProposeCategory, onClose }) {
   const { t } = useI18n();
   const [tab, setTab] = useState('browse');
   const [search, setSearch] = useState('');
@@ -78,8 +78,33 @@ export default function CommunityCatalogModal({ catalog, categories, catalogCate
   const [newCategoryName, setNewCategoryName] = useState('');
   const [photoContributeEntry, setPhotoContributeEntry] = useState(null);
   const [photoSubmittedIds, setPhotoSubmittedIds] = useState([]);
+  const [selectedItemId, setSelectedItemId] = useState('');
 
   const update = (field, val) => setForm((f) => ({ ...f, [field]: val }));
+
+  const handleSelectOwnItem = async (itemId) => {
+    setSelectedItemId(itemId);
+    if (!itemId) return;
+    const item = (items || []).find((i) => i.id === itemId);
+    if (!item) return;
+    const info = item.catalogInfo || {};
+    setForm({
+      name: item.name || '',
+      category: item.category || '',
+      brand: info.brand || '',
+      releaseYear: info.releaseYear || '',
+      ean: info.ean || '',
+      isbn: info.isbn || '',
+      manufacturerNumber: info.manufacturerNumber || '',
+      imagePath: item.imagePath || null
+    });
+    if (item.imagePath) {
+      const dataUrl = await window.api.getImagePath(item.imagePath);
+      setImgPreview(dataUrl);
+    } else {
+      setImgPreview(null);
+    }
+  };
 
   const filterCategories = useMemo(() => {
     const set = new Set();
@@ -142,6 +167,7 @@ export default function CommunityCatalogModal({ catalog, categories, catalogCate
     setForm(emptySubmission);
     setImgPreview(null);
     setRightsConfirmed(false);
+    setSelectedItemId('');
     setSubmitted(true);
   };
 
@@ -253,6 +279,18 @@ export default function CommunityCatalogModal({ catalog, categories, catalogCate
               <p className="field-hint" style={{ marginTop: 0 }}>{t('catalog.submitHint')}</p>
               {submitted && <p className="field-hint catalog-success">{t('catalog.submitSuccess')}</p>}
 
+              {items && items.length > 0 && (
+                <label>
+                  {t('catalog.submitFromItem')}
+                  <select value={selectedItemId} onChange={(e) => handleSelectOwnItem(e.target.value)}>
+                    <option value="">{t('catalog.submitFromItemBlank')}</option>
+                    {items.map((item) => (
+                      <option key={item.id} value={item.id}>{item.name} ({item.category})</option>
+                    ))}
+                  </select>
+                </label>
+              )}
+
               <div className="form-row">
                 <div className="image-picker catalog-image-picker" onClick={handlePickImage}>
                   {imgPreview ? <img src={imgPreview} alt="preview" /> : <span>📷<br />{t('catalog.submitImage')}</span>}
@@ -276,7 +314,7 @@ export default function CommunityCatalogModal({ catalog, categories, catalogCate
                       onChange={(e) => update('category', e.target.value)}
                     />
                     <datalist id="catalog-category-list">
-                      {Array.from(new Set([...categories, ...filterCategories])).map((c) => <option key={c} value={c} />)}
+                      {filterCategories.map((c) => <option key={c} value={c} />)}
                     </datalist>
                   </label>
                 </div>

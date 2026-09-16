@@ -260,7 +260,6 @@ export default function App() {
     const trimmed = name.trim();
     if (!trimmed) return;
     askConfirm(t('catalog.proposeCategoryConfirm', { name: trimmed }), async () => {
-      await window.api.addCategory(trimmed);
       await window.api.proposeCatalogCategory(trimmed);
       loadData();
     });
@@ -695,8 +694,8 @@ export default function App() {
       {showCommunityCatalog && (
         <CommunityCatalogModal
           catalog={communityCatalog}
-          categories={categories}
           catalogCategories={catalogCategories}
+          items={items}
           user={user}
           onAdopt={handleAdoptCatalogItem}
           onSubmit={handleSubmitToCatalog}
