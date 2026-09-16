@@ -2290,6 +2290,15 @@ input:focus, select:focus, textarea:focus {
   border-bottom: none;
 }
 
+.upgrade-section-title {
+  margin: 22px 0 10px 0;
+  font-size: 15px;
+}
+
+.upgrade-social-footnote {
+  margin-top: 8px;
+}
+
 .upgrade-usage {
   margin-top: 14px;
 }

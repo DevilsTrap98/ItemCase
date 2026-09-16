@@ -2,7 +2,19 @@ import React from 'react';
 import { useI18n } from './i18n.jsx';
 import { TARIFF_IDS, TARIFFS } from './tariff-defaults.js';
 
-const FEATURE_ROWS = ['items', 'collectionMap', 'marketValue', 'level', 'showcase', 'export', 'ads'];
+const FEATURE_ROWS = ['items', 'collectionMap', 'marketValue', 'level', 'showcase', 'export', 'friends', 'groups', 'chat', 'ads'];
+
+const SOCIAL_ROWS = [
+  'addFriend',
+  'viewProfile',
+  'viewShowcases',
+  'joinGroups',
+  'createGroups',
+  'directChat',
+  'groupChat',
+  'shareItems',
+  'advancedGroups'
+];
 
 export default function UpgradeModal({ user, itemCount, onSelectTariff, onClose }) {
   const { t } = useI18n();
@@ -74,6 +86,31 @@ export default function UpgradeModal({ user, itemCount, onSelectTariff, onClose 
             </tbody>
           </table>
         </div>
+
+        <h3 className="upgrade-section-title">{t('upgrade.socialTitle')}</h3>
+        <div className="upgrade-table-wrap">
+          <table className="upgrade-table">
+            <thead>
+              <tr>
+                <th>{t('upgrade.feature')}</th>
+                <th>{t('tariff.free.name')}</th>
+                <th>{t('tariff.collectorPlus.name')}</th>
+                <th>{t('tariff.collectorPro.name')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {SOCIAL_ROWS.map((row) => (
+                <tr key={row}>
+                  <td>{t(`upgrade.social.${row}`)}</td>
+                  <td>{t(`upgrade.social.${row}.free`)}</td>
+                  <td>{t(`upgrade.social.${row}.plus`)}</td>
+                  <td>{t(`upgrade.social.${row}.pro`)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="field-hint upgrade-social-footnote">{t('upgrade.socialFootnote')}</p>
 
         <p className="field-hint upgrade-usage">
           {TARIFFS[currentTariff].itemLimit === Infinity
