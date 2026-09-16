@@ -20,14 +20,14 @@
     "electron": "^31.3.1",
     "electron-builder": "^24.13.3",
     "png-to-ico": "^3.0.2",
-    "sharp": "^0.35.4",
     "vite": "^5.4.1",
     "wait-on": "^7.2.0"
   },
   "dependencies": {
     "adm-zip": "^0.6.1",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "sharp": "^0.35.4"
   },
   "build": {
     "appId": "com.itemcase.desktop",
@@ -35,6 +35,9 @@
     "files": [
       "dist/**/*",
       "electron/**/*"
+    ],
+    "asarUnpack": [
+      "node_modules/sharp/**/*"
     ],
     "directories": {
       "output": "release"

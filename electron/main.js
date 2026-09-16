@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const AdmZip = require('adm-zip');
+const sharp = require('sharp');
 
 const isDev = process.env.NODE_ENV === 'development';
 
@@ -410,10 +411,23 @@ ipcMain.handle('image:pick', async () => {
   if (result.canceled || result.filePaths.length === 0) return null;
 
   const srcPath = result.filePaths[0];
-  const ext = path.extname(srcPath);
-  const destName = `${crypto.randomUUID()}${ext}`;
+  const destName = `${crypto.randomUUID()}.webp`;
   const destPath = path.join(imagesDir, destName);
-  fs.copyFileSync(srcPath, destPath);
+  try {
+    // Normalize every uploaded image to the same shape the future catalog server will
+    // store: resized, EXIF/GPS stripped (sharp drops metadata unless withMetadata() is
+    // called), and re-encoded as WebP.
+    await sharp(srcPath)
+      .resize(1400, 1400, { fit: 'inside', withoutEnlargement: true })
+      .webp({ quality: 80 })
+      .toFile(destPath);
+  } catch (e) {
+    // Fall back to a plain copy if the file can't be processed (e.g. unsupported format).
+    const ext = path.extname(srcPath);
+    const fallbackName = `${crypto.randomUUID()}${ext}`;
+    fs.copyFileSync(srcPath, path.join(imagesDir, fallbackName));
+    return fallbackName;
+  }
   return destName;
 });
 
