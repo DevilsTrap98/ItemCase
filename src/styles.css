@@ -2344,17 +2344,13 @@ input:focus, select:focus, textarea:focus {
   width: 220px;
   flex-shrink: 0;
   background: var(--bg-elevated);
-  border-right: 1px solid var(--border);
+  border-left: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
 }
 
 .friends-panel-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
   padding: 16px 14px 12px 14px;
   border-bottom: 1px solid var(--border);
 }

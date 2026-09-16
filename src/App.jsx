@@ -101,7 +101,6 @@ export default function App() {
   const [showDNA, setShowDNA] = useState(false);
   const [showImportExport, setShowImportExport] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
-  const [showFriends, setShowFriends] = useState(false);
   const [openChats, setOpenChats] = useState([]);
   const [draggedCategory, setDraggedCategory] = useState(null);
   const [dragOverCategory, setDragOverCategory] = useState(null);
@@ -545,14 +544,6 @@ export default function App() {
         <QuoteOfTheDay />
       </aside>
 
-      {showFriends && (
-        <FriendsPanel
-          friends={MOCK_FRIENDS}
-          onOpenChat={handleOpenChat}
-          onClose={() => setShowFriends(false)}
-        />
-      )}
-
       <main className="main" style={mainStyle}>
         <div className="topbar">
           <input
@@ -589,14 +580,6 @@ export default function App() {
 
           <button className="icon-btn topbar-icon-btn" onClick={() => setShowDNA(true)} title={t('topbar.dna')}>
             🧬
-          </button>
-
-          <button
-            className={showFriends ? 'icon-btn topbar-icon-btn active' : 'icon-btn topbar-icon-btn'}
-            onClick={() => setShowFriends((v) => !v)}
-            title={t('friends.title')}
-          >
-            👥
           </button>
 
           <div className="user-menu-wrap">
@@ -702,6 +685,8 @@ export default function App() {
           </div>
         )}
       </main>
+
+      <FriendsPanel friends={MOCK_FRIENDS} onOpenChat={handleOpenChat} />
 
       {showForm && (
         <ItemForm

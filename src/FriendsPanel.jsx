@@ -1,7 +1,7 @@
 import React from 'react';
 import { useI18n } from './i18n.jsx';
 
-export default function FriendsPanel({ friends, onOpenChat, onClose }) {
+export default function FriendsPanel({ friends, onOpenChat }) {
   const { t } = useI18n();
   const online = friends.filter((f) => f.online);
   const offline = friends.filter((f) => !f.online);
@@ -9,11 +9,8 @@ export default function FriendsPanel({ friends, onOpenChat, onClose }) {
   return (
     <aside className="friends-panel">
       <div className="friends-panel-header">
-        <div>
-          <div className="friends-panel-title">{t('friends.title')}</div>
-          <div className="friends-panel-preview">{t('friends.previewNote')}</div>
-        </div>
-        <button type="button" className="icon-btn" onClick={onClose} title={t('catalog.close')}>✕</button>
+        <div className="friends-panel-title">{t('friends.title')}</div>
+        <div className="friends-panel-preview">{t('friends.previewNote')}</div>
       </div>
 
       <div className="friends-panel-body">
