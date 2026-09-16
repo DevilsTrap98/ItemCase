@@ -303,6 +303,12 @@ html, body {
   color: var(--text-muted);
 }
 
+.stat-hint {
+  font-size: 10px;
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
 .category-list {
   display: flex;
   flex-direction: column;
@@ -601,6 +607,10 @@ button {
 .confirm-modal-danger {
   border-color: var(--danger) !important;
   text-align: center;
+}
+
+.confirm-modal .modal-actions {
+  justify-content: center;
 }
 
 .confirm-danger-icon {

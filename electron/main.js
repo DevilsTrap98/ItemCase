@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 app.setName('ItemCase');
 const path = require('path');
 const fs = require('fs');
@@ -11,6 +11,7 @@ const isDev = process.env.NODE_ENV === 'development';
 const userDataDir = app.getPath('userData');
 const imagesDir = path.join(userDataDir, 'images');
 const dbFile = path.join(userDataDir, 'collection.json');
+const feedbackFile = path.join(userDataDir, 'feedback-outbox.json');
 
 function demoCatalogEntries() {
   const now = new Date().toISOString();
@@ -453,22 +454,25 @@ ipcMain.handle('image:getPath', (_event, fileName) => {
   }
 });
 
-// TODO: durch die tatsächliche Support-/Feedback-Adresse ersetzen
-const FEEDBACK_EMAIL = 'feedback@itemcase.app';
-
-ipcMain.handle('feedback:send', (_event, { type, message, contact }) => {
-  const subject = `ItemCase ${type}`;
-  const bodyLines = [
+// Feedback is queued locally until a real backend exists to receive it.
+// An admin currently has to pull feedback-outbox.json from the user's
+// machine (e.g. via support request) to read and reply externally by email.
+ipcMain.handle('feedback:send', (_event, { type, message }) => {
+  let entries = [];
+  try {
+    entries = JSON.parse(fs.readFileSync(feedbackFile, 'utf-8'));
+  } catch (e) {
+    entries = [];
+  }
+  entries.push({
+    id: crypto.randomUUID(),
+    type,
     message,
-    '',
-    '---',
-    `Typ: ${type}`,
-    contact ? `Kontakt: ${contact}` : null,
-    `App-Version: ${app.getVersion()}`,
-    `Plattform: ${process.platform}`
-  ].filter(Boolean);
-  const mailto = `mailto:${FEEDBACK_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyLines.join('\n'))}`;
-  shell.openExternal(mailto);
+    appVersion: app.getVersion(),
+    platform: process.platform,
+    createdAt: new Date().toISOString()
+  });
+  fs.writeFileSync(feedbackFile, JSON.stringify(entries, null, 2));
   return true;
 });
 

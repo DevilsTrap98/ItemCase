@@ -58,6 +58,7 @@ export default function CollectorLevel({ items, categories, categoryTargets, onC
   const levelProgressPct = Math.min(100, ((xp - currentFloor) / (nextCeil - currentFloor)) * 100);
 
   const currencyFmt = (n) => n.toLocaleString(lang === 'en' ? 'en-US' : 'de-DE', { style: 'currency', currency: 'EUR' });
+  const approxCurrencyFmt = (n) => `~${Math.round(n).toLocaleString(lang === 'en' ? 'en-US' : 'de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}`;
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -90,9 +91,10 @@ export default function CollectorLevel({ items, categories, categoryTargets, onC
             </div>
             <div className="level-stat">
               <span className={stats.totalProfit >= 0 ? 'stat-value positive' : 'stat-value negative'}>
-                {stats.totalProfit >= 0 ? '+' : ''}{currencyFmt(stats.totalProfit)}
+                {stats.totalProfit >= 0 ? '+' : ''}{approxCurrencyFmt(stats.totalProfit)}
               </span>
               <span className="stat-label">{t('level.totalProfit')}</span>
+              <span className="stat-hint">{t('level.totalProfitEstimate')}</span>
             </div>
           </div>
 

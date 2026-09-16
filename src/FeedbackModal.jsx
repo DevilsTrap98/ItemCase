@@ -13,7 +13,6 @@ export default function FeedbackModal({ user, onClose }) {
   const { lang, t } = useI18n();
   const [type, setType] = useState('suggestion');
   const [message, setMessage] = useState('');
-  const [contact, setContact] = useState(user?.email && user.email !== 'gast@lokal' ? user.email : '');
   const [error, setError] = useState('');
   const [sent, setSent] = useState(false);
 
@@ -36,7 +35,7 @@ export default function FeedbackModal({ user, onClose }) {
       return;
     }
     setError('');
-    await window.api.sendFeedback({ type: typeLabels[type], message: message.trim(), contact: contact.trim() });
+    await window.api.sendFeedback({ type: typeLabels[type], message: message.trim() });
     localStorage.setItem(key, String(Date.now()));
     setSent(true);
   };
@@ -96,16 +95,6 @@ export default function FeedbackModal({ user, onClose }) {
             <div className="field-hint" style={{ marginTop: -8, textAlign: 'right' }}>
               {t('feedback.charCount', { count: message.length })}
             </div>
-
-            <label>
-              {t('feedback.contact')}
-              <input
-                type="email"
-                value={contact}
-                onChange={(e) => setContact(e.target.value)}
-                placeholder={t('feedback.contactPlaceholder')}
-              />
-            </label>
 
             {error && <div className="auth-error">{error}</div>}
             <div className="field-hint">{t('feedback.sendHint')}</div>

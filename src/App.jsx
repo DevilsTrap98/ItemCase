@@ -15,7 +15,7 @@ import UpgradeModal from './UpgradeModal.jsx';
 import { useI18n } from './i18n.jsx';
 import logoMark from './assets/logo-mark.png';
 import useImagePath from './useImagePath.js';
-import { BACKGROUND_PATTERNS, DESIGN_THEME_BACKGROUND_MAP, COLOR_THEME_HEX, CASE_DESIGNS } from './theme-defaults.js';
+import { BACKGROUND_PATTERNS, DESIGN_THEME_BACKGROUND_MAP, CASE_DESIGNS } from './theme-defaults.js';
 import { SUGGESTED_CATEGORIES } from './category-defaults.js';
 import { getTariff } from './tariff-defaults.js';
 
@@ -127,11 +127,6 @@ export default function App() {
   }, [user?.colorTheme]);
 
   useEffect(() => {
-    const hex = COLOR_THEME_HEX[user?.colorTheme] || COLOR_THEME_HEX.indigo;
-    window.api?.setTitleBarColor?.(hex, '#ffffff');
-  }, [user?.colorTheme]);
-
-  useEffect(() => {
     document.documentElement.setAttribute('data-design-theme', user?.designTheme || 'classic');
   }, [user?.designTheme]);
 
@@ -150,6 +145,17 @@ export default function App() {
       return () => mq.removeEventListener('change', applyResolved);
     }
   }, [user?.theme]);
+
+  useEffect(() => {
+    const applyTitleBarColor = () => {
+      const styles = getComputedStyle(document.documentElement);
+      const bg = styles.getPropertyValue('--bg-elevated').trim() || '#1c1e25';
+      const text = styles.getPropertyValue('--text').trim() || '#ffffff';
+      window.api?.setTitleBarColor?.(bg, text);
+    };
+    const raf = requestAnimationFrame(applyTitleBarColor);
+    return () => cancelAnimationFrame(raf);
+  }, [user?.colorTheme, user?.designTheme, user?.theme]);
 
   useEffect(() => {
     const designTheme = user?.designTheme || 'classic';
