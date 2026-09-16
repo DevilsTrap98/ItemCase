@@ -13,7 +13,8 @@ const emptyItem = {
   imagePath: null,
   showcase: false,
   story: { place: '', date: '', isGift: false, isFirstPiece: false, text: '' },
-  customFields: {}
+  customFields: {},
+  catalogInfo: { brand: '', releaseYear: '', ean: '', isbn: '', manufacturerNumber: '' }
 };
 
 const conditionValues = ['mint', 'nearMint', 'excellent', 'good', 'played', 'poor'];
@@ -31,7 +32,8 @@ export default function ItemForm({ item, categories, categoryFields, onSave, onC
         ...emptyItem,
         ...item,
         story: { ...emptyItem.story, ...(item.story || {}) },
-        customFields: { ...(item.customFields || {}) }
+        customFields: { ...(item.customFields || {}) },
+        catalogInfo: { ...emptyItem.catalogInfo, ...(item.catalogInfo || {}) }
       });
       if (item.imagePath) {
         window.api.getImagePath(item.imagePath).then((dataUrl) => {
@@ -47,6 +49,7 @@ export default function ItemForm({ item, categories, categoryFields, onSave, onC
   const update = (field, val) => setForm((f) => ({ ...f, [field]: val }));
   const updateStory = (field, val) => setForm((f) => ({ ...f, story: { ...f.story, [field]: val } }));
   const updateCustomField = (key, val) => setForm((f) => ({ ...f, customFields: { ...f.customFields, [key]: val } }));
+  const updateCatalogInfo = (field, val) => setForm((f) => ({ ...f, catalogInfo: { ...f.catalogInfo, [field]: val } }));
 
   const handlePickImage = async () => {
     const fileName = await window.api.pickImage();
@@ -177,6 +180,53 @@ export default function ItemForm({ item, categories, categoryFields, onSave, onC
               </div>
             </fieldset>
           )}
+
+          <fieldset className="form-fieldset">
+            <legend>🏷️ {t('form.catalogTitle')}</legend>
+            <div className="field-hint" style={{ marginTop: 0 }}>{t('form.catalogHint')}</div>
+            <div className="form-grid">
+              <label>
+                {t('form.catalogBrand')}
+                <input
+                  type="text"
+                  value={form.catalogInfo.brand}
+                  onChange={(e) => updateCatalogInfo('brand', e.target.value)}
+                />
+              </label>
+              <label>
+                {t('form.catalogReleaseYear')}
+                <input
+                  type="number"
+                  value={form.catalogInfo.releaseYear}
+                  onChange={(e) => updateCatalogInfo('releaseYear', e.target.value)}
+                />
+              </label>
+              <label>
+                {t('form.catalogEan')}
+                <input
+                  type="text"
+                  value={form.catalogInfo.ean}
+                  onChange={(e) => updateCatalogInfo('ean', e.target.value)}
+                />
+              </label>
+              <label>
+                {t('form.catalogIsbn')}
+                <input
+                  type="text"
+                  value={form.catalogInfo.isbn}
+                  onChange={(e) => updateCatalogInfo('isbn', e.target.value)}
+                />
+              </label>
+              <label>
+                {t('form.catalogManufacturerNumber')}
+                <input
+                  type="text"
+                  value={form.catalogInfo.manufacturerNumber}
+                  onChange={(e) => updateCatalogInfo('manufacturerNumber', e.target.value)}
+                />
+              </label>
+            </div>
+          </fieldset>
 
           <fieldset className="form-fieldset">
             <legend>📜 {t('form.storyTitle')}</legend>
