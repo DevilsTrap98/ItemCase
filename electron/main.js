@@ -291,6 +291,7 @@ ipcMain.handle('catalog:submit', (_event, payload) => {
     isbn: payload.isbn || '',
     manufacturerNumber: payload.manufacturerNumber || '',
     imagePath: payload.imagePath || null,
+    marketValue: payload.marketValue || '',
     status: 'pending',
     contributor: payload.contributor || '',
     rightsConfirmed: !!payload.rightsConfirmed,

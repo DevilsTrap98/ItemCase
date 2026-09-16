@@ -14,7 +14,8 @@ const emptySubmission = {
   ean: '',
   isbn: '',
   manufacturerNumber: '',
-  imagePath: null
+  imagePath: null,
+  marketValue: ''
 };
 
 function CatalogCard({ entry, onAdopt, adopted, onOpenPhotoForm, photoSubmitted, t }) {
@@ -35,6 +36,9 @@ function CatalogCard({ entry, onAdopt, adopted, onOpenPhotoForm, photoSubmitted,
           {entry.category && <span className="chip chip-outline">{entry.category}</span>}
           {entry.releaseYear && <span className="chip chip-outline">{entry.releaseYear}</span>}
         </div>
+        {entry.marketValue && (
+          <div className="catalog-market-value">{t('catalog.marketValueLabel')}: {entry.marketValue} €</div>
+        )}
         {entry.contributor && (
           <div className="card-notes">{t('catalog.submittedBy', { name: entry.contributor })}</div>
         )}
@@ -375,7 +379,12 @@ export default function CommunityCatalogModal({ catalog, catalogCategories, item
                     {t('catalog.submitManufacturerNumber')}
                     <input type="text" value={form.manufacturerNumber} onChange={(e) => update('manufacturerNumber', e.target.value)} />
                   </label>
+                  <label>
+                    {t('catalog.submitMarketValue')}
+                    <input type="number" min="0" step="0.01" value={form.marketValue} onChange={(e) => update('marketValue', e.target.value)} />
+                  </label>
                 </div>
+                <p className="field-hint">{t('catalog.marketValueHint')}</p>
               </fieldset>
 
               <div className="catalog-rights-box">
