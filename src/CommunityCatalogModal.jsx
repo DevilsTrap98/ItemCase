@@ -77,6 +77,7 @@ export default function CommunityCatalogModal({ catalog, catalogCategories, item
   const [error, setError] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [showCategoryForm, setShowCategoryForm] = useState(false);
+  const [categoriesExpanded, setCategoriesExpanded] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [photoContributeEntry, setPhotoContributeEntry] = useState(null);
   const [photoSubmittedIds, setPhotoSubmittedIds] = useState([]);
@@ -224,50 +225,62 @@ export default function CommunityCatalogModal({ catalog, catalogCategories, item
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
-                <div className="catalog-category-chips">
-                  <button
-                    type="button"
-                    className={activeCat === ALL_CAT ? 'catalog-chip active' : 'catalog-chip'}
-                    onClick={() => setActiveCat(ALL_CAT)}
-                  >
-                    {t('sidebar.all')}
-                  </button>
-                  {filterCategories.map((cat) => (
+                <div className="catalog-category-filter">
+                  <div className={categoriesExpanded ? 'catalog-category-chips expanded' : 'catalog-category-chips'}>
                     <button
                       type="button"
-                      key={cat}
-                      className={activeCat === cat ? 'catalog-chip active' : 'catalog-chip'}
-                      onClick={() => setActiveCat(cat)}
+                      className={activeCat === ALL_CAT ? 'catalog-chip active' : 'catalog-chip'}
+                      onClick={() => setActiveCat(ALL_CAT)}
                     >
-                      {cat}
+                      {t('sidebar.all')}
                     </button>
-                  ))}
-                  {!showCategoryForm && (
-                    <button type="button" className="catalog-chip catalog-chip-add" onClick={() => setShowCategoryForm(true)}>
-                      + {t('catalog.proposeCategory')}
-                    </button>
-                  )}
-                  {showCategoryForm && (
-                    <form className="catalog-propose-category-form" onSubmit={handleProposeCategorySubmit}>
-                      <input
-                        type="text"
-                        list="catalog-category-suggestions"
-                        autoFocus
-                        className="catalog-propose-category-input"
-                        placeholder={t('catalog.proposeCategoryPlaceholder')}
-                        value={newCategoryName}
-                        onChange={(e) => setNewCategoryName(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Escape') { setShowCategoryForm(false); setNewCategoryName(''); } }}
-                      />
-                      <datalist id="catalog-category-suggestions">
-                        {SUGGESTED_CATEGORIES.filter((c) => !filterCategories.includes(c)).map((c) => (
-                          <option key={c} value={c} />
-                        ))}
-                      </datalist>
-                      <button type="submit" className="btn-primary catalog-propose-category-btn">{t('catalog.proposeCategoryAction')}</button>
-                      <button type="button" className="btn-secondary catalog-propose-category-btn" onClick={() => { setShowCategoryForm(false); setNewCategoryName(''); }}>{t('catalog.proposeCategoryCancel')}</button>
-                    </form>
-                  )}
+                    {filterCategories.map((cat) => (
+                      <button
+                        type="button"
+                        key={cat}
+                        className={activeCat === cat ? 'catalog-chip active' : 'catalog-chip'}
+                        onClick={() => setActiveCat(cat)}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    className="link-btn catalog-category-toggle"
+                    onClick={() => setCategoriesExpanded((v) => !v)}
+                  >
+                    {categoriesExpanded ? `▴ ${t('catalog.categoriesCollapse')}` : `▾ ${t('catalog.categoriesExpand')}`}
+                  </button>
+
+                  <div className="catalog-category-propose">
+                    {!showCategoryForm && (
+                      <button type="button" className="catalog-chip catalog-chip-add" onClick={() => setShowCategoryForm(true)}>
+                        + {t('catalog.proposeCategory')}
+                      </button>
+                    )}
+                    {showCategoryForm && (
+                      <form className="catalog-propose-category-form" onSubmit={handleProposeCategorySubmit}>
+                        <input
+                          type="text"
+                          list="catalog-category-suggestions"
+                          autoFocus
+                          className="catalog-propose-category-input"
+                          placeholder={t('catalog.proposeCategoryPlaceholder')}
+                          value={newCategoryName}
+                          onChange={(e) => setNewCategoryName(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Escape') { setShowCategoryForm(false); setNewCategoryName(''); } }}
+                        />
+                        <datalist id="catalog-category-suggestions">
+                          {SUGGESTED_CATEGORIES.filter((c) => !filterCategories.includes(c)).map((c) => (
+                            <option key={c} value={c} />
+                          ))}
+                        </datalist>
+                        <button type="submit" className="btn-primary catalog-propose-category-btn">{t('catalog.proposeCategoryAction')}</button>
+                        <button type="button" className="btn-secondary catalog-propose-category-btn" onClick={() => { setShowCategoryForm(false); setNewCategoryName(''); }}>{t('catalog.proposeCategoryCancel')}</button>
+                      </form>
+                    )}
+                  </div>
                 </div>
               </div>
 

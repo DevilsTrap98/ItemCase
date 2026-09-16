@@ -194,6 +194,8 @@ export const translations = {
     'catalog.proposeCategoryConfirm': 'Kategorie "{name}" zum Community-Katalog vorschlagen? Deine private Sammlung bleibt davon unberührt.',
     'catalog.proposeCategoryAction': 'Vorschlagen',
     'catalog.proposeCategoryCancel': 'Abbrechen',
+    'catalog.categoriesExpand': 'Alle Kategorien anzeigen',
+    'catalog.categoriesCollapse': 'Weniger anzeigen',
 
     'settings.title': 'Einstellungen',
     'settings.profile': 'Profil',
@@ -506,6 +508,8 @@ export const translations = {
     'catalog.proposeCategoryConfirm': 'Suggest category "{name}" for the community catalog? Your private collection stays unchanged.',
     'catalog.proposeCategoryAction': 'Suggest',
     'catalog.proposeCategoryCancel': 'Cancel',
+    'catalog.categoriesExpand': 'Show all categories',
+    'catalog.categoriesCollapse': 'Show less',
 
     'settings.title': 'Settings',
     'settings.profile': 'Profile',
