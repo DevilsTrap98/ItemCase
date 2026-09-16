@@ -16,6 +16,12 @@ const SOCIAL_ROWS = [
   'advancedGroups'
 ];
 
+function renderCell(value) {
+  if (value === '✅') return <span className="upgrade-check yes">✓</span>;
+  if (value === '❌') return <span className="upgrade-check no">✕</span>;
+  return value;
+}
+
 export default function UpgradeModal({ user, itemCount, onSelectTariff, onClose }) {
   const { t } = useI18n();
   const currentTariff = user.tariff || 'free';
@@ -102,9 +108,9 @@ export default function UpgradeModal({ user, itemCount, onSelectTariff, onClose 
               {SOCIAL_ROWS.map((row) => (
                 <tr key={row}>
                   <td>{t(`upgrade.social.${row}`)}</td>
-                  <td>{t(`upgrade.social.${row}.free`)}</td>
-                  <td>{t(`upgrade.social.${row}.plus`)}</td>
-                  <td>{t(`upgrade.social.${row}.pro`)}</td>
+                  <td>{renderCell(t(`upgrade.social.${row}.free`))}</td>
+                  <td>{renderCell(t(`upgrade.social.${row}.plus`))}</td>
+                  <td>{renderCell(t(`upgrade.social.${row}.pro`))}</td>
                 </tr>
               ))}
             </tbody>
