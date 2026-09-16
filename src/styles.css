@@ -2110,6 +2110,32 @@ input:focus, select:focus, textarea:focus {
   padding: 0;
 }
 
+.catalog-report-link {
+  align-self: flex-start;
+  padding: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  margin-top: 4px;
+}
+
+.catalog-report-link:hover {
+  color: var(--danger);
+}
+
+.report-modal {
+  width: 420px;
+}
+
+.report-target {
+  font-weight: 600;
+  font-size: 14px;
+  margin: -8px 0 14px 0;
+}
+
+.report-success {
+  color: #22c55e;
+}
+
 .catalog-photo-modal {
   width: 420px;
 }

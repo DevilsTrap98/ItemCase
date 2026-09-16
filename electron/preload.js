@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('api', {
   pickImage: () => ipcRenderer.invoke('image:pick'),
   getImagePath: (fileName) => ipcRenderer.invoke('image:getPath', fileName),
   sendFeedback: (payload) => ipcRenderer.invoke('feedback:send', payload),
+  reportCatalogEntry: (payload) => ipcRenderer.invoke('catalog:report', payload),
   exportZip: () => ipcRenderer.invoke('data:exportZip'),
   importZip: () => ipcRenderer.invoke('data:importZip'),
   exportCsv: () => ipcRenderer.invoke('data:exportCsv'),

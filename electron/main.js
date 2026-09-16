@@ -12,6 +12,7 @@ const userDataDir = app.getPath('userData');
 const imagesDir = path.join(userDataDir, 'images');
 const dbFile = path.join(userDataDir, 'collection.json');
 const feedbackFile = path.join(userDataDir, 'feedback-outbox.json');
+const reportsFile = path.join(userDataDir, 'reports-outbox.json');
 
 function demoCatalogEntries() {
   const now = new Date().toISOString();
@@ -473,6 +474,29 @@ ipcMain.handle('feedback:send', (_event, { type, message }) => {
     createdAt: new Date().toISOString()
   });
   fs.writeFileSync(feedbackFile, JSON.stringify(entries, null, 2));
+  return true;
+});
+
+// Reports are queued locally until a real moderation backend exists.
+// An admin has to pull reports-outbox.json to review and act on them.
+ipcMain.handle('catalog:report', (_event, { targetType, targetId, targetName, reason, comment }) => {
+  let entries = [];
+  try {
+    entries = JSON.parse(fs.readFileSync(reportsFile, 'utf-8'));
+  } catch (e) {
+    entries = [];
+  }
+  entries.push({
+    id: crypto.randomUUID(),
+    targetType,
+    targetId,
+    targetName,
+    reason,
+    comment: comment || '',
+    status: 'open',
+    createdAt: new Date().toISOString()
+  });
+  fs.writeFileSync(reportsFile, JSON.stringify(entries, null, 2));
   return true;
 });
 

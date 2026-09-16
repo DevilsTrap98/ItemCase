@@ -92,6 +92,7 @@ export default function UpgradeModal({ user, itemCount, onSelectTariff, onClose 
             </tbody>
           </table>
         </div>
+        <p className="field-hint upgrade-footnote">{t('upgrade.proLimitFootnote')}</p>
 
         <h3 className="upgrade-section-title">{t('upgrade.socialTitle')}</h3>
         <div className="upgrade-table-wrap">

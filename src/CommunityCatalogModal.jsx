@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useI18n } from './i18n.jsx';
 import useImagePath from './useImagePath.js';
 import CatalogPhotoModal from './CatalogPhotoModal.jsx';
+import ReportModal from './ReportModal.jsx';
 import { SUGGESTED_CATEGORIES } from './category-defaults.js';
 
 const ALL_CAT = '__all__';
@@ -18,7 +19,7 @@ const emptySubmission = {
   marketValue: ''
 };
 
-function CatalogCard({ entry, onAdopt, adopted, onOpenPhotoForm, photoSubmitted, t }) {
+function CatalogCard({ entry, onAdopt, adopted, onOpenPhotoForm, photoSubmitted, onOpenReport, t }) {
   const imgSrc = useImagePath(entry.imagePath);
 
   return (
@@ -63,6 +64,10 @@ function CatalogCard({ entry, onAdopt, adopted, onOpenPhotoForm, photoSubmitted,
             {adopted ? t('catalog.adopted') : t('catalog.adopt')}
           </button>
         </div>
+
+        <button type="button" className="link-btn catalog-report-link" onClick={() => onOpenReport(entry)}>
+          🚩 {t('report.action')}
+        </button>
       </div>
     </div>
   );
@@ -86,8 +91,19 @@ export default function CommunityCatalogModal({ catalog, catalogCategories, item
   const [photoContributeEntry, setPhotoContributeEntry] = useState(null);
   const [photoSubmittedIds, setPhotoSubmittedIds] = useState([]);
   const [selectedItemId, setSelectedItemId] = useState('');
+  const [reportEntry, setReportEntry] = useState(null);
 
   const update = (field, val) => setForm((f) => ({ ...f, [field]: val }));
+
+  const handleReportSubmit = async ({ reason, comment }) => {
+    await window.api.reportCatalogEntry({
+      targetType: 'catalogItem',
+      targetId: reportEntry.id,
+      targetName: reportEntry.name,
+      reason,
+      comment
+    });
+  };
 
   const handleSelectOwnItem = async (itemId) => {
     setSelectedItemId(itemId);
@@ -302,6 +318,7 @@ export default function CommunityCatalogModal({ catalog, catalogCategories, item
                       onAdopt={handleAdopt}
                       onOpenPhotoForm={setPhotoContributeEntry}
                       photoSubmitted={photoSubmittedIds.includes(entry.id)}
+                      onOpenReport={setReportEntry}
                       t={t}
                     />
                   ))}
@@ -430,6 +447,14 @@ export default function CommunityCatalogModal({ catalog, catalogCategories, item
         user={user}
         onSubmit={handlePhotoSubmit}
         onClose={() => setPhotoContributeEntry(null)}
+      />
+    )}
+
+    {reportEntry && (
+      <ReportModal
+        targetName={reportEntry.name}
+        onSubmit={handleReportSubmit}
+        onClose={() => setReportEntry(null)}
       />
     )}
     </>
