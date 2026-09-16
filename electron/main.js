@@ -76,7 +76,9 @@ function ensureDirs() {
       categoryFields: {},
       categoryTargets: {},
       categoryCaseDesigns: {},
-      communityCatalog: demoCatalogEntries()
+      communityCatalog: demoCatalogEntries(),
+      catalogPhotoProposals: [],
+      catalogCategories: []
     }, null, 2));
   }
 }
@@ -90,9 +92,11 @@ function readDb() {
     if (!db.categoryTargets) db.categoryTargets = {};
     if (!db.categoryCaseDesigns) db.categoryCaseDesigns = {};
     if (!db.communityCatalog) db.communityCatalog = demoCatalogEntries();
+    if (!db.catalogPhotoProposals) db.catalogPhotoProposals = [];
+    if (!db.catalogCategories) db.catalogCategories = [];
     return db;
   } catch (e) {
-    return { items: [], categories: [], categoryImages: {}, categoryFields: {}, categoryTargets: {}, categoryCaseDesigns: {}, communityCatalog: [] };
+    return { items: [], categories: [], categoryImages: {}, categoryFields: {}, categoryTargets: {}, categoryCaseDesigns: {}, communityCatalog: [], catalogPhotoProposals: [], catalogCategories: [] };
   }
 }
 
@@ -295,6 +299,33 @@ ipcMain.handle('catalog:submit', (_event, payload) => {
   db.communityCatalog.push(entry);
   writeDb(db);
   return db.communityCatalog;
+});
+
+ipcMain.handle('catalog:proposePhoto', (_event, payload) => {
+  const db = readDb();
+  const now = new Date().toISOString();
+  db.catalogPhotoProposals.push({
+    id: crypto.randomUUID(),
+    catalogItemId: payload.catalogItemId,
+    imagePath: payload.imagePath || null,
+    contributor: payload.contributor || '',
+    rightsConfirmed: !!payload.rightsConfirmed,
+    licenseVersion: payload.licenseVersion || '1.0',
+    status: 'pending',
+    submittedAt: now
+  });
+  writeDb(db);
+  return db.catalogPhotoProposals;
+});
+
+ipcMain.handle('catalog:proposeCategory', (_event, name) => {
+  const db = readDb();
+  const trimmed = (name || '').trim();
+  if (trimmed && !db.catalogCategories.some((c) => c.toLowerCase() === trimmed.toLowerCase())) {
+    db.catalogCategories.push(trimmed);
+    writeDb(db);
+  }
+  return db.catalogCategories;
 });
 
 ipcMain.handle('categories:setCaseDesign', (_event, { name, caseDesign }) => {

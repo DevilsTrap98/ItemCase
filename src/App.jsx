@@ -78,6 +78,7 @@ export default function App() {
   const [categoryTargets, setCategoryTargets] = useState({});
   const [categoryCaseDesigns, setCategoryCaseDesigns] = useState({});
   const [communityCatalog, setCommunityCatalog] = useState([]);
+  const [catalogCategories, setCatalogCategories] = useState([]);
   const [showCommunityCatalog, setShowCommunityCatalog] = useState(false);
   const [activeCategory, setActiveCategory] = useState(ALL_CATEGORY);
   const [search, setSearch] = useState('');
@@ -174,6 +175,7 @@ export default function App() {
     setCategoryTargets(db.categoryTargets || {});
     setCategoryCaseDesigns(db.categoryCaseDesigns || {});
     setCommunityCatalog(db.communityCatalog || []);
+    setCatalogCategories(db.catalogCategories || []);
   };
 
   useEffect(() => {
@@ -247,6 +249,21 @@ export default function App() {
   const handleSubmitToCatalog = async (payload) => {
     await window.api.submitToCatalog(payload);
     loadData();
+  };
+
+  const handleProposePhoto = async (entry, payload) => {
+    await window.api.proposeCatalogPhoto({ ...payload, catalogItemId: entry.id });
+    loadData();
+  };
+
+  const handleProposeCategory = (name) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    askConfirm(t('catalog.proposeCategoryConfirm', { name: trimmed }), async () => {
+      await window.api.addCategory(trimmed);
+      await window.api.proposeCatalogCategory(trimmed);
+      loadData();
+    });
   };
 
   const handleEdit = (item) => {
@@ -679,9 +696,12 @@ export default function App() {
         <CommunityCatalogModal
           catalog={communityCatalog}
           categories={categories}
+          catalogCategories={catalogCategories}
           user={user}
           onAdopt={handleAdoptCatalogItem}
           onSubmit={handleSubmitToCatalog}
+          onProposePhoto={handleProposePhoto}
+          onProposeCategory={handleProposeCategory}
           onClose={() => setShowCommunityCatalog(false)}
         />
       )}

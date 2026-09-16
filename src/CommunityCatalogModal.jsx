@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useI18n } from './i18n.jsx';
 import useImagePath from './useImagePath.js';
+import CatalogPhotoModal from './CatalogPhotoModal.jsx';
 
 const ALL_CAT = '__all__';
 
@@ -15,8 +16,9 @@ const emptySubmission = {
   imagePath: null
 };
 
-function CatalogCard({ entry, onAdopt, adopted, t }) {
+function CatalogCard({ entry, onAdopt, adopted, onOpenPhotoForm, photoSubmitted, t }) {
   const imgSrc = useImagePath(entry.imagePath);
+
   return (
     <div className="card catalog-card">
       <div className="card-image">
@@ -35,6 +37,17 @@ function CatalogCard({ entry, onAdopt, adopted, t }) {
         {entry.contributor && (
           <div className="card-notes">{t('catalog.submittedBy', { name: entry.contributor })}</div>
         )}
+
+        {!entry.imagePath && !photoSubmitted && (
+          <button type="button" className="link-btn catalog-add-photo-link" onClick={() => onOpenPhotoForm(entry)}>
+            📷 {t('catalog.addPhoto')}
+          </button>
+        )}
+
+        {!entry.imagePath && photoSubmitted && (
+          <p className="field-hint catalog-success">{t('catalog.addPhotoSubmitted')}</p>
+        )}
+
         <div className="card-footer">
           <button
             type="button"
@@ -50,7 +63,7 @@ function CatalogCard({ entry, onAdopt, adopted, t }) {
   );
 }
 
-export default function CommunityCatalogModal({ catalog, categories, user, onAdopt, onSubmit, onClose }) {
+export default function CommunityCatalogModal({ catalog, categories, catalogCategories, user, onAdopt, onSubmit, onProposePhoto, onProposeCategory, onClose }) {
   const { t } = useI18n();
   const [tab, setTab] = useState('browse');
   const [search, setSearch] = useState('');
@@ -61,14 +74,27 @@ export default function CommunityCatalogModal({ catalog, categories, user, onAdo
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
   const [error, setError] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const [showCategoryForm, setShowCategoryForm] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [photoContributeEntry, setPhotoContributeEntry] = useState(null);
+  const [photoSubmittedIds, setPhotoSubmittedIds] = useState([]);
 
   const update = (field, val) => setForm((f) => ({ ...f, [field]: val }));
 
-  const catalogCategories = useMemo(() => {
+  const filterCategories = useMemo(() => {
     const set = new Set();
     catalog.forEach((entry) => { if (entry.category) set.add(entry.category); });
+    (catalogCategories || []).forEach((cat) => set.add(cat));
     return Array.from(set).sort();
-  }, [catalog]);
+  }, [catalog, catalogCategories]);
+
+  const handleProposeCategorySubmit = (e) => {
+    e.preventDefault();
+    if (!newCategoryName.trim()) return;
+    onProposeCategory(newCategoryName);
+    setNewCategoryName('');
+    setShowCategoryForm(false);
+  };
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -82,6 +108,12 @@ export default function CommunityCatalogModal({ catalog, categories, user, onAdo
   const handleAdopt = (entry) => {
     onAdopt(entry);
     setAdoptedIds((ids) => [...ids, entry.id]);
+  };
+
+  const handlePhotoSubmit = async (payload) => {
+    await onProposePhoto(photoContributeEntry, payload);
+    setPhotoSubmittedIds((ids) => [...ids, photoContributeEntry.id]);
+    setPhotoContributeEntry(null);
   };
 
   const handlePickImage = async () => {
@@ -114,6 +146,7 @@ export default function CommunityCatalogModal({ catalog, categories, user, onAdo
   };
 
   return (
+    <>
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal catalog-modal" onClick={(e) => e.stopPropagation()}>
         <div className="catalog-modal-header">
@@ -160,7 +193,7 @@ export default function CommunityCatalogModal({ catalog, categories, user, onAdo
                   >
                     {t('sidebar.all')}
                   </button>
-                  {catalogCategories.map((cat) => (
+                  {filterCategories.map((cat) => (
                     <button
                       type="button"
                       key={cat}
@@ -170,6 +203,26 @@ export default function CommunityCatalogModal({ catalog, categories, user, onAdo
                       {cat}
                     </button>
                   ))}
+                  {!showCategoryForm && (
+                    <button type="button" className="catalog-chip catalog-chip-add" onClick={() => setShowCategoryForm(true)}>
+                      + {t('catalog.proposeCategory')}
+                    </button>
+                  )}
+                  {showCategoryForm && (
+                    <form className="catalog-propose-category-form" onSubmit={handleProposeCategorySubmit}>
+                      <input
+                        type="text"
+                        autoFocus
+                        className="catalog-propose-category-input"
+                        placeholder={t('catalog.proposeCategoryPlaceholder')}
+                        value={newCategoryName}
+                        onChange={(e) => setNewCategoryName(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Escape') { setShowCategoryForm(false); setNewCategoryName(''); } }}
+                      />
+                      <button type="submit" className="btn-primary catalog-propose-category-btn">{t('catalog.proposeCategoryAction')}</button>
+                      <button type="button" className="btn-secondary catalog-propose-category-btn" onClick={() => { setShowCategoryForm(false); setNewCategoryName(''); }}>{t('catalog.proposeCategoryCancel')}</button>
+                    </form>
+                  )}
                 </div>
               </div>
 
@@ -185,6 +238,8 @@ export default function CommunityCatalogModal({ catalog, categories, user, onAdo
                       entry={entry}
                       adopted={adoptedIds.includes(entry.id)}
                       onAdopt={handleAdopt}
+                      onOpenPhotoForm={setPhotoContributeEntry}
+                      photoSubmitted={photoSubmittedIds.includes(entry.id)}
                       t={t}
                     />
                   ))}
@@ -221,7 +276,7 @@ export default function CommunityCatalogModal({ catalog, categories, user, onAdo
                       onChange={(e) => update('category', e.target.value)}
                     />
                     <datalist id="catalog-category-list">
-                      {categories.map((c) => <option key={c} value={c} />)}
+                      {Array.from(new Set([...categories, ...filterCategories])).map((c) => <option key={c} value={c} />)}
                     </datalist>
                   </label>
                 </div>
@@ -275,5 +330,15 @@ export default function CommunityCatalogModal({ catalog, categories, user, onAdo
         </div>
       </div>
     </div>
+
+    {photoContributeEntry && (
+      <CatalogPhotoModal
+        entry={photoContributeEntry}
+        user={user}
+        onSubmit={handlePhotoSubmit}
+        onClose={() => setPhotoContributeEntry(null)}
+      />
+    )}
+    </>
   );
 }

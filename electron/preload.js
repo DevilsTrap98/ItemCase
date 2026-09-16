@@ -14,6 +14,8 @@ contextBridge.exposeInMainWorld('api', {
   setCategoryCaseDesign: (name, caseDesign) => ipcRenderer.invoke('categories:setCaseDesign', { name, caseDesign }),
   setCategoryOrder: (order) => ipcRenderer.invoke('categories:setOrder', order),
   submitToCatalog: (payload) => ipcRenderer.invoke('catalog:submit', payload),
+  proposeCatalogPhoto: (payload) => ipcRenderer.invoke('catalog:proposePhoto', payload),
+  proposeCatalogCategory: (name) => ipcRenderer.invoke('catalog:proposeCategory', name),
   pickImage: () => ipcRenderer.invoke('image:pick'),
   getImagePath: (fileName) => ipcRenderer.invoke('image:getPath', fileName),
   sendFeedback: (payload) => ipcRenderer.invoke('feedback:send', payload),
