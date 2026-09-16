@@ -444,6 +444,10 @@ export default function App() {
           <img src={logoMark} alt="" className="logo-icon" />
           {t('app.brand')}
         </div>
+        <div className="logo-tagline">
+          <div>{t('app.tagline')}</div>
+          <div>{t('app.taglineSub')}</div>
+        </div>
 
         <div className="stats-box">
           <div className="stat">

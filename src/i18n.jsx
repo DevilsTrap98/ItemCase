@@ -5,6 +5,8 @@ const LANG_STORAGE_KEY = 'collectorapp_lang';
 export const translations = {
   de: {
     'app.brand': 'ItemCase',
+    'app.tagline': 'Collect. Connect. Share.',
+    'app.taglineSub': 'Your Collection. Your Community.',
 
     'auth.subtitle': 'Deine Sammlung, immer im Blick.',
     'auth.login': 'Einloggen',
@@ -433,6 +435,8 @@ export const translations = {
 
   en: {
     'app.brand': 'ItemCase',
+    'app.tagline': 'Collect. Connect. Share.',
+    'app.taglineSub': 'Your Collection. Your Community.',
 
     'auth.subtitle': 'Your collection, always in view.',
     'auth.login': 'Log In',
