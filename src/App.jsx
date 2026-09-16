@@ -11,6 +11,7 @@ import ConfirmDialog from './ConfirmDialog.jsx';
 import CollectionDNA from './CollectionDNA.jsx';
 import ImportExportModal from './ImportExportModal.jsx';
 import CommunityCatalogModal from './CommunityCatalogModal.jsx';
+import UpgradeModal from './UpgradeModal.jsx';
 import { useI18n } from './i18n.jsx';
 import logoMark from './assets/logo-mark.png';
 import useImagePath from './useImagePath.js';
@@ -96,6 +97,7 @@ export default function App() {
   const [showFeedback, setShowFeedback] = useState(false);
   const [showDNA, setShowDNA] = useState(false);
   const [showImportExport, setShowImportExport] = useState(false);
+  const [showUpgrade, setShowUpgrade] = useState(false);
   const [draggedCategory, setDraggedCategory] = useState(null);
   const [dragOverCategory, setDragOverCategory] = useState(null);
   const [dialog, setDialog] = useState(null);
@@ -577,6 +579,9 @@ export default function App() {
                   <button onClick={() => { setShowSettings(true); setShowUserMenu(false); }}>
                     ⚙️ {t('userMenu.settings')}
                   </button>
+                  <button onClick={() => { setShowUpgrade(true); setShowUserMenu(false); }}>
+                    ⭐ {t('userMenu.upgrade')}
+                  </button>
                   <button onClick={() => { setShowFeedback(true); setShowUserMenu(false); }}>
                     💬 {t('userMenu.feedback')}
                   </button>
@@ -596,7 +601,10 @@ export default function App() {
 
         {isOverItemLimit && (
           <div className="tariff-banner">
-            {t('tariff.overLimitBanner', { count: items.length, limit: tariff.itemLimit })}
+            <span>{t('tariff.overLimitBanner', { count: items.length, limit: tariff.itemLimit })}</span>
+            <button type="button" className="btn-primary tariff-banner-btn" onClick={() => setShowUpgrade(true)}>
+              ⭐ {t('userMenu.upgrade')}
+            </button>
           </div>
         )}
 
@@ -729,6 +737,15 @@ export default function App() {
           onProposePhoto={handleProposePhoto}
           onProposeCategory={handleProposeCategory}
           onClose={() => setShowCommunityCatalog(false)}
+        />
+      )}
+
+      {showUpgrade && (
+        <UpgradeModal
+          user={user}
+          itemCount={items.length}
+          onSelectTariff={(id) => handleSaveUser({ ...user, tariff: id })}
+          onClose={() => setShowUpgrade(false)}
         />
       )}
 
