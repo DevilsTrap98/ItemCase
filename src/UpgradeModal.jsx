@@ -2,7 +2,7 @@ import React from 'react';
 import { useI18n } from './i18n.jsx';
 import { TARIFF_IDS, TARIFFS } from './tariff-defaults.js';
 
-const FEATURE_ROWS = ['items', 'image', 'collectionMap', 'marketValue', 'level', 'showcase', 'export', 'ads'];
+const FEATURE_ROWS = ['items', 'collectionMap', 'marketValue', 'level', 'showcase', 'export', 'ads'];
 
 export default function UpgradeModal({ user, itemCount, onSelectTariff, onClose }) {
   const { t } = useI18n();
