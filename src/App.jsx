@@ -13,6 +13,7 @@ import ImportExportModal from './ImportExportModal.jsx';
 import CommunityCatalogModal from './CommunityCatalogModal.jsx';
 import UpgradeModal from './UpgradeModal.jsx';
 import FriendsPanel from './FriendsPanel.jsx';
+import LegalModal from './LegalModal.jsx';
 import ChatWindow from './ChatWindow.jsx';
 import { MOCK_FRIENDS, MOCK_GROUPS } from './friends-mock.js';
 import { useI18n } from './i18n.jsx';
@@ -98,6 +99,7 @@ export default function App() {
   const [showLevel, setShowLevel] = useState(false);
   const [showShowcase, setShowShowcase] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
+  const [showLegal, setShowLegal] = useState(false);
   const [showDNA, setShowDNA] = useState(false);
   const [showImportExport, setShowImportExport] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
@@ -612,6 +614,10 @@ export default function App() {
                     📦 {t('userMenu.importExport')}
                   </button>
                   <div className="user-menu-divider" />
+                  <button onClick={() => { setShowLegal(true); setShowUserMenu(false); }}>
+                    📜 {t('userMenu.legal')}
+                  </button>
+                  <div className="user-menu-divider" />
                   <button className="danger" onClick={handleLogout}>
                     ⏻ {t('userMenu.logout')}
                   </button>
@@ -782,6 +788,10 @@ export default function App() {
           user={user}
           onClose={() => setShowFeedback(false)}
         />
+      )}
+
+      {showLegal && (
+        <LegalModal onClose={() => setShowLegal(false)} />
       )}
 
       {dialog && (

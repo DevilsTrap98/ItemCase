@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useI18n } from './i18n.jsx';
+import EmojiPicker from './EmojiPicker.jsx';
+import { convertEmoticons } from './emoji-utils.js';
 
 function storageKey(friendId) {
   return `itemcase_chat_${friendId}`;
@@ -21,7 +23,9 @@ export default function ChatWindow({ friend, onClose }) {
   const { t } = useI18n();
   const [messages, setMessages] = useState(() => loadMessages(friend, t));
   const [draft, setDraft] = useState('');
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const listRef = useRef(null);
+  const inputRef = useRef(null);
 
   useEffect(() => {
     try {
@@ -37,10 +41,16 @@ export default function ChatWindow({ friend, onClose }) {
 
   const handleSend = (e) => {
     e.preventDefault();
-    const text = draft.trim();
+    const text = convertEmoticons(draft.trim());
     if (!text) return;
     setMessages((m) => [...m, { from: 'me', text }]);
     setDraft('');
+    setShowEmojiPicker(false);
+  };
+
+  const handleSelectEmoji = (emoji) => {
+    setDraft((d) => d + emoji);
+    inputRef.current?.focus();
   };
 
   return (
@@ -66,15 +76,29 @@ export default function ChatWindow({ friend, onClose }) {
         )}
       </div>
 
-      <form className="chat-window-input" onSubmit={handleSend}>
-        <input
-          type="text"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder={t('friends.chatPlaceholder')}
-        />
-        <button type="submit" className="btn-primary chat-send-btn">{t('friends.chatSend')}</button>
-      </form>
+      <div className="chat-window-input-wrap">
+        {showEmojiPicker && (
+          <EmojiPicker onSelect={handleSelectEmoji} onClose={() => setShowEmojiPicker(false)} />
+        )}
+        <form className="chat-window-input" onSubmit={handleSend}>
+          <button
+            type="button"
+            className={showEmojiPicker ? 'icon-btn chat-emoji-btn active' : 'icon-btn chat-emoji-btn'}
+            onClick={() => setShowEmojiPicker((v) => !v)}
+            title={t('friends.chatEmoji')}
+          >
+            😊
+          </button>
+          <input
+            ref={inputRef}
+            type="text"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder={t('friends.chatPlaceholder')}
+          />
+          <button type="submit" className="btn-primary chat-send-btn">{t('friends.chatSend')}</button>
+        </form>
+      </div>
     </div>
   );
 }

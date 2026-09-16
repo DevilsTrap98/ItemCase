@@ -2617,8 +2617,13 @@ input:focus, select:focus, textarea:focus {
   border-color: var(--accent);
 }
 
+.chat-window-input-wrap {
+  position: relative;
+}
+
 .chat-window-input {
   display: flex;
+  align-items: center;
   gap: 6px;
   padding: 8px;
   border-top: 1px solid var(--border);
@@ -2630,7 +2635,130 @@ input:focus, select:focus, textarea:focus {
   font-size: 12px;
 }
 
+.chat-emoji-btn {
+  flex-shrink: 0;
+  font-size: 15px;
+  padding: 4px 6px;
+}
+
+.chat-emoji-btn.active {
+  background: var(--accent-soft);
+}
+
+.emoji-picker {
+  position: absolute;
+  bottom: 100%;
+  left: 8px;
+  z-index: 5;
+}
+
+.emoji-picker-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+}
+
+.emoji-picker-grid {
+  width: 220px;
+  max-height: 180px;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 2px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px;
+  box-shadow: var(--card-shadow);
+  margin-bottom: 6px;
+}
+
+.emoji-picker-item {
+  background: transparent;
+  border: none;
+  font-size: 18px;
+  padding: 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.emoji-picker-item:hover {
+  background: var(--bg-elevated);
+}
+
 .chat-send-btn {
   padding: 7px 12px;
   font-size: 12px;
+}
+
+.legal-modal {
+  width: 720px;
+  max-width: 95vw;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.legal-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.legal-modal-title {
+  margin: 0;
+  font-size: 18px;
+}
+
+.legal-modal-updated {
+  margin-top: 6px;
+  margin-bottom: 0;
+}
+
+.legal-modal-body {
+  flex: 1;
+  overflow-y: auto;
+  margin: 14px 0;
+  padding-right: 6px;
+}
+
+.legal-placeholder-note {
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  border-radius: var(--card-radius);
+  padding: 10px 14px;
+  margin-top: 0;
+  margin-bottom: 18px;
+}
+
+.legal-section {
+  margin-bottom: 20px;
+}
+
+.legal-section h3 {
+  font-size: 14px;
+  margin: 0 0 8px 0;
+}
+
+.legal-section p {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  margin: 0 0 8px 0;
+  white-space: pre-line;
+}
+
+.legal-section ul {
+  margin: 0 0 8px 0;
+  padding-left: 20px;
+}
+
+.legal-section li {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  margin-bottom: 4px;
 }
