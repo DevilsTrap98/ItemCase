@@ -208,7 +208,7 @@ export default function CommunityCatalogModal({ catalog, catalogCategories, item
   return (
     <>
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal catalog-modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal catalog-modal catalog-modal-fullscreen" onClick={(e) => e.stopPropagation()}>
         <div className="catalog-modal-header">
           <div>
             <h2 className="catalog-modal-title">📚 {t('catalog.title')}</h2>

@@ -3,37 +3,12 @@ import { useI18n } from './i18n.jsx';
 import EmojiPicker from './EmojiPicker.jsx';
 import { convertEmoticons } from './emoji-utils.js';
 
-function storageKey(friendId) {
-  return `itemcase_chat_${friendId}`;
-}
-
-function loadMessages(friend, t) {
-  try {
-    const raw = localStorage.getItem(storageKey(friend.id));
-    if (raw) return JSON.parse(raw);
-  } catch (e) {
-    // ignore
-  }
-  return friend.online
-    ? [{ from: 'them', text: t('friends.chatSeedOnline', { name: friend.name }) }]
-    : [];
-}
-
-export default function ChatWindow({ friend, onClose }) {
+export default function ChatWindow({ conversationId, title, initials, isGroup, messages, currentUserId, onSend, onClose, onBlock }) {
   const { t } = useI18n();
-  const [messages, setMessages] = useState(() => loadMessages(friend, t));
   const [draft, setDraft] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const listRef = useRef(null);
   const inputRef = useRef(null);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(storageKey(friend.id), JSON.stringify(messages));
-    } catch (e) {
-      // ignore
-    }
-  }, [messages, friend.id]);
 
   useEffect(() => {
     if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
@@ -43,7 +18,7 @@ export default function ChatWindow({ friend, onClose }) {
     e.preventDefault();
     const text = convertEmoticons(draft.trim());
     if (!text) return;
-    setMessages((m) => [...m, { from: 'me', text }]);
+    onSend(conversationId, text);
     setDraft('');
     setShowEmojiPicker(false);
   };
@@ -56,21 +31,22 @@ export default function ChatWindow({ friend, onClose }) {
   return (
     <div className="chat-window">
       <div className="chat-window-header">
-        <span className="friend-avatar small">
-          {friend.initials}
-          <span className={friend.online ? 'friend-status-dot online' : 'friend-status-dot'} />
-        </span>
-        <span className="chat-window-name">{friend.name}</span>
+        <span className="friend-avatar small">{initials}</span>
+        <span className="chat-window-name">{title}</span>
+        {!isGroup && onBlock && (
+          <button type="button" className="icon-btn" onClick={onBlock} title={t('friends.block')}>🚫</button>
+        )}
         <button type="button" className="icon-btn chat-window-close" onClick={onClose} title={t('catalog.close')}>✕</button>
       </div>
 
       <div className="chat-window-messages" ref={listRef}>
-        {messages.length === 0 ? (
+        {!messages || messages.length === 0 ? (
           <div className="chat-window-empty">{t('friends.chatEmpty')}</div>
         ) : (
-          messages.map((m, i) => (
-            <div key={i} className={m.from === 'me' ? 'chat-bubble mine' : 'chat-bubble'}>
-              {m.text}
+          messages.map((m) => (
+            <div key={m.id} className={m.senderId === currentUserId ? 'chat-bubble mine' : 'chat-bubble'}>
+              {isGroup && m.senderId !== currentUserId && <div className="chat-bubble-sender">{m.senderName}</div>}
+              {m.body}
             </div>
           ))
         )}

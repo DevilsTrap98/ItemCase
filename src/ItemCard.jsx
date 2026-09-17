@@ -67,7 +67,7 @@ export default function ItemCard({ item, onEdit, onDelete, onUpdateValue, caseDe
                   onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
                 />
               </label>
-              {purchasePrice > 0 && delta !== 0 && (
+              {value > 0 && purchasePrice > 0 && delta !== 0 && (
                 <span className={delta > 0 ? 'card-delta positive' : 'card-delta negative'}>
                   {delta > 0 ? '▲' : '▼'} {currencyFmt(Math.abs(delta))}
                 </span>

@@ -1,5 +1,13 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+// Live push events from the server socket (relayed via main.js's socket.io
+// connection, see connectRealtime()). Returns an unsubscribe function.
+function subscribe(channel, callback) {
+  const listener = (_event, payload) => callback(payload);
+  ipcRenderer.on(channel, listener);
+  return () => ipcRenderer.removeListener(channel, listener);
+}
+
 contextBridge.exposeInMainWorld('api', {
   setTitleBarColor: (color, symbolColor) => ipcRenderer.invoke('window:setTitleBarColor', { color, symbolColor }),
   getAll: () => ipcRenderer.invoke('items:getAll'),
@@ -23,5 +31,48 @@ contextBridge.exposeInMainWorld('api', {
   exportZip: () => ipcRenderer.invoke('data:exportZip'),
   importZip: () => ipcRenderer.invoke('data:importZip'),
   exportCsv: () => ipcRenderer.invoke('data:exportCsv'),
-  importCsv: () => ipcRenderer.invoke('data:importCsv')
+  importCsv: () => ipcRenderer.invoke('data:importCsv'),
+  register: (payload) => ipcRenderer.invoke('auth:register', payload),
+  login: (payload) => ipcRenderer.invoke('auth:login', payload),
+  logout: () => ipcRenderer.invoke('auth:logout'),
+  getSession: () => ipcRenderer.invoke('auth:getSession'),
+  friendsList: () => ipcRenderer.invoke('friends:list'),
+  friendsSendRequest: (toEmail) => ipcRenderer.invoke('friends:sendRequest', toEmail),
+  friendsAcceptRequest: (id) => ipcRenderer.invoke('friends:acceptRequest', id),
+  friendsDeclineRequest: (id) => ipcRenderer.invoke('friends:declineRequest', id),
+  blocksList: () => ipcRenderer.invoke('blocks:list'),
+  blockUser: (userId) => ipcRenderer.invoke('blocks:block', userId),
+  unblockUser: (userId) => ipcRenderer.invoke('blocks:unblock', userId),
+  groupsList: () => ipcRenderer.invoke('groups:list'),
+  groupsDiscover: () => ipcRenderer.invoke('groups:discover'),
+  groupsCreate: (payload) => ipcRenderer.invoke('groups:create', payload),
+  groupsGet: (id) => ipcRenderer.invoke('groups:get', id),
+  groupsJoin: (id) => ipcRenderer.invoke('groups:join', id),
+  groupsAddMember: (id, username) => ipcRenderer.invoke('groups:addMember', { id, username }),
+  groupsSetRole: (id, userId, role) => ipcRenderer.invoke('groups:setRole', { id, userId, role }),
+  groupsKick: (id, userId) => ipcRenderer.invoke('groups:kick', { id, userId }),
+  groupsBan: (id, userId) => ipcRenderer.invoke('groups:ban', { id, userId }),
+  groupsDelete: (id) => ipcRenderer.invoke('groups:delete', id),
+  conversationsList: () => ipcRenderer.invoke('conversations:list'),
+  conversationsOpenDirect: (friendId) => ipcRenderer.invoke('conversations:openDirect', friendId),
+  conversationsHistory: (id, before) => ipcRenderer.invoke('conversations:history', { id, before }),
+  conversationsSend: (id, body) => ipcRenderer.invoke('conversations:send', { id, body }),
+  conversationsMarkRead: (id) => ipcRenderer.invoke('conversations:markRead', id),
+  notificationsList: () => ipcRenderer.invoke('notifications:list'),
+  notificationsMarkRead: (id) => ipcRenderer.invoke('notifications:markRead', id),
+  notificationsMarkAllRead: () => ipcRenderer.invoke('notifications:markAllRead'),
+  onNewMessage: (cb) => subscribe('rt:message', cb),
+  onNewNotification: (cb) => subscribe('rt:notification', cb),
+  onTyping: (cb) => subscribe('rt:typing', cb),
+  forumListThreads: (category) => ipcRenderer.invoke('forum:listThreads', category),
+  forumCreateThread: (payload) => ipcRenderer.invoke('forum:createThread', payload),
+  forumGetThread: (threadId) => ipcRenderer.invoke('forum:getThread', threadId),
+  forumReply: (threadId, body, level) => ipcRenderer.invoke('forum:reply', { threadId, body, level }),
+  forumCloseThread: (threadId) => ipcRenderer.invoke('forum:closeThread', threadId),
+  forumDeleteThread: (threadId) => ipcRenderer.invoke('forum:deleteThread', threadId),
+  forumDeletePost: (postId) => ipcRenderer.invoke('forum:deletePost', postId),
+  forumLikePost: (postId) => ipcRenderer.invoke('forum:likePost', postId),
+  forumTrending: () => ipcRenderer.invoke('forum:trending'),
+  forumLeaderboard: () => ipcRenderer.invoke('forum:leaderboard'),
+  forumActivity: () => ipcRenderer.invoke('forum:activity')
 });

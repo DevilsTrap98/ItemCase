@@ -1,0 +1,29 @@
+{
+  "name": "itemcase-server",
+  "version": "0.1.0",
+  "description": "ItemCase backend: shared community catalog, reports and feedback against MySQL.",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "db:migrate": "node scripts/migrate.js",
+    "db:check": "node scripts/check-connection.js",
+    "test:phase3": "node -r dotenv/config scripts/smoke-test-phase3.js",
+    "test:forum": "node scripts/smoke-test-forum.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "mysql2": "^3.11.0",
+    "socket.io": "^4.7.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.7",
+    "socket.io-client": "^4.7.5"
+  }
+}

@@ -4,3 +4,5 @@ release/
 *.log
 .DS_Store
 Thumbs.db
+server/.env
+server/server.pid

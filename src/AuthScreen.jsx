@@ -6,12 +6,14 @@ export default function AuthScreen({ onLogin }) {
   const { lang, setLang, t } = useI18n();
   const [mode, setMode] = useState('login'); // 'login' | 'register'
   const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [passwordConfirm, setPasswordConfirm] = useState('');
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
@@ -20,19 +22,38 @@ export default function AuthScreen({ onLogin }) {
       return;
     }
 
+    setSubmitting(true);
     if (mode === 'register') {
       if (!name.trim()) {
         setError(t('auth.errorName'));
+        setSubmitting(false);
+        return;
+      }
+      if (!/^[a-z0-9_]{3,32}$/.test(username.trim().toLowerCase())) {
+        setError(t('auth.errorUsername'));
+        setSubmitting(false);
         return;
       }
       if (password !== passwordConfirm) {
         setError(t('auth.errorPasswordMismatch'));
+        setSubmitting(false);
         return;
       }
-      onLogin({ name: name.trim(), email: email.trim() });
+      const result = await window.api.register({ name: name.trim(), username: username.trim().toLowerCase(), email: email.trim(), password });
+      setSubmitting(false);
+      if (!result.ok) {
+        setError(result.error || t('auth.errorGeneric'));
+        return;
+      }
+      onLogin(result.user);
     } else {
-      const displayName = email.split('@')[0] || t('auth.defaultName');
-      onLogin({ name: displayName, email: email.trim() });
+      const result = await window.api.login({ email: email.trim(), password });
+      setSubmitting(false);
+      if (!result.ok) {
+        setError(result.error || t('auth.errorGeneric'));
+        return;
+      }
+      onLogin(result.user);
     }
   };
 
@@ -78,6 +99,18 @@ export default function AuthScreen({ onLogin }) {
             </label>
           )}
 
+          {mode === 'register' && (
+            <label>
+              {t('auth.username')}
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder={t('auth.usernamePlaceholder')}
+              />
+            </label>
+          )}
+
           <label>
             {t('auth.email')}
             <input
@@ -119,7 +152,7 @@ export default function AuthScreen({ onLogin }) {
 
           {error && <div className="auth-error">{error}</div>}
 
-          <button type="submit" className="btn-primary auth-submit">
+          <button type="submit" className="btn-primary auth-submit" disabled={submitting}>
             {mode === 'login' ? t('auth.loginButton') : t('auth.registerButton')}
           </button>
         </form>

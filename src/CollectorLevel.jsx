@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { useI18n } from './i18n.jsx';
+import { levelFromXp } from './collectorLevel.js';
 
 const ACHIEVEMENT_DEFS = [
   { id: 'firstItem', icon: '🎉', check: (s) => s.uniqueItems >= 1 },
@@ -11,15 +12,6 @@ const ACHIEVEMENT_DEFS = [
   { id: 'photos5', icon: '📸', check: (s) => s.itemsWithImages >= 5 },
   { id: 'completeSet', icon: '🏆', check: (s) => s.hasCompleteSet }
 ];
-
-function levelFromXp(xp) {
-  // Level steigt mit der Wurzel der XP – frühe Level kommen schneller
-  let level = 1;
-  while (xp >= level * level * 20) level++;
-  const currentFloor = (level - 1) * (level - 1) * 20;
-  const nextCeil = level * level * 20;
-  return { level, currentFloor, nextCeil };
-}
 
 export default function CollectorLevel({ items, categories, categoryTargets, onClose }) {
   const { lang, t } = useI18n();

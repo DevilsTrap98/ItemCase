@@ -15,7 +15,12 @@ import UpgradeModal from './UpgradeModal.jsx';
 import FriendsPanel from './FriendsPanel.jsx';
 import LegalModal from './LegalModal.jsx';
 import ChatWindow from './ChatWindow.jsx';
-import { MOCK_FRIENDS, MOCK_GROUPS } from './friends-mock.js';
+import GroupsModal from './GroupsModal.jsx';
+import ForumHubModal from './ForumHubModal.jsx';
+import { computeCollectorLevel } from './collectorLevel.js';
+import NotificationBell from './NotificationBell.jsx';
+import Toast from './Toast.jsx';
+import { playNotificationSound } from './sound.js';
 import { useI18n } from './i18n.jsx';
 import logoMark from './assets/logo-mark.png';
 import useImagePath from './useImagePath.js';
@@ -86,6 +91,7 @@ export default function App() {
   const [categoryCaseDesigns, setCategoryCaseDesigns] = useState({});
   const [communityCatalog, setCommunityCatalog] = useState([]);
   const [catalogCategories, setCatalogCategories] = useState([]);
+  const [friendsData, setFriendsData] = useState({ friends: [], incoming: [], outgoing: [] });
   const [showCommunityCatalog, setShowCommunityCatalog] = useState(false);
   const [activeCategory, setActiveCategory] = useState(ALL_CATEGORY);
   const [search, setSearch] = useState('');
@@ -103,7 +109,14 @@ export default function App() {
   const [showDNA, setShowDNA] = useState(false);
   const [showImportExport, setShowImportExport] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
-  const [openChats, setOpenChats] = useState([]);
+  const [openChats, setOpenChats] = useState([]); // [{ conversationId, title, initials, isGroup, peerId }]
+  const [messagesByConversation, setMessagesByConversation] = useState({});
+  const [conversationMeta, setConversationMeta] = useState({});
+  const [notifications, setNotifications] = useState([]);
+  const [toast, setToast] = useState(null);
+  const [showGroups, setShowGroups] = useState(false);
+  const [showForumHub, setShowForumHub] = useState(false);
+  const [showCommunityMenu, setShowCommunityMenu] = useState(false);
   const [draggedCategory, setDraggedCategory] = useState(null);
   const [dragOverCategory, setDragOverCategory] = useState(null);
   const [dialog, setDialog] = useState(null);
@@ -121,19 +134,116 @@ export default function App() {
     localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(updatedUser));
   };
 
-  const handleOpenChat = (friendId) => {
-    setOpenChats((ids) => (ids.includes(friendId) ? ids : [...ids, friendId]));
+  const initialsOf = (name) => (name || '?').split(' ').map((p) => p[0]).join('').slice(0, 2).toUpperCase();
+
+  const appendMessage = (msg) => {
+    setMessagesByConversation((m) => {
+      const list = m[msg.conversationId] || [];
+      if (list.some((x) => x.id === msg.id)) return m;
+      return { ...m, [msg.conversationId]: [...list, msg] };
+    });
   };
 
-  const handleCloseChat = (friendId) => {
-    setOpenChats((ids) => ids.filter((id) => id !== friendId));
+  const refreshConversationMeta = async () => {
+    const list = await window.api.conversationsList();
+    const meta = {};
+    list.forEach((c) => {
+      if (c.type === 'direct' && c.peer) {
+        meta[c.id] = { title: c.peer.name, initials: initialsOf(c.peer.name), isGroup: false, peerId: c.peer.id };
+      } else if (c.type === 'group') {
+        meta[c.id] = { title: c.groupName, initials: initialsOf(c.groupName), isGroup: true };
+      }
+    });
+    setConversationMeta(meta);
+    return meta;
   };
 
-  const handleLogout = () => {
+  const openChatByConversation = async (conversationId, metaHint) => {
+    const meta = metaHint || conversationMeta[conversationId] || { title: '?', initials: '?', isGroup: false };
+    setOpenChats((chats) => (chats.some((c) => c.conversationId === conversationId) ? chats : [...chats, { conversationId, ...meta }]));
+    if (!messagesByConversation[conversationId]) {
+      const history = await window.api.conversationsHistory(conversationId);
+      setMessagesByConversation((m) => ({ ...m, [conversationId]: history }));
+    }
+    window.api.conversationsMarkRead(conversationId);
+  };
+
+  const handleOpenChat = async (friend) => {
+    const result = await window.api.conversationsOpenDirect(friend.id);
+    if (!result.ok) return;
+    await openChatByConversation(result.id, { title: friend.name, initials: initialsOf(friend.name), isGroup: false, peerId: friend.id });
+  };
+
+  const handleOpenGroupChat = (group) => {
+    openChatByConversation(group.conversationId, { title: group.name, initials: initialsOf(group.name), isGroup: true });
+  };
+
+  const handleCloseChat = (conversationId) => {
+    setOpenChats((chats) => chats.filter((c) => c.conversationId !== conversationId));
+  };
+
+  const handleSendMessage = async (conversationId, body) => {
+    const result = await window.api.conversationsSend(conversationId, body);
+    if (result.ok) appendMessage(result.message);
+    else showAlert(result.error || t('groups.errorGeneric'));
+  };
+
+  const handleBlockUser = (userId) => {
+    askConfirm(t('friends.block') + '?', async () => {
+      await window.api.blockUser(userId);
+      setOpenChats((chats) => chats.filter((c) => c.peerId !== userId));
+      loadFriends();
+    }, true);
+  };
+
+  const loadNotifications = async () => {
+    if (isGuest) { setNotifications([]); return; }
+    setNotifications(await window.api.notificationsList());
+  };
+
+  const handleMarkNotificationRead = async (id) => {
+    await window.api.notificationsMarkRead(id);
+    setNotifications((list) => list.map((n) => (n.id === id ? { ...n, readAt: new Date().toISOString() } : n)));
+  };
+
+  const handleMarkAllNotificationsRead = async () => {
+    await window.api.notificationsMarkAllRead();
+    setNotifications((list) => list.map((n) => ({ ...n, readAt: n.readAt || new Date().toISOString() })));
+  };
+
+  const handleLogout = async () => {
+    await window.api.logout();
     localStorage.removeItem(USER_STORAGE_KEY);
     setUser(null);
     setShowSettings(false);
     setShowUserMenu(false);
+  };
+
+  const isGuest = !user?.id || !!user?.guest;
+
+  const loadFriends = async () => {
+    if (isGuest) {
+      setFriendsData({ friends: [], incoming: [], outgoing: [] });
+      return;
+    }
+    const data = await window.api.friendsList();
+    setFriendsData(data);
+  };
+
+  const handleSendFriendRequest = async (toUsername) => {
+    const result = await window.api.friendsSendRequest(toUsername);
+    if (result.ok) loadFriends();
+    return result;
+  };
+
+  const handleAcceptFriendRequest = async (id) => {
+    await window.api.friendsAcceptRequest(id);
+    loadFriends();
+  };
+
+  const handleDeclineFriendRequest = async (id) => {
+    await window.api.friendsDeclineRequest(id);
+    loadFriends();
   };
 
   useEffect(() => {
@@ -205,6 +315,37 @@ export default function App() {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    loadFriends();
+    loadNotifications();
+    if (!isGuest) refreshConversationMeta();
+  }, [user?.id, user?.guest]);
+
+  useEffect(() => {
+    if (isGuest) return undefined;
+
+    const unsubMessage = window.api.onNewMessage((msg) => {
+      appendMessage(msg);
+      if (msg.senderId !== user.id) {
+        playNotificationSound();
+        const meta = conversationMeta[msg.conversationId];
+        setToast({
+          title: meta?.title || msg.senderName,
+          body: msg.body,
+          onClick: () => openChatByConversation(msg.conversationId, meta)
+        });
+      }
+    });
+
+    const unsubNotification = window.api.onNewNotification((notification) => {
+      setNotifications((list) => [notification, ...list]);
+      playNotificationSound();
+    });
+
+    return () => { unsubMessage(); unsubNotification(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isGuest, user?.id, conversationMeta]);
 
   const handleSave = async (item) => {
     if (!item.id && isOverItemLimit) {
@@ -568,9 +709,26 @@ export default function App() {
             {t('topbar.newItem')}
           </button>
 
-          <button className="btn-secondary" onClick={() => setShowCommunityCatalog(true)}>
-            📚 {t('topbar.communityCatalog')}
-          </button>
+          <div className="user-menu-wrap">
+            <button className="btn-secondary" onClick={() => setShowCommunityMenu((v) => !v)}>
+              🌍 {t('topbar.community')} ▾
+            </button>
+            {showCommunityMenu && (
+              <>
+                <div className="user-menu-backdrop" onClick={() => setShowCommunityMenu(false)} />
+                <div className="user-menu">
+                  <button onClick={() => { setShowCommunityCatalog(true); setShowCommunityMenu(false); }}>
+                    📚 {t('topbar.communityCatalog')}
+                  </button>
+                  {!isGuest && (
+                    <button onClick={() => { setShowForumHub(true); setShowCommunityMenu(false); }}>
+                      💬 {t('topbar.forum')}
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
 
           <button
             className={showShowcase ? 'btn-secondary active' : 'btn-secondary'}
@@ -587,6 +745,19 @@ export default function App() {
           <button className="icon-btn topbar-icon-btn" onClick={() => setShowDNA(true)} title={t('topbar.dna')}>
             🧬
           </button>
+
+          {!isGuest && (
+            <>
+              <button className="icon-btn topbar-icon-btn" onClick={() => setShowGroups(true)} title={t('topbar.groups')}>
+                👥
+              </button>
+              <NotificationBell
+                notifications={notifications}
+                onMarkRead={handleMarkNotificationRead}
+                onMarkAllRead={handleMarkAllNotificationsRead}
+              />
+            </>
+          )}
 
           <div className="user-menu-wrap">
             <button className="avatar avatar-btn" onClick={() => setShowUserMenu((v) => !v)}>
@@ -698,7 +869,16 @@ export default function App() {
         )}
         </main>
 
-        <FriendsPanel friends={MOCK_FRIENDS} groups={MOCK_GROUPS} onOpenChat={handleOpenChat} />
+        <FriendsPanel
+          friends={friendsData.friends}
+          incoming={friendsData.incoming}
+          isGuest={isGuest}
+          onOpenChat={handleOpenChat}
+          onSendRequest={handleSendFriendRequest}
+          onAccept={handleAcceptFriendRequest}
+          onDecline={handleDeclineFriendRequest}
+          onBlock={handleBlockUser}
+        />
         </div>
       </div>
 
@@ -806,12 +986,42 @@ export default function App() {
 
       {openChats.length > 0 && (
         <div className="chat-dock">
-          {openChats.map((friendId) => {
-            const friend = MOCK_FRIENDS.find((f) => f.id === friendId);
-            if (!friend) return null;
-            return <ChatWindow key={friendId} friend={friend} onClose={() => handleCloseChat(friendId)} />;
-          })}
+          {openChats.map((chat) => (
+            <ChatWindow
+              key={chat.conversationId}
+              conversationId={chat.conversationId}
+              title={chat.title}
+              initials={chat.initials}
+              isGroup={chat.isGroup}
+              messages={messagesByConversation[chat.conversationId]}
+              currentUserId={user.id}
+              onSend={handleSendMessage}
+              onClose={() => handleCloseChat(chat.conversationId)}
+              onBlock={chat.peerId ? () => handleBlockUser(chat.peerId) : null}
+            />
+          ))}
         </div>
+      )}
+
+      {showGroups && (
+        <GroupsModal
+          user={user}
+          onClose={() => setShowGroups(false)}
+          onOpenGroupChat={(g) => { handleOpenGroupChat(g); setShowGroups(false); }}
+        />
+      )}
+
+      {showForumHub && (
+        <ForumHubModal user={user} myLevel={computeCollectorLevel(items, categories)} onClose={() => setShowForumHub(false)} />
+      )}
+
+      {toast && (
+        <Toast
+          title={toast.title}
+          body={toast.body}
+          onClick={toast.onClick}
+          onDismiss={() => setToast(null)}
+        />
       )}
       </div>
     </>
