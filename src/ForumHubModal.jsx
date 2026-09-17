@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useI18n } from './i18n.jsx';
+import TitleBar from './TitleBar.jsx';
 
 const CATEGORIES = [
   'show_tell', 'help_id', 'trading_cards', 'retro_games', 'lego', 'figures',
@@ -162,6 +163,7 @@ export default function ForumHubModal({ user, onClose, myLevel }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal catalog-modal catalog-modal-fullscreen forum-page-v2" onClick={(e) => e.stopPropagation()}>
+        <TitleBar />
         <div className="forum-tabbar">
           <div className="forum-tabbar-title">
             💬 {category === 'all' ? t('forum.categoryAll') : `${CATEGORY_ICON[category]} ${t(`forum.category.${category}`)}`}

@@ -4,6 +4,7 @@ import useImagePath from './useImagePath.js';
 import CatalogPhotoModal from './CatalogPhotoModal.jsx';
 import ReportModal from './ReportModal.jsx';
 import { SUGGESTED_CATEGORIES } from './category-defaults.js';
+import TitleBar from './TitleBar.jsx';
 
 const ALL_CAT = '__all__';
 
@@ -26,9 +27,6 @@ function CatalogCard({ entry, onAdopt, adopted, onOpenPhotoForm, photoSubmitted,
     <div className="card catalog-card">
       <div className="card-image">
         {imgSrc ? <img src={imgSrc} alt={entry.name} /> : <div className="card-image-placeholder">📦</div>}
-        <span className={entry.status === 'approved' ? 'catalog-status-pill approved' : 'catalog-status-pill pending'}>
-          {entry.status === 'approved' ? t('catalog.statusApproved') : t('catalog.statusPending')}
-        </span>
       </div>
       <div className="card-body">
         <div className="card-title" title={entry.name}>{entry.name}</div>
@@ -209,6 +207,7 @@ export default function CommunityCatalogModal({ catalog, catalogCategories, item
     <>
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal catalog-modal catalog-modal-fullscreen" onClick={(e) => e.stopPropagation()}>
+        <TitleBar />
         <div className="catalog-modal-header">
           <div>
             <h2 className="catalog-modal-title">📚 {t('catalog.title')}</h2>

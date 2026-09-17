@@ -20,6 +20,7 @@ import GroupsModal from './GroupsModal.jsx';
 import ForumHubModal from './ForumHubModal.jsx';
 import WishlistModal from './WishlistModal.jsx';
 import SmartImportModal from './SmartImportModal.jsx';
+import TitleBar from './TitleBar.jsx';
 import { computeCollectorLevel } from './collectorLevel.js';
 import NotificationBell from './NotificationBell.jsx';
 import Toast from './Toast.jsx';
@@ -594,11 +595,7 @@ export default function App() {
   } : undefined;
   const avatarSrc = useImagePath(user?.avatarImage);
 
-  const titleBar = (
-    <div className="titlebar">
-      <img src={logoMark} alt="" className="titlebar-logo" />
-    </div>
-  );
+  const titleBar = <TitleBar />;
 
   if (!user) {
     return (
