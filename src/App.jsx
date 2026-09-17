@@ -19,6 +19,7 @@ import ChatWindow from './ChatWindow.jsx';
 import GroupsModal from './GroupsModal.jsx';
 import ForumHubModal from './ForumHubModal.jsx';
 import WishlistModal from './WishlistModal.jsx';
+import SmartImportModal from './SmartImportModal.jsx';
 import { computeCollectorLevel } from './collectorLevel.js';
 import NotificationBell from './NotificationBell.jsx';
 import Toast from './Toast.jsx';
@@ -108,6 +109,7 @@ export default function App() {
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
   const [showWishlist, setShowWishlist] = useState(false);
+  const [showSmartImport, setShowSmartImport] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [addingCategory, setAddingCategory] = useState(false);
@@ -999,6 +1001,7 @@ export default function App() {
           onImportZip={() => { handleImport(); setShowImportExport(false); }}
           onExportCsv={() => { window.api.exportCsv(); setShowImportExport(false); }}
           onImportCsv={() => { handleImportCsv(); setShowImportExport(false); }}
+          onSmartImport={() => { setShowSmartImport(true); setShowImportExport(false); }}
           categories={categories}
           onClose={() => setShowImportExport(false)}
         />
@@ -1085,6 +1088,14 @@ export default function App() {
       )}
 
       {showWishlist && <WishlistModal onClose={() => setShowWishlist(false)} />}
+
+      {showSmartImport && (
+        <SmartImportModal
+          existingItems={items}
+          onImported={loadData}
+          onClose={() => setShowSmartImport(false)}
+        />
+      )}
 
       {showGroups && (
         <GroupsModal

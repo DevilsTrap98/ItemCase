@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useI18n } from './i18n.jsx';
 
-export default function ImportExportModal({ onExportZip, onImportZip, onExportCsv, onImportCsv, categories, onClose }) {
+export default function ImportExportModal({ onExportZip, onImportZip, onExportCsv, onImportCsv, onSmartImport, categories, onClose }) {
   const { t } = useI18n();
   const [pdfScope, setPdfScope] = useState('all');
   const [pdfImages, setPdfImages] = useState(true);
@@ -28,6 +28,16 @@ export default function ImportExportModal({ onExportZip, onImportZip, onExportCs
             </button>
             <button type="button" className="ie-btn ie-btn-primary" onClick={onExportZip}>
               <span className="ie-btn-icon">⬆️</span> {t('sidebar.export')}
+            </button>
+          </div>
+        </div>
+
+        <div className="form-fieldset" style={{ marginBottom: 14 }}>
+          <div className="ie-row-title">🧠 {t('ie.smartTitle')}</div>
+          <p className="field-hint" style={{ marginTop: -4 }}>{t('ie.smartHint')}</p>
+          <div className="ie-actions">
+            <button type="button" className="ie-btn ie-btn-primary" onClick={onSmartImport}>
+              <span className="ie-btn-icon">📂</span> {t('ie.smartAction')}
             </button>
           </div>
         </div>

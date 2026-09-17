@@ -1117,6 +1117,47 @@ function rowsFromXlsx(filePath) {
     .filter((r) => !(r.length === 0 || (r.length === 1 && r[0] === '')));
 }
 
+function rowsFromXlsxSheet(workbook, sheetName) {
+  const sheet = workbook.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
+  return rows
+    .map((row) => row.map((cell) => String(cell ?? '')))
+    .filter((r) => !(r.length === 0 || (r.length === 1 && r[0] === '')));
+}
+
+// Reads a spreadsheet's raw rows (no ItemCase header-name assumptions) for
+// the smart-import wizard's own column detection in the renderer — unlike
+// data:importCsv above, which requires ItemCase's own column names.
+ipcMain.handle('data:pickImportSpreadsheet', async () => {
+  const result = await dialog.showOpenDialog({
+    title: 'Datei für den intelligenten Import wählen',
+    properties: ['openFile'],
+    filters: [{ name: 'CSV / Excel', extensions: ['csv', 'xlsx', 'xls'] }]
+  });
+  if (result.canceled || result.filePaths.length === 0) return { ok: false, reason: 'canceled' };
+
+  const filePath = result.filePaths[0];
+  const ext = path.extname(filePath).toLowerCase();
+
+  try {
+    if (ext === '.csv') {
+      const text = fs.readFileSync(filePath, 'utf-8').replace(/^﻿/, '');
+      const rows = parseCsv(text);
+      if (rows.length === 0) return { ok: false, reason: 'invalid' };
+      return { ok: true, fileName: path.basename(filePath), sheets: [{ name: 'CSV', rows }] };
+    }
+
+    const workbook = XLSX.readFile(filePath, { cellDates: false });
+    const sheets = workbook.SheetNames
+      .map((name) => ({ name, rows: rowsFromXlsxSheet(workbook, name) }))
+      .filter((s) => s.rows.length > 0);
+    if (sheets.length === 0) return { ok: false, reason: 'invalid' };
+    return { ok: true, fileName: path.basename(filePath), sheets };
+  } catch (e) {
+    return { ok: false, reason: 'invalid' };
+  }
+});
+
 ipcMain.handle('data:importCsv', async () => {
   const result = await dialog.showOpenDialog({
     title: 'Sammlung aus CSV oder Excel importieren',

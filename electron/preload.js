@@ -33,6 +33,7 @@ contextBridge.exposeInMainWorld('api', {
   exportCsv: () => ipcRenderer.invoke('data:exportCsv'),
   importCsv: () => ipcRenderer.invoke('data:importCsv'),
   exportPdf: (options) => ipcRenderer.invoke('data:exportPdf', options),
+  pickImportSpreadsheet: () => ipcRenderer.invoke('data:pickImportSpreadsheet'),
   register: (payload) => ipcRenderer.invoke('auth:register', payload),
   login: (payload) => ipcRenderer.invoke('auth:login', payload),
   logout: () => ipcRenderer.invoke('auth:logout'),
