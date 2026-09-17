@@ -204,6 +204,52 @@ INSERT IGNORE INTO blocked_words (word, severity, lang) VALUES
   ('asshole', 'mask', 'en'),
   ('bastard', 'mask', 'en');
 
+-- Private collection, one row per owned item. Previously lived only in a
+-- local collection.json per machine, which had no concept of "whose" data
+-- it was — logging in as a different account (or as a guest) on the same
+-- installation saw the same file. Scoping it to owner_id fixes that and
+-- makes the collection available across devices for that account.
+CREATE TABLE IF NOT EXISTS collection_items (
+  id VARCHAR(36) PRIMARY KEY,
+  owner_id VARCHAR(36) NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  category VARCHAR(255) NOT NULL DEFAULT '',
+  item_condition VARCHAR(32) NOT NULL DEFAULT '',
+  quantity INT NOT NULL DEFAULT 1,
+  purchase_price DECIMAL(12,2) NULL,
+  value DECIMAL(12,2) NULL,
+  notes TEXT NULL,
+  image_data MEDIUMTEXT NULL,
+  showcase TINYINT(1) NOT NULL DEFAULT 0,
+  story_place VARCHAR(255) NULL,
+  story_date VARCHAR(64) NULL,
+  story_is_gift TINYINT(1) NOT NULL DEFAULT 0,
+  story_is_first_piece TINYINT(1) NOT NULL DEFAULT 0,
+  story_text TEXT NULL,
+  custom_fields JSON NULL,
+  catalog_info JSON NULL,
+  catalog_item_id VARCHAR(36) NULL,
+  value_history JSON NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_ci_owner FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX idx_ci_owner (owner_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Per-account collection config (category list + per-category settings).
+-- One row per user, JSON blobs mirror the shape the client already used
+-- locally so the Electron side barely changes.
+CREATE TABLE IF NOT EXISTS collection_settings (
+  owner_id VARCHAR(36) PRIMARY KEY,
+  categories JSON NOT NULL,
+  category_images JSON NOT NULL,
+  category_fields JSON NOT NULL,
+  category_targets JSON NOT NULL,
+  category_case_designs JSON NOT NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_cs_owner FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE IF NOT EXISTS catalog_entries (
   id VARCHAR(36) PRIMARY KEY,
   name VARCHAR(255) NOT NULL,

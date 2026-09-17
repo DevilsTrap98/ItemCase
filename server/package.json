@@ -10,7 +10,8 @@
     "db:migrate": "node scripts/migrate.js",
     "db:check": "node scripts/check-connection.js",
     "test:phase3": "node -r dotenv/config scripts/smoke-test-phase3.js",
-    "test:forum": "node scripts/smoke-test-forum.js"
+    "test:forum": "node scripts/smoke-test-forum.js",
+    "test:collection": "node scripts/smoke-test-collection.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

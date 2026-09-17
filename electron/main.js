@@ -12,7 +12,6 @@ const isDev = process.env.NODE_ENV === 'development';
 
 const userDataDir = app.getPath('userData');
 const imagesDir = path.join(userDataDir, 'images');
-const dbFile = path.join(userDataDir, 'collection.json');
 const feedbackFile = path.join(userDataDir, 'feedback-outbox.json');
 const reportsFile = path.join(userDataDir, 'reports-outbox.json');
 const authFile = path.join(userDataDir, 'auth.json');
@@ -56,6 +55,24 @@ function clearAuthToken() {
   try { fs.unlinkSync(authFile); } catch (e) {}
 }
 
+function decodeJwtPayload(token) {
+  try {
+    return JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString('utf-8'));
+  } catch (e) {
+    return null;
+  }
+}
+
+// Every local cache file is scoped to whoever is currently logged in (or
+// 'guest') — without this, switching accounts on the same machine would
+// show the previous account's private collection, since there used to be
+// only one shared collection.json regardless of who was signed in.
+function currentIdentity() {
+  const token = loadAuthToken();
+  if (!token) return 'guest';
+  return decodeJwtPayload(token)?.id || 'guest';
+}
+
 // Thin wrapper around the ItemCase backend (server/) — the community
 // catalog, reports, feedback and friends all live there now rather than
 // only in the local collection.json (see server/src/app.js for routes).
@@ -79,6 +96,17 @@ async function apiFetch(urlPath, { method = 'GET', body, auth = false } = {}) {
     throw error;
   }
   return data;
+}
+
+// Calls a /collection endpoint, refreshes the local read-through cache
+// with the response (see readDb/writeDb), and returns the merged db shape
+// the renderer expects. Used by every logged-in items/categories mutation.
+async function remoteCollectionCall(urlPath, options) {
+  const remote = await apiFetch(`/collection${urlPath}`, { auth: true, ...options });
+  const db = readDb();
+  Object.assign(db, remote);
+  writeDb(db);
+  return db;
 }
 
 // Real-time push (new messages, notifications, typing) — the socket layer
@@ -169,25 +197,42 @@ function demoCatalogEntries() {
 function ensureDirs() {
   if (!fs.existsSync(userDataDir)) fs.mkdirSync(userDataDir, { recursive: true });
   if (!fs.existsSync(imagesDir)) fs.mkdirSync(imagesDir, { recursive: true });
-  if (!fs.existsSync(dbFile)) {
-    fs.writeFileSync(dbFile, JSON.stringify({
-      items: [],
-      categories: ['🎬 Filme & Serien', '🎮 Videospiele', '🃏 Trading Cards', '📚 Comics & Manga', '📦 Sonstige Sammlerstücke'],
-      categoryImages: {},
-      categoryFields: {},
-      categoryTargets: {},
-      categoryCaseDesigns: {},
-      communityCatalog: demoCatalogEntries(),
-      catalogPhotoProposals: [],
-      catalogCategories: []
-    }, null, 2));
-  }
+}
+
+// Logged-in users: this is a read-through cache of the server-backed
+// collection (server/src/routes/collection.js), refreshed on every
+// items:getAll and after every mutation — not the source of truth, just an
+// offline/last-known-good fallback. Guests: this file IS the only copy.
+function dbFileFor(identity) {
+  return path.join(userDataDir, `collection-${identity}.json`);
+}
+
+function defaultDb() {
+  return {
+    items: [],
+    categories: ['🎬 Filme & Serien', '🎮 Videospiele', '🃏 Trading Cards', '📚 Comics & Manga', '📦 Sonstige Sammlerstücke'],
+    categoryImages: {},
+    categoryFields: {},
+    categoryTargets: {},
+    categoryCaseDesigns: {},
+    communityCatalog: demoCatalogEntries(),
+    catalogPhotoProposals: [],
+    catalogCategories: []
+  };
 }
 
 function readDb() {
   ensureDirs();
+  const file = dbFileFor(currentIdentity());
+  if (!fs.existsSync(file)) {
+    const fresh = defaultDb();
+    fs.writeFileSync(file, JSON.stringify(fresh, null, 2));
+    return fresh;
+  }
   try {
-    const db = JSON.parse(fs.readFileSync(dbFile, 'utf-8'));
+    const db = JSON.parse(fs.readFileSync(file, 'utf-8'));
+    if (!db.items) db.items = [];
+    if (!db.categories) db.categories = defaultDb().categories;
     if (!db.categoryImages) db.categoryImages = {};
     if (!db.categoryFields) db.categoryFields = {};
     if (!db.categoryTargets) db.categoryTargets = {};
@@ -197,12 +242,13 @@ function readDb() {
     if (!db.catalogCategories) db.catalogCategories = [];
     return db;
   } catch (e) {
-    return { items: [], categories: [], categoryImages: {}, categoryFields: {}, categoryTargets: {}, categoryCaseDesigns: {}, communityCatalog: [], catalogPhotoProposals: [], catalogCategories: [] };
+    return defaultDb();
   }
 }
 
 function writeDb(data) {
-  fs.writeFileSync(dbFile, JSON.stringify(data, null, 2));
+  ensureDirs();
+  fs.writeFileSync(dbFileFor(currentIdentity()), JSON.stringify(data, null, 2));
 }
 
 const isWindows = process.platform === 'win32';
@@ -264,8 +310,63 @@ function mapRemoteCatalogEntry(entry) {
   return { ...entry, imagePath: entry.imageData || null };
 }
 
+// One-time migration for accounts that never had a server-backed
+// collection before this version: pushes whatever was sitting in a local
+// cache file (this identity's own, or the pre-multi-user shared
+// collection.json) up to the server. Only ever runs when the server-side
+// collection is still empty, so it can't run twice or duplicate data.
+async function migrateLegacyLocalCollection() {
+  const candidates = [dbFileFor(currentIdentity()), path.join(userDataDir, 'collection.json')];
+  for (const file of candidates) {
+    if (!fs.existsSync(file)) continue;
+    let legacy;
+    try {
+      legacy = JSON.parse(fs.readFileSync(file, 'utf-8'));
+    } catch (e) {
+      continue;
+    }
+    if (!Array.isArray(legacy.items) || legacy.items.length === 0) continue;
+
+    console.log(`[migrate] found ${legacy.items.length} local item(s) in ${file}, pushing to server`);
+    for (const cat of legacy.categories || []) {
+      try { await apiFetch('/collection/categories', { method: 'POST', auth: true, body: { category: cat } }); } catch (e) {}
+    }
+    for (const item of legacy.items) {
+      const imageData = item.imagePath && !item.imagePath.startsWith('data:') ? fileToDataUrl(item.imagePath) : (item.imagePath || null);
+      try {
+        await apiFetch('/collection/items', { method: 'POST', auth: true, body: { ...item, id: undefined, imageData } });
+      } catch (e) {
+        console.error('[migrate] failed to push item', item.name, e.message);
+      }
+    }
+    return true;
+  }
+  return false;
+}
+
 ipcMain.handle('items:getAll', async () => {
   const db = readDb();
+
+  if (loadAuthToken()) {
+    try {
+      let remote = await apiFetch('/collection', { auth: true });
+      if (remote.items.length === 0 && await migrateLegacyLocalCollection()) {
+        remote = await apiFetch('/collection', { auth: true });
+      }
+      db.items = remote.items;
+      db.categories = remote.categories;
+      db.categoryImages = remote.categoryImages;
+      db.categoryFields = remote.categoryFields;
+      db.categoryTargets = remote.categoryTargets;
+      db.categoryCaseDesigns = remote.categoryCaseDesigns;
+      writeDb(db);
+    } catch (e) {
+      // Offline or server unreachable — fall back to the last cached copy
+      // rather than showing an empty collection.
+      console.error('[itemcase-api] failed to load collection, using cache', e.message);
+    }
+  }
+
   try {
     const [catalog, categories] = await Promise.all([
       apiFetch('/catalog'),
@@ -281,7 +382,18 @@ ipcMain.handle('items:getAll', async () => {
   return db;
 });
 
-ipcMain.handle('items:save', (_event, item) => {
+ipcMain.handle('items:save', async (_event, item) => {
+  if (loadAuthToken()) {
+    // imagePath is either a freshly picked local file (needs converting)
+    // or already a data URL from a previous save/load — pass through as-is.
+    const imageData = item.imagePath && !item.imagePath.startsWith('data:') ? fileToDataUrl(item.imagePath) : (item.imagePath || null);
+    const remote = await apiFetch('/collection/items', { method: 'POST', auth: true, body: { ...item, imageData } });
+    const db = readDb();
+    Object.assign(db, remote);
+    writeDb(db);
+    return db;
+  }
+
   const db = readDb();
   const now = new Date().toISOString();
   if (item.id) {
@@ -310,7 +422,15 @@ ipcMain.handle('items:save', (_event, item) => {
   return db;
 });
 
-ipcMain.handle('items:delete', (_event, id) => {
+ipcMain.handle('items:delete', async (_event, id) => {
+  if (loadAuthToken()) {
+    const remote = await apiFetch(`/collection/items/${id}`, { method: 'DELETE', auth: true });
+    const db = readDb();
+    Object.assign(db, remote);
+    writeDb(db);
+    return db;
+  }
+
   const db = readDb();
   const item = db.items.find((i) => i.id === id);
   if (item && item.imagePath) {
@@ -324,7 +444,9 @@ ipcMain.handle('items:delete', (_event, id) => {
   return db;
 });
 
-ipcMain.handle('categories:add', (_event, category) => {
+ipcMain.handle('categories:add', async (_event, category) => {
+  if (loadAuthToken()) return remoteCollectionCall('/categories', { method: 'POST', body: { category } });
+
   const db = readDb();
   if (category && !db.categories.includes(category)) {
     db.categories.push(category);
@@ -333,7 +455,9 @@ ipcMain.handle('categories:add', (_event, category) => {
   return db;
 });
 
-ipcMain.handle('categories:rename', (_event, { oldName, newName }) => {
+ipcMain.handle('categories:rename', async (_event, { oldName, newName }) => {
+  if (loadAuthToken()) return remoteCollectionCall('/categories/rename', { method: 'POST', body: { oldName, newName } });
+
   const db = readDb();
   const trimmed = (newName || '').trim();
   if (!trimmed || !db.categories.includes(oldName)) return db;
@@ -372,7 +496,9 @@ ipcMain.handle('categories:rename', (_event, { oldName, newName }) => {
   return db;
 });
 
-ipcMain.handle('categories:delete', (_event, category) => {
+ipcMain.handle('categories:delete', async (_event, category) => {
+  if (loadAuthToken()) return remoteCollectionCall(`/categories/${encodeURIComponent(category)}`, { method: 'DELETE' });
+
   const db = readDb();
   db.categories = db.categories.filter((c) => c !== category);
 
@@ -488,7 +614,9 @@ ipcMain.handle('catalog:proposeCategory', async (_event, name) => {
   return db.catalogCategories;
 });
 
-ipcMain.handle('categories:setCaseDesign', (_event, { name, caseDesign }) => {
+ipcMain.handle('categories:setCaseDesign', async (_event, { name, caseDesign }) => {
+  if (loadAuthToken()) return remoteCollectionCall(`/categories/${encodeURIComponent(name)}/case-design`, { method: 'PUT', body: { caseDesign } });
+
   const db = readDb();
   if (caseDesign) {
     db.categoryCaseDesigns[name] = caseDesign;
@@ -499,7 +627,9 @@ ipcMain.handle('categories:setCaseDesign', (_event, { name, caseDesign }) => {
   return db;
 });
 
-ipcMain.handle('categories:setFields', (_event, { name, fields }) => {
+ipcMain.handle('categories:setFields', async (_event, { name, fields }) => {
+  if (loadAuthToken()) return remoteCollectionCall(`/categories/${encodeURIComponent(name)}/fields`, { method: 'PUT', body: { fields } });
+
   const db = readDb();
   if (Array.isArray(fields) && fields.length > 0) {
     db.categoryFields[name] = fields;
@@ -510,7 +640,9 @@ ipcMain.handle('categories:setFields', (_event, { name, fields }) => {
   return db;
 });
 
-ipcMain.handle('categories:setTarget', (_event, { name, target }) => {
+ipcMain.handle('categories:setTarget', async (_event, { name, target }) => {
+  if (loadAuthToken()) return remoteCollectionCall(`/categories/${encodeURIComponent(name)}/target`, { method: 'PUT', body: { target } });
+
   const db = readDb();
   const num = Number(target);
   if (num > 0) {
@@ -522,7 +654,9 @@ ipcMain.handle('categories:setTarget', (_event, { name, target }) => {
   return db;
 });
 
-ipcMain.handle('categories:setOrder', (_event, order) => {
+ipcMain.handle('categories:setOrder', async (_event, order) => {
+  if (loadAuthToken()) return remoteCollectionCall('/categories/order', { method: 'PUT', body: { order } });
+
   const db = readDb();
   if (Array.isArray(order)) {
     const known = new Set(db.categories);
@@ -534,7 +668,12 @@ ipcMain.handle('categories:setOrder', (_event, order) => {
   return db;
 });
 
-ipcMain.handle('categories:setImage', (_event, { name, fileName }) => {
+ipcMain.handle('categories:setImage', async (_event, { name, fileName }) => {
+  if (loadAuthToken()) {
+    const imageData = fileName ? fileToDataUrl(fileName) : null;
+    return remoteCollectionCall(`/categories/${encodeURIComponent(name)}/image`, { method: 'PUT', body: { imageData } });
+  }
+
   const db = readDb();
   const previous = db.categoryImages[name];
   if (previous && previous !== fileName) {
@@ -629,6 +768,22 @@ ipcMain.handle('catalog:report', async (_event, { targetType, targetId, targetNa
   return true;
 });
 
+// Refreshes the local cache from the server for logged-in users before an
+// export, so exportZip/exportCsv never ship stale cached data.
+async function freshDb() {
+  const db = readDb();
+  if (loadAuthToken()) {
+    try {
+      const remote = await apiFetch('/collection', { auth: true });
+      Object.assign(db, remote);
+      writeDb(db);
+    } catch (e) {
+      console.error('[itemcase-api] failed to refresh collection before export', e.message);
+    }
+  }
+  return db;
+}
+
 ipcMain.handle('data:exportZip', async () => {
   const result = await dialog.showSaveDialog({
     title: 'Sammlung exportieren',
@@ -637,7 +792,7 @@ ipcMain.handle('data:exportZip', async () => {
   });
   if (result.canceled || !result.filePath) return false;
 
-  const db = readDb();
+  const db = await freshDb();
   const zip = new AdmZip();
 
   zip.addFile('collection.json', Buffer.from(JSON.stringify(db, null, 2), 'utf-8'));
@@ -702,21 +857,41 @@ ipcMain.handle('data:importZip', async () => {
     imageNameMap[originalName] = newName;
   });
 
-  const db = readDb();
-
   const importedItems = imported.items.map((item) => ({
     ...item,
     id: crypto.randomUUID(),
-    imagePath: item.imagePath && imageNameMap[item.imagePath] ? imageNameMap[item.imagePath] : null,
+    // A pre-existing data URL (server-backed export) needs no remapping;
+    // a plain filename (older local export) is resolved via imageNameMap.
+    imagePath: item.imagePath && item.imagePath.startsWith('data:')
+      ? item.imagePath
+      : (item.imagePath && imageNameMap[item.imagePath] ? imageNameMap[item.imagePath] : null),
     updatedAt: new Date().toISOString()
   }));
-
-  db.items = [...db.items, ...importedItems];
 
   const importedCategories = Array.isArray(imported.categories) ? imported.categories : [];
   importedItems.forEach((item) => {
     if (item.category && !importedCategories.includes(item.category)) importedCategories.push(item.category);
   });
+
+  if (loadAuthToken()) {
+    for (const cat of importedCategories) {
+      if (!cat) continue;
+      try { await apiFetch('/collection/categories', { method: 'POST', auth: true, body: { category: cat } }); } catch (e) {}
+    }
+    for (const item of importedItems) {
+      const imageData = item.imagePath && !item.imagePath.startsWith('data:') ? fileToDataUrl(item.imagePath) : (item.imagePath || null);
+      try {
+        await apiFetch('/collection/items', { method: 'POST', auth: true, body: { ...item, id: undefined, imageData } });
+      } catch (e) {
+        console.error('[itemcase-api] failed to import item', item.name, e.message);
+      }
+    }
+    await freshDb();
+    return { ok: true, count: importedItems.length };
+  }
+
+  const db = readDb();
+  db.items = [...db.items, ...importedItems];
   importedCategories.forEach((cat) => {
     if (cat && !db.categories.includes(cat)) db.categories.push(cat);
   });
@@ -825,7 +1000,7 @@ ipcMain.handle('data:exportCsv', async () => {
   });
   if (result.canceled || !result.filePath) return false;
 
-  const db = readDb();
+  const db = await freshDb();
 
   const customLabels = {};
   Object.values(db.categoryFields || {}).forEach((fields) => {
@@ -901,9 +1076,12 @@ ipcMain.handle('data:importCsv', async () => {
 
   if (fixedIndex.name === undefined) return { ok: false, reason: 'invalid' };
 
-  const db = readDb();
+  const isLoggedIn = !!loadAuthToken();
+  const db = isLoggedIn ? await apiFetch('/collection', { auth: true }) : readDb();
+  const originalCategories = new Set(db.categories);
   const now = new Date().toISOString();
-  let count = 0;
+  const newItems = [];
+  const changedCategoryFields = new Set();
 
   rows.slice(1).forEach((cols) => {
     const get = (col) => (fixedIndex[col] !== undefined ? (cols[fixedIndex[col]] || '').trim() : '');
@@ -928,9 +1106,10 @@ ipcMain.handle('data:importCsv', async () => {
         customFields[field.key] = rawVal;
       });
       db.categoryFields[category] = existingFields;
+      changedCategoryFields.add(category);
     }
 
-    db.items.push({
+    const item = {
       id: crypto.randomUUID(),
       name,
       category,
@@ -950,12 +1129,31 @@ ipcMain.handle('data:importCsv', async () => {
       createdAt: now,
       updatedAt: now,
       valueHistory: []
-    });
-    count++;
+    };
+    db.items.push(item);
+    newItems.push(item);
   });
 
-  writeDb(db);
-  return { ok: true, count };
+  if (isLoggedIn) {
+    for (const cat of db.categories) {
+      if (!originalCategories.has(cat)) {
+        try { await apiFetch('/collection/categories', { method: 'POST', auth: true, body: { category: cat } }); } catch (e) {}
+      }
+    }
+    for (const cat of changedCategoryFields) {
+      try { await apiFetch(`/collection/categories/${encodeURIComponent(cat)}/fields`, { method: 'PUT', auth: true, body: { fields: db.categoryFields[cat] } }); } catch (e) {}
+    }
+    for (const item of newItems) {
+      try { await apiFetch('/collection/items', { method: 'POST', auth: true, body: { ...item, id: undefined, imageData: null } }); } catch (e) {
+        console.error('[itemcase-api] failed to import item', item.name, e.message);
+      }
+    }
+    await freshDb();
+  } else {
+    writeDb(db);
+  }
+
+  return { ok: true, count: newItems.length };
 });
 
 // ---- Auth & Friends (server/src/routes/auth.js, friends.js) ----

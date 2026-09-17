@@ -34,6 +34,7 @@ export const translations = {
     'auth.errorName': 'Bitte einen Namen angeben.',
     'auth.errorPasswordMismatch': 'Die Passwörter stimmen nicht überein.',
     'auth.errorGeneric': 'Das hat leider nicht geklappt. Bitte versuch es erneut.',
+    'errors.syncFailed': 'Das konnte nicht gespeichert werden — bitte prüfe deine Verbindung und versuch es erneut.',
     'auth.guestName': 'Gast',
     'auth.defaultName': 'Sammler',
 
@@ -582,6 +583,7 @@ export const translations = {
     'auth.errorName': 'Please enter a name.',
     'auth.errorPasswordMismatch': 'Passwords do not match.',
     'auth.errorGeneric': 'Something went wrong. Please try again.',
+    'errors.syncFailed': 'That couldn’t be saved — please check your connection and try again.',
     'auth.guestName': 'Guest',
     'auth.defaultName': 'Collector',
 

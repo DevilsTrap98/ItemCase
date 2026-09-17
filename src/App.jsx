@@ -352,22 +352,34 @@ export default function App() {
       showAlert(t('tariff.overLimitBlocked', { limit: tariff.itemLimit }));
       return;
     }
-    await window.api.saveItem(item);
-    setShowForm(false);
-    setEditingItem(null);
-    loadData();
+    try {
+      await window.api.saveItem(item);
+      setShowForm(false);
+      setEditingItem(null);
+      loadData();
+    } catch (e) {
+      showAlert(t('errors.syncFailed'));
+    }
   };
 
   const handleDelete = (item) => {
     askConfirm(`"${item.name}" ${t('card.deleteConfirm')}`, async () => {
-      await window.api.deleteItem(item.id);
-      loadData();
+      try {
+        await window.api.deleteItem(item.id);
+        loadData();
+      } catch (e) {
+        showAlert(t('errors.syncFailed'));
+      }
     }, true);
   };
 
   const handleUpdateValue = async (item, newValue) => {
-    await window.api.saveItem({ ...item, value: newValue });
-    loadData();
+    try {
+      await window.api.saveItem({ ...item, value: newValue });
+      loadData();
+    } catch (e) {
+      showAlert(t('errors.syncFailed'));
+    }
   };
 
   const handleImport = async () => {
