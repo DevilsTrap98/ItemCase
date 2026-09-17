@@ -3,11 +3,15 @@ const crypto = require('crypto');
 const { getMysqlPool } = require('../config/db-mysql');
 const { requireAuth } = require('../middleware/auth');
 const { filterText } = require('../utils/wordFilter');
+const { isOnline } = require('../realtime');
 
 const router = express.Router();
 router.use(requireAuth);
 
-const CATEGORIES = ['trade', 'review', 'rare_find', 'question'];
+const CATEGORIES = [
+  'show_tell', 'help_id', 'trading_cards', 'retro_games', 'lego', 'figures',
+  'comics', 'vinyl', 'coins', 'market_value', 'feedback'
+];
 
 // Feed cards show the thread's first post inline (title + body + image +
 // like/comment counts) — "comments" are every reply after that first post.
@@ -67,7 +71,7 @@ router.post('/threads', async (req, res, next) => {
   try {
     const title = String(req.body?.title || '').trim();
     const body = String(req.body?.body || '').trim();
-    const category = CATEGORIES.includes(req.body?.category) ? req.body.category : 'question';
+    const category = CATEGORIES.includes(req.body?.category) ? req.body.category : 'show_tell';
     if (!title || !body) return res.status(400).json({ error: 'title and body are required' });
 
     const { text, blocked, masked } = await filterText(body);
@@ -254,7 +258,31 @@ router.get('/leaderboard', async (req, res, next) => {
        ORDER BY u.level DESC, post_count DESC
        LIMIT 5`
     );
-    res.json(rows.map((r) => ({ id: r.id, name: r.name, level: r.level, postCount: r.post_count })));
+    res.json(rows.map((r) => ({ id: r.id, name: r.name, level: r.level, postCount: r.post_count, online: isOnline(r.id) })));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// "Aktive Sammler" sidebar widget: users with the most recent forum
+// activity (thread or reply), each tagged with a genuine live online
+// status from the socket layer (see realtime.js) rather than a fake dot.
+router.get('/active-collectors', async (req, res, next) => {
+  try {
+    const pool = getMysqlPool();
+    const [rows] = await pool.query(
+      `SELECT u.id, u.name, u.level, MAX(activity.at) AS last_active
+       FROM users u
+       JOIN (
+         SELECT author_id, created_at AS at FROM forum_threads
+         UNION ALL
+         SELECT author_id, created_at AS at FROM forum_posts
+       ) activity ON activity.author_id = u.id
+       GROUP BY u.id, u.name, u.level
+       ORDER BY last_active DESC
+       LIMIT 8`
+    );
+    res.json(rows.map((r) => ({ id: r.id, name: r.name, level: r.level, online: isOnline(r.id) })));
   } catch (err) {
     next(err);
   }

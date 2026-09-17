@@ -100,18 +100,19 @@ INSERT IGNORE INTO conversations (id, type) VALUES ('global', 'global');
 
 -- Forum is standalone — independent of groups (general chat lives in
 -- conversations/messages above; this is just threads/posts). `category`
--- distinguishes ordinary discussion from announcements ("Neuigkeiten").
+-- covers both general discussion boards and special sections (Show &
+-- Tell, Hilfe & Identifikation, Werte & Markt, ItemCase Feedback).
 -- No group-based moderation roles apply here: only a thread/post's own
--- author can close or delete it.
-DROP TABLE IF EXISTS forum_post_likes;
-DROP TABLE IF EXISTS forum_posts;
-DROP TABLE IF EXISTS forum_threads;
-
-CREATE TABLE forum_threads (
+-- author can close or delete it (a real moderator/report pipeline is
+-- still on the roadmap).
+CREATE TABLE IF NOT EXISTS forum_threads (
   id VARCHAR(36) PRIMARY KEY,
   author_id VARCHAR(36) NOT NULL,
   title VARCHAR(255) NOT NULL,
-  category ENUM('trade', 'review', 'rare_find', 'question') NOT NULL DEFAULT 'question',
+  category ENUM(
+    'show_tell', 'help_id', 'trading_cards', 'retro_games', 'lego', 'figures',
+    'comics', 'vinyl', 'coins', 'market_value', 'feedback'
+  ) NOT NULL DEFAULT 'show_tell',
   image_data MEDIUMTEXT NULL,
   status ENUM('open', 'closed') NOT NULL DEFAULT 'open',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -119,7 +120,16 @@ CREATE TABLE forum_threads (
   INDEX idx_ft_category (category, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE forum_posts (
+-- Widens an existing forum_threads.category column from an earlier,
+-- smaller category set. No-op once already applied (MODIFY COLUMN is
+-- naturally idempotent — unlike the DROP+CREATE this replaced, it never
+-- discards existing threads/posts on a re-run).
+ALTER TABLE forum_threads MODIFY COLUMN category ENUM(
+  'show_tell', 'help_id', 'trading_cards', 'retro_games', 'lego', 'figures',
+  'comics', 'vinyl', 'coins', 'market_value', 'feedback'
+) NOT NULL DEFAULT 'show_tell';
+
+CREATE TABLE IF NOT EXISTS forum_posts (
   id VARCHAR(36) PRIMARY KEY,
   -- created_at has only second precision, so two posts landing in the same
   -- second would tie under ORDER BY created_at; seq is a monotonic,

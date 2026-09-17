@@ -74,5 +74,6 @@ contextBridge.exposeInMainWorld('api', {
   forumLikePost: (postId) => ipcRenderer.invoke('forum:likePost', postId),
   forumTrending: () => ipcRenderer.invoke('forum:trending'),
   forumLeaderboard: () => ipcRenderer.invoke('forum:leaderboard'),
+  forumActiveCollectors: () => ipcRenderer.invoke('forum:activeCollectors'),
   forumActivity: () => ipcRenderer.invoke('forum:activity')
 });

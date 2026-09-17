@@ -1476,6 +1476,14 @@ ipcMain.handle('forum:leaderboard', async () => {
   }
 });
 
+ipcMain.handle('forum:activeCollectors', async () => {
+  try {
+    return await apiFetch('/forum/active-collectors', { auth: true });
+  } catch (e) {
+    return [];
+  }
+});
+
 ipcMain.handle('forum:activity', async () => {
   try {
     return await apiFetch('/forum/activity', { auth: true });
