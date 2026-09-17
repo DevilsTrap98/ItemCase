@@ -187,7 +187,10 @@ export default function App() {
 
   const handleOpenChat = async (friend) => {
     const result = await window.api.conversationsOpenDirect(friend.id);
-    if (!result.ok) return;
+    if (!result.ok) {
+      showAlert(result.error || t('errors.syncFailed'));
+      return;
+    }
     await openChatByConversation(result.id, { title: friend.name, initials: initialsOf(friend.name), isGroup: false, peerId: friend.id });
   };
 

@@ -38,6 +38,25 @@ export function useDraggable(id, defaultPosition, dockSize) {
     dragState.current = { startX: e.clientX, startY: e.clientY, originX: posRef.current.x, originY: posRef.current.y };
   };
 
+  // A position saved from a previous, larger window (or before this panel's
+  // size/dock behavior existed) can sit fully or partially off the current
+  // screen, making the panel effectively invisible/unusable even though
+  // it's technically "open" — clamp back on-screen on every mount, using
+  // the real size when known (dockSize) instead of the looser drag-time
+  // fallback bounds.
+  useEffect(() => {
+    const w = dockSizeRef.current?.width || 80;
+    const h = dockSizeRef.current?.height || 48;
+    const maxX = Math.max(0, window.innerWidth - w);
+    const maxY = Math.max(0, window.innerHeight - h);
+    const clamped = { x: Math.min(Math.max(0, posRef.current.x), maxX), y: Math.min(Math.max(0, posRef.current.y), maxY) };
+    if (clamped.x !== posRef.current.x || clamped.y !== posRef.current.y) {
+      posRef.current = clamped;
+      setPos(clamped);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     const handleMove = (e) => {
       if (!dragState.current) return;
