@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useI18n } from './i18n.jsx';
 
 const CATEGORIES = [
@@ -159,23 +159,12 @@ export default function ForumHubModal({ user, onClose, myLevel }) {
     }
   };
 
-  const tabs = useMemo(() => ['all', ...CATEGORIES], []);
-
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal catalog-modal catalog-modal-fullscreen forum-page-v2" onClick={(e) => e.stopPropagation()}>
         <div className="forum-tabbar">
-          <div className="forum-tabbar-scroll">
-            {tabs.map((c) => (
-              <button
-                type="button"
-                key={c}
-                className={category === c && view === 'feed' ? 'forum-tab active' : 'forum-tab'}
-                onClick={() => { setCategory(c); setView('feed'); setThread(null); }}
-              >
-                {c === 'all' ? t('forum.categoryAll') : t(`forum.category.${c}`)}
-              </button>
-            ))}
+          <div className="forum-tabbar-title">
+            💬 {category === 'all' ? t('forum.categoryAll') : `${CATEGORY_ICON[category]} ${t(`forum.category.${category}`)}`}
           </div>
           <button type="button" className="btn-primary forum-create-btn" onClick={() => setView('create')}>+ {t('forum.createPost')}</button>
           <button type="button" className="icon-btn catalog-close-btn" onClick={onClose} title={t('catalog.close')}>✕</button>

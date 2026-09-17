@@ -2960,33 +2960,11 @@ input:focus, select:focus, textarea:focus {
   flex-shrink: 0;
 }
 
-.forum-tabbar-scroll {
+.forum-tabbar-title {
   flex: 1;
-  display: flex;
-  gap: 4px;
-  overflow-x: auto;
-  scrollbar-width: thin;
-}
-
-.forum-tab {
-  background: none;
-  border: none;
-  padding: 8px 12px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-muted);
-  white-space: nowrap;
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-}
-
-.forum-tab:hover {
+  font-size: 16px;
+  font-weight: 700;
   color: var(--text);
-}
-
-.forum-tab.active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
 }
 
 .forum-create-btn {
