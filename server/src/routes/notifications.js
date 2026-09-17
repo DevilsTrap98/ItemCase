@@ -6,9 +6,13 @@ const router = express.Router();
 router.use(requireAuth);
 
 function mapNotification(row) {
-  let payload = null;
-  try { payload = row.payload ? JSON.parse(row.payload) : null; } catch (e) { payload = null; }
-  return { id: row.id, type: row.type, payload, readAt: row.read_at, createdAt: row.created_at };
+  // mysql2 already parses JSON-typed columns into objects — only a raw
+  // string (e.g. from a driver that doesn't auto-parse) needs JSON.parse.
+  let payload = row.payload;
+  if (typeof payload === 'string') {
+    try { payload = JSON.parse(payload); } catch (e) { payload = null; }
+  }
+  return { id: row.id, type: row.type, payload: payload || null, readAt: row.read_at, createdAt: row.created_at };
 }
 
 router.get('/', async (req, res, next) => {

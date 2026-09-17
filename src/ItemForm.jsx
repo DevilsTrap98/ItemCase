@@ -13,12 +13,14 @@ const emptyItem = {
   notes: '',
   imagePath: null,
   showcase: false,
+  ownershipStatus: 'keep',
   story: { place: '', date: '', isGift: false, isFirstPiece: false, text: '' },
   customFields: {},
   catalogInfo: { brand: '', releaseYear: '', ean: '', isbn: '', manufacturerNumber: '' }
 };
 
 const conditionValues = ['mint', 'nearMint', 'excellent', 'good', 'played', 'poor'];
+const ownershipStatusValues = ['keep', 'duplicate', 'tradable', 'for_sale', 'looking_for'];
 
 export default function ItemForm({ item, categories, categoryFields, onSave, onClose }) {
   const { t } = useI18n();
@@ -143,6 +145,15 @@ export default function ItemForm({ item, categories, categoryFields, onSave, onC
                 value={form.quantity}
                 onChange={(e) => update('quantity', e.target.value)}
               />
+            </label>
+
+            <label>
+              {t('form.ownershipStatus')}
+              <select value={form.ownershipStatus} onChange={(e) => update('ownershipStatus', e.target.value)}>
+                {ownershipStatusValues.map((s) => (
+                  <option key={s} value={s}>{t(`ownershipStatus.${s}`)}</option>
+                ))}
+              </select>
             </label>
 
             <label>

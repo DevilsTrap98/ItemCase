@@ -6,6 +6,9 @@ const CONDITION_TONE = {
   mint: 'mint', nearMint: 'mint', excellent: 'teal', good: 'blue', played: 'amber', poor: 'red'
 };
 
+const STATUS_TONE = { duplicate: 'amber', tradable: 'teal', for_sale: 'blue', looking_for: 'red' };
+const STATUS_ICON = { duplicate: '👯', tradable: '🔄', for_sale: '💰', looking_for: '🔎' };
+
 export default function ItemCard({ item, onEdit, onDelete, onUpdateValue, caseDesignSrc, readOnly }) {
   const { lang, t } = useI18n();
   const imgSrc = useImagePath(item.imagePath);
@@ -40,6 +43,11 @@ export default function ItemCard({ item, onEdit, onDelete, onUpdateValue, caseDe
         {caseDesignSrc && <img src={caseDesignSrc} alt="" className="card-case-overlay" />}
         {quantity > 1 && <span className="badge-qty">x{quantity}</span>}
         {item.showcase && <span className="badge-showcase">★ {t('card.showcaseBadge')}</span>}
+        {item.ownershipStatus && item.ownershipStatus !== 'keep' && (
+          <span className={`condition-pill tone-${STATUS_TONE[item.ownershipStatus] || 'blue'} item-card-status-badge`}>
+            {STATUS_ICON[item.ownershipStatus]} {t(`ownershipStatus.${item.ownershipStatus}`)}
+          </span>
+        )}
 
         {!readOnly && (
           <div className="item-card-menu-wrap" onClick={(e) => e.stopPropagation()}>

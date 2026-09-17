@@ -321,6 +321,33 @@ CREATE TABLE IF NOT EXISTS feedback (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Ownership status per item (Phase 1 of the "Differenzierungsfunktionen"
+-- concept): lets an owner flag an item as a duplicate, tradable, for sale,
+-- or still wanted in a better condition, without a separate table.
+ALTER TABLE collection_items ADD COLUMN ownership_status
+  ENUM('keep', 'duplicate', 'tradable', 'for_sale', 'looking_for') NOT NULL DEFAULT 'keep';
+ALTER TABLE collection_items ADD INDEX idx_ci_ownership_status (ownership_status);
+
+-- Wishlist: private by default (see concept doc's data-privacy section).
+-- Either points at a shared catalog entry (catalog_item_id) or names a
+-- private, uncatalogued wish (private_name).
+CREATE TABLE IF NOT EXISTS wishlist_items (
+  id VARCHAR(36) PRIMARY KEY,
+  owner_id VARCHAR(36) NOT NULL,
+  catalog_item_id VARCHAR(36) NULL,
+  private_name VARCHAR(255) NULL,
+  desired_condition VARCHAR(32) NULL,
+  max_price DECIMAL(12,2) NULL,
+  priority ENUM('low', 'medium', 'high') NOT NULL DEFAULT 'medium',
+  notes TEXT NULL,
+  visibility ENUM('private', 'friends') NOT NULL DEFAULT 'private',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_wi_owner FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_wi_catalog FOREIGN KEY (catalog_item_id) REFERENCES catalog_entries(id) ON DELETE SET NULL,
+  INDEX idx_wi_owner (owner_id),
+  INDEX idx_wi_catalog (catalog_item_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- Seed the same three demo items the local Electron store starts with
 -- (electron/main.js demoCatalogEntries), so the shared catalog isn't empty
 -- on a fresh install.

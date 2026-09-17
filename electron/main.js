@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const AdmZip = require('adm-zip');
 const sharp = require('sharp');
 const XLSX = require('xlsx');
+const PDFDocument = require('pdfkit');
 const { io } = require('socket.io-client');
 
 const isDev = process.env.NODE_ENV === 'development';
@@ -1026,6 +1027,84 @@ ipcMain.handle('data:exportCsv', async () => {
   return true;
 });
 
+function dataUrlToBuffer(dataUrl) {
+  if (!dataUrl || !dataUrl.startsWith('data:')) return null;
+  const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
+  try { return Buffer.from(base64, 'base64'); } catch (e) { return null; }
+}
+
+function fmtMoney(value) {
+  const num = Number(value);
+  if (!num) return '';
+  return num.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+}
+
+// Simple, synchronous main-process PDF generation (mirrors data:exportCsv's
+// direct save-dialog flow) rather than the concept doc's async ExportJobs
+// queue — there's no server-side job to track for a desktop app that already
+// has the collection in hand and direct filesystem access.
+ipcMain.handle('data:exportPdf', async (_event, options = {}) => {
+  const { scope = 'all', includeImages = true, includePrices = true } = options;
+
+  const result = await dialog.showSaveDialog({
+    title: 'Sammlungsbericht als PDF exportieren',
+    defaultPath: scope === 'all' ? 'sammlungsbericht.pdf' : `sammlungsbericht-${scope}.pdf`,
+    filters: [{ name: 'PDF', extensions: ['pdf'] }]
+  });
+  if (result.canceled || !result.filePath) return false;
+
+  const db = await freshDb();
+  const items = scope === 'all' ? db.items : db.items.filter((i) => i.category === scope);
+
+  const doc = new PDFDocument({ margin: 50 });
+  const stream = fs.createWriteStream(result.filePath);
+  doc.pipe(stream);
+
+  // Cover page
+  doc.fontSize(26).text('ItemCase Sammlungsbericht', { align: 'center' });
+  doc.moveDown(0.5);
+  doc.fontSize(12).fillColor('#666').text(scope === 'all' ? 'Gesamte Sammlung' : `Kategorie: ${scope}`, { align: 'center' });
+  doc.text(new Date().toLocaleDateString('de-DE'), { align: 'center' });
+  doc.moveDown(2);
+
+  const categories = [...new Set(items.map((i) => i.category).filter(Boolean))];
+  const totalValue = items.reduce((sum, i) => sum + (Number(i.value) || 0), 0);
+
+  doc.fillColor('#000').fontSize(14).text('Zusammenfassung', { underline: true });
+  doc.moveDown(0.5);
+  doc.fontSize(11).text(`Anzahl Items: ${items.length}`);
+  doc.text(`Kategorien: ${categories.length > 0 ? categories.join(', ') : '–'}`);
+  if (includePrices) doc.text(`Gesamtwert: ${fmtMoney(totalValue) || '–'}`);
+
+  doc.addPage();
+  doc.fontSize(16).text('Items', { underline: true });
+  doc.moveDown();
+
+  for (const item of items) {
+    if (doc.y > 680) doc.addPage();
+
+    const startY = doc.y;
+    const imageBuffer = includeImages ? dataUrlToBuffer(item.imagePath) : null;
+    const textX = imageBuffer ? 130 : 50;
+
+    if (imageBuffer) {
+      try { doc.image(imageBuffer, 50, startY, { fit: [70, 70] }); } catch (e) {}
+    }
+
+    doc.fontSize(12).fillColor('#000').text(item.name || '(ohne Namen)', textX, startY, { width: 400 });
+    doc.fontSize(10).fillColor('#555');
+    doc.text(`Kategorie: ${item.category || '–'}   Zustand: ${item.condition || '–'}`, textX);
+    if (includePrices && item.value) doc.text(`Wert: ${fmtMoney(item.value)}`, textX);
+
+    doc.y = Math.max(doc.y, startY + 80);
+    doc.moveDown(0.5);
+  }
+
+  doc.end();
+  await new Promise((resolve) => stream.on('finish', resolve));
+  return true;
+});
+
 function rowsFromXlsx(filePath) {
   const workbook = XLSX.readFile(filePath, { cellDates: false });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -1421,6 +1500,40 @@ ipcMain.handle('notifications:markAllRead', async () => {
     return true;
   } catch (e) {
     return false;
+  }
+});
+
+// ---- Wishlist (server/src/routes/wishlist.js) ----
+
+ipcMain.handle('wishlist:list', async () => {
+  try {
+    return await apiFetch('/wishlist', { auth: true });
+  } catch (e) {
+    return [];
+  }
+});
+
+ipcMain.handle('wishlist:add', async (_event, payload) => {
+  try {
+    return { ok: true, items: await apiFetch('/wishlist', { method: 'POST', auth: true, body: payload }) };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle('wishlist:update', async (_event, { id, ...patch }) => {
+  try {
+    return { ok: true, items: await apiFetch(`/wishlist/${id}`, { method: 'PUT', auth: true, body: patch }) };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle('wishlist:remove', async (_event, id) => {
+  try {
+    return { ok: true, items: await apiFetch(`/wishlist/${id}`, { method: 'DELETE', auth: true }) };
+  } catch (e) {
+    return { ok: false, error: e.message };
   }
 });
 

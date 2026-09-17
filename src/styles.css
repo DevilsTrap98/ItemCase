@@ -1054,6 +1054,50 @@ button {
 .condition-pill.tone-amber { background: rgba(217,158,29,0.18); color: #b8860b; }
 .condition-pill.tone-red { background: rgba(224,80,80,0.15); color: #e05050; }
 
+.item-card-status-badge {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  background: rgba(0,0,0,0.7);
+}
+
+.wishlist-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.wishlist-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-card);
+}
+
+.wishlist-row-image {
+  width: 44px;
+  height: 44px;
+  object-fit: cover;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.wishlist-row-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.wishlist-row-title {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+}
+
 .item-card-menu-wrap {
   position: absolute;
   top: 8px;

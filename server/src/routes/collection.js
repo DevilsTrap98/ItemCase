@@ -2,6 +2,9 @@ const express = require('express');
 const crypto = require('crypto');
 const { getMysqlPool } = require('../config/db-mysql');
 const { requireAuth } = require('../middleware/auth');
+const { notify } = require('../utils/notify');
+
+const OWNERSHIP_STATUSES = ['keep', 'duplicate', 'tradable', 'for_sale', 'looking_for'];
 
 const router = express.Router();
 router.use(requireAuth);
@@ -30,6 +33,7 @@ function mapItem(row) {
     customFields: row.custom_fields || {},
     catalogInfo: row.catalog_info || {},
     catalogItemId: row.catalog_item_id,
+    ownershipStatus: row.ownership_status || 'keep',
     valueHistory: row.value_history || [],
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -95,12 +99,15 @@ router.post('/items', async (req, res, next) => {
     const pool = getMysqlPool();
     const now = new Date();
     let id = body.id;
+    const ownershipStatus = OWNERSHIP_STATUSES.includes(body.ownershipStatus) ? body.ownershipStatus : 'keep';
+    let previousStatus = null;
 
     if (id) {
       const [existingRows] = await pool.query('SELECT * FROM collection_items WHERE id = ? AND owner_id = ?', [id, req.user.id]);
       if (existingRows.length === 0) return res.status(404).json({ error: 'item not found' });
 
       const previous = existingRows[0];
+      previousStatus = previous.ownership_status;
       const history = Array.isArray(previous.value_history) ? [...previous.value_history] : [];
       const oldValue = Number(previous.value) || 0;
       const newValue = Number(body.value) || 0;
@@ -111,7 +118,7 @@ router.post('/items', async (req, res, next) => {
       await pool.query(
         `UPDATE collection_items SET name=?, category=?, item_condition=?, quantity=?, purchase_price=?, value=?, notes=?,
            image_data=?, showcase=?, story_place=?, story_date=?, story_is_gift=?, story_is_first_piece=?, story_text=?,
-           custom_fields=?, catalog_info=?, catalog_item_id=?, value_history=?, updated_at=?
+           custom_fields=?, catalog_info=?, catalog_item_id=?, ownership_status=?, value_history=?, updated_at=?
          WHERE id = ? AND owner_id = ?`,
         [
           body.name, body.category || '', body.condition || '', Number(body.quantity) || 1,
@@ -119,7 +126,7 @@ router.post('/items', async (req, res, next) => {
           body.imageData !== undefined ? body.imageData : previous.image_data, body.showcase ? 1 : 0,
           body.story?.place || '', body.story?.date || '', body.story?.isGift ? 1 : 0, body.story?.isFirstPiece ? 1 : 0, body.story?.text || '',
           JSON.stringify(body.customFields || {}), JSON.stringify(body.catalogInfo || {}), body.catalogItemId || null,
-          JSON.stringify(history), now, id, req.user.id
+          ownershipStatus, JSON.stringify(history), now, id, req.user.id
         ]
       );
     } else {
@@ -127,15 +134,39 @@ router.post('/items', async (req, res, next) => {
       await pool.query(
         `INSERT INTO collection_items
            (id, owner_id, name, category, item_condition, quantity, purchase_price, value, notes, image_data, showcase,
-            story_place, story_date, story_is_gift, story_is_first_piece, story_text, custom_fields, catalog_info, catalog_item_id, value_history)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            story_place, story_date, story_is_gift, story_is_first_piece, story_text, custom_fields, catalog_info, catalog_item_id, ownership_status, value_history)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           id, req.user.id, body.name, body.category || '', body.condition || '', Number(body.quantity) || 1,
           body.purchasePrice || null, body.value || null, body.notes || '', body.imageData || null, body.showcase ? 1 : 0,
           body.story?.place || '', body.story?.date || '', body.story?.isGift ? 1 : 0, body.story?.isFirstPiece ? 1 : 0, body.story?.text || '',
-          JSON.stringify(body.customFields || {}), JSON.stringify(body.catalogInfo || {}), body.catalogItemId || null, JSON.stringify([])
+          JSON.stringify(body.customFields || {}), JSON.stringify(body.catalogInfo || {}), body.catalogItemId || null, ownershipStatus, JSON.stringify([])
         ]
       );
+    }
+
+    // Notify friends whose wishlist wants this exact catalog item, the
+    // moment it newly becomes tradable/for sale (not on every save).
+    const justBecameAvailable = ['tradable', 'for_sale'].includes(ownershipStatus) && ownershipStatus !== previousStatus;
+    if (justBecameAvailable && body.catalogItemId) {
+      const [matches] = await pool.query(
+        `SELECT wi.owner_id, wi.id AS wishlist_item_id FROM wishlist_items wi
+         JOIN friend_requests fr ON (
+           (fr.from_user_id = wi.owner_id AND fr.to_user_id = ?) OR
+           (fr.to_user_id = wi.owner_id AND fr.from_user_id = ?)
+         ) AND fr.status = 'accepted'
+         WHERE wi.catalog_item_id = ?`,
+        [req.user.id, req.user.id, body.catalogItemId]
+      );
+      const io = req.app.get('io');
+      for (const match of matches) {
+        await notify(io, match.owner_id, 'wishlist_match', {
+          wishlistItemId: match.wishlist_item_id,
+          itemName: body.name,
+          status: ownershipStatus,
+          from: { id: req.user.id, name: req.user.name, username: req.user.username }
+        });
+      }
     }
 
     if (body.category) {

@@ -18,6 +18,7 @@ import LegalModal from './LegalModal.jsx';
 import ChatWindow from './ChatWindow.jsx';
 import GroupsModal from './GroupsModal.jsx';
 import ForumHubModal from './ForumHubModal.jsx';
+import WishlistModal from './WishlistModal.jsx';
 import { computeCollectorLevel } from './collectorLevel.js';
 import NotificationBell from './NotificationBell.jsx';
 import Toast from './Toast.jsx';
@@ -105,6 +106,8 @@ export default function App() {
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState('name');
   const [showSortMenu, setShowSortMenu] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [showWishlist, setShowWishlist] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [addingCategory, setAddingCategory] = useState(false);
@@ -547,9 +550,10 @@ export default function App() {
       const matchesCategory = activeCategory === ALL_CATEGORY || item.category === activeCategory;
       const matchesSearch = !q || item.name.toLowerCase().includes(q) ||
         (item.notes || '').toLowerCase().includes(q);
-      return matchesCategory && matchesSearch;
+      const matchesStatus = statusFilter === 'all' || (item.ownershipStatus || 'keep') === statusFilter;
+      return matchesCategory && matchesSearch && matchesStatus;
     }).sort(sorters[sortBy] || sorters.name);
-  }, [items, activeCategory, search, sortBy]);
+  }, [items, activeCategory, search, sortBy, statusFilter]);
 
   const showcaseItems = useMemo(() => items.filter((i) => i.showcase), [items]);
 
@@ -777,6 +781,9 @@ export default function App() {
 
           {!isGuest && (
             <>
+              <button className="icon-btn topbar-icon-btn" onClick={() => setShowWishlist(true)} title={t('wishlist.title')}>
+                ❤️
+              </button>
               <button className="icon-btn topbar-icon-btn" onClick={() => setShowFriendsPanel((v) => !v)} title={t('friends.title')}>
                 🧑‍🤝‍🧑
               </button>
@@ -879,6 +886,11 @@ export default function App() {
                   <button className={sortBy === 'name' ? 'active' : ''} onClick={() => { setSortBy('name'); setShowSortMenu(false); }}>{t('collection.sortName')}</button>
                   <button className={sortBy === 'value' ? 'active' : ''} onClick={() => { setSortBy('value'); setShowSortMenu(false); }}>{t('collection.sortValue')}</button>
                   <button className={sortBy === 'newest' ? 'active' : ''} onClick={() => { setSortBy('newest'); setShowSortMenu(false); }}>{t('collection.sortNewest')}</button>
+                  <div className="user-menu-divider" />
+                  <button className={statusFilter === 'all' ? 'active' : ''} onClick={() => { setStatusFilter('all'); setShowSortMenu(false); }}>{t('collection.statusAll')}</button>
+                  <button className={statusFilter === 'duplicate' ? 'active' : ''} onClick={() => { setStatusFilter('duplicate'); setShowSortMenu(false); }}>👯 {t('ownershipStatus.duplicate')}</button>
+                  <button className={statusFilter === 'tradable' ? 'active' : ''} onClick={() => { setStatusFilter('tradable'); setShowSortMenu(false); }}>🔄 {t('ownershipStatus.tradable')}</button>
+                  <button className={statusFilter === 'for_sale' ? 'active' : ''} onClick={() => { setStatusFilter('for_sale'); setShowSortMenu(false); }}>💰 {t('ownershipStatus.for_sale')}</button>
                 </div>
               </>
             )}
@@ -987,6 +999,7 @@ export default function App() {
           onImportZip={() => { handleImport(); setShowImportExport(false); }}
           onExportCsv={() => { window.api.exportCsv(); setShowImportExport(false); }}
           onImportCsv={() => { handleImportCsv(); setShowImportExport(false); }}
+          categories={categories}
           onClose={() => setShowImportExport(false)}
         />
       )}
@@ -1070,6 +1083,8 @@ export default function App() {
           />
         </DraggablePanel>
       )}
+
+      {showWishlist && <WishlistModal onClose={() => setShowWishlist(false)} />}
 
       {showGroups && (
         <GroupsModal

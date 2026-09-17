@@ -10,6 +10,7 @@ const forumRoutes = require('./routes/forum');
 const conversationsRoutes = require('./routes/conversations');
 const notificationsRoutes = require('./routes/notifications');
 const collectionRoutes = require('./routes/collection');
+const wishlistRoutes = require('./routes/wishlist');
 const catalogRoutes = require('./routes/catalog');
 const reportsRoutes = require('./routes/reports');
 const feedbackRoutes = require('./routes/feedback');
@@ -40,6 +41,7 @@ function createApp() {
   app.use('/api/conversations', conversationsRoutes);
   app.use('/api/notifications', notificationsRoutes);
   app.use('/api/collection', collectionRoutes);
+  app.use('/api/wishlist', wishlistRoutes);
   app.use('/api/catalog', catalogRoutes);
   app.use('/api/reports', reportsRoutes);
   app.use('/api/feedback', feedbackRoutes);
