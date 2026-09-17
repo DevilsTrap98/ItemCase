@@ -183,6 +183,7 @@ export function buildItemDrafts(rows, hasHeader, columns, priceMeaning, existing
   });
 
   const existingKeys = new Set((existingItems || []).map((i) => `${(i.name || '').toLowerCase()}|${(i.category || '').toLowerCase()}`));
+  const seenInFile = new Map();
 
   return dataRows.map((row, rowIndex) => {
     const get = (type) => (byType[type] !== undefined ? (row[byType[type]] || '').trim() : '');
@@ -204,7 +205,13 @@ export function buildItemDrafts(rows, hasHeader, columns, priceMeaning, existing
     if (get('purchasePrice') && purchasePrice === null) issues.push('invalidPurchasePrice');
     if (get('value') && value === null) issues.push('invalidValue');
 
-    const isDuplicate = name && existingKeys.has(`${name.toLowerCase()}|${(category || 'sonstiges').toLowerCase()}`);
+    const key = name ? `${name.toLowerCase()}|${(category || 'sonstiges').toLowerCase()}` : null;
+    const isDuplicateOfExisting = !!key && existingKeys.has(key);
+    let isDuplicateInFile = false;
+    if (key) {
+      if (seenInFile.has(key)) isDuplicateInFile = true;
+      else seenInFile.set(key, true);
+    }
 
     return {
       rowIndex,
@@ -217,8 +224,18 @@ export function buildItemDrafts(rows, hasHeader, columns, priceMeaning, existing
       notes,
       catalogInfo: { brand: brand || '', ean: identifier || '', isbn: '', manufacturerNumber: '', releaseYear: '' },
       issues,
-      isDuplicate,
+      isDuplicate: isDuplicateOfExisting || isDuplicateInFile,
+      duplicateSource: isDuplicateOfExisting ? 'existing' : (isDuplicateInFile ? 'file' : null),
       excluded: issues.includes('missingName')
     };
   });
+}
+
+// A stable signature for "this file has the same column structure as one
+// we've seen before" — used to offer a previously confirmed mapping again
+// (see SmartImportModal's saved-mapping banner). Column order and header
+// text must match; content is irrelevant.
+export function mappingSignature(rows, hasHeader) {
+  if (!hasHeader) return `noheader:${(rows[0] || []).length}`;
+  return `header:${(rows[0] || []).map((h) => (h || '').trim().toLowerCase()).join('|')}`;
 }

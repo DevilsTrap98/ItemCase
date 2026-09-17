@@ -1,8 +1,24 @@
 import React, { useMemo, useState } from 'react';
 import { useI18n } from './i18n.jsx';
-import { FIELD_TYPES, guessHasHeader, detectColumns, needsPriceClarification, buildItemDrafts } from './smartImport.js';
+import { FIELD_TYPES, guessHasHeader, detectColumns, needsPriceClarification, buildItemDrafts, mappingSignature } from './smartImport.js';
 
 const CONFIDENCE_LABEL = { high: '✅', medium: '❓', low: '❓', none: '➖' };
+const MAPPING_STORAGE_KEY = 'itemcase_smart_import_mappings';
+
+function loadSavedMapping(signature) {
+  try {
+    const all = JSON.parse(localStorage.getItem(MAPPING_STORAGE_KEY) || '{}');
+    return all[signature] || null;
+  } catch (e) { return null; }
+}
+
+function saveMapping(signature, columns) {
+  try {
+    const all = JSON.parse(localStorage.getItem(MAPPING_STORAGE_KEY) || '{}');
+    all[signature] = columns.map((c) => ({ index: c.index, type: c.type }));
+    localStorage.setItem(MAPPING_STORAGE_KEY, JSON.stringify(all));
+  } catch (e) { /* localStorage unavailable — saved mapping is a convenience, not required */ }
+}
 
 export default function SmartImportModal({ existingItems, onClose, onImported }) {
   const { t } = useI18n();
@@ -15,9 +31,31 @@ export default function SmartImportModal({ existingItems, onClose, onImported })
   const [priceMeaning, setPriceMeaning] = useState('value');
   const [importing, setImporting] = useState(false);
   const [importedCount, setImportedCount] = useState(0);
+  const [importedIds, setImportedIds] = useState([]);
+  const [undoing, setUndoing] = useState(false);
+  const [undone, setUndone] = useState(false);
+  const [rememberMapping, setRememberMapping] = useState(false);
+  const [appliedSavedMapping, setAppliedSavedMapping] = useState(false);
   const [error, setError] = useState('');
 
   const rows = sheets[sheetIndex]?.rows || [];
+
+  const rebuildColumns = (nextRows, nextHasHeader, allowSavedMapping) => {
+    const detected = detectColumns(nextRows, nextHasHeader);
+    if (allowSavedMapping) {
+      const saved = loadSavedMapping(mappingSignature(nextRows, nextHasHeader));
+      if (saved) {
+        setColumns(detected.map((c) => {
+          const match = saved.find((s) => s.index === c.index);
+          return match ? { ...c, type: match.type, confidence: 'high' } : c;
+        }));
+        setAppliedSavedMapping(true);
+        return;
+      }
+    }
+    setAppliedSavedMapping(false);
+    setColumns(detected);
+  };
 
   const handlePickFile = async () => {
     setError('');
@@ -31,12 +69,8 @@ export default function SmartImportModal({ existingItems, onClose, onImported })
     setSheets(result.sheets);
     setSheetIndex(0);
     setHasHeader(guessedHeader);
-    setColumns(detectColumns(result.sheets[0].rows, guessedHeader));
+    rebuildColumns(result.sheets[0].rows, guessedHeader, true);
     setStep('map');
-  };
-
-  const rebuildColumns = (nextRows, nextHasHeader) => {
-    setColumns(detectColumns(nextRows, nextHasHeader));
   };
 
   const handleSheetChange = (idx) => {
@@ -75,6 +109,7 @@ export default function SmartImportModal({ existingItems, onClose, onImported })
       setError(t('smartImport.needName'));
       return;
     }
+    if (rememberMapping) saveMapping(mappingSignature(rows, hasHeader), columns);
     setError('');
     setStep('preview');
   };
@@ -82,10 +117,12 @@ export default function SmartImportModal({ existingItems, onClose, onImported })
   const handleConfirmImport = async () => {
     setImporting(true);
     const toImport = [...summary.ready, ...summary.duplicates, ...summary.needsCorrection.filter((d) => d.name)];
+    const knownIds = new Set((existingItems || []).map((i) => i.id));
+    const newIds = [];
     let count = 0;
     for (const draft of toImport) {
       try {
-        await window.api.saveItem({
+        const db = await window.api.saveItem({
           name: draft.name,
           category: draft.category,
           condition: draft.condition || 'nearMint',
@@ -97,11 +134,25 @@ export default function SmartImportModal({ existingItems, onClose, onImported })
           ownershipStatus: 'keep'
         });
         count++;
+        (db?.items || []).forEach((it) => {
+          if (!knownIds.has(it.id)) { knownIds.add(it.id); newIds.push(it.id); }
+        });
       } catch (e) { /* keep going — one bad row shouldn't abort the whole import */ }
     }
     setImportedCount(count);
+    setImportedIds(newIds);
     setImporting(false);
     setStep('done');
+    onImported();
+  };
+
+  const handleUndo = async () => {
+    setUndoing(true);
+    for (const id of importedIds) {
+      try { await window.api.deleteItem(id); } catch (e) { /* best-effort */ }
+    }
+    setUndoing(false);
+    setUndone(true);
     onImported();
   };
 
@@ -142,6 +193,9 @@ export default function SmartImportModal({ existingItems, onClose, onImported })
               </label>
             </div>
 
+            {appliedSavedMapping && (
+              <div className="field-hint" style={{ marginBottom: 8, color: 'var(--accent)' }}>✅ {t('smartImport.savedMappingApplied')}</div>
+            )}
             <div className="field-hint" style={{ marginBottom: 8 }}>{t('smartImport.mapHint')}</div>
 
             <div className="wishlist-list" style={{ maxHeight: 320 }}>
@@ -181,6 +235,11 @@ export default function SmartImportModal({ existingItems, onClose, onImported })
               </div>
             )}
 
+            <label className="checkbox-row" style={{ marginTop: 12 }}>
+              <input type="checkbox" checked={rememberMapping} onChange={(e) => setRememberMapping(e.target.checked)} />
+              {t('smartImport.rememberMapping')}
+            </label>
+
             {error && <div className="auth-error">{error}</div>}
 
             <div className="modal-actions">
@@ -205,7 +264,11 @@ export default function SmartImportModal({ existingItems, onClose, onImported })
                   <div className="wishlist-row-body">
                     <div className="wishlist-row-title">
                       {d.name || <em>{t('smartImport.noName')}</em>}
-                      {d.isDuplicate && <span className="condition-pill tone-amber" style={{ marginLeft: 8 }}>{t('smartImport.duplicateBadge')}</span>}
+                      {d.isDuplicate && (
+                        <span className="condition-pill tone-amber" style={{ marginLeft: 8 }}>
+                          {d.duplicateSource === 'file' ? t('smartImport.duplicateInFileBadge') : t('smartImport.duplicateBadge')}
+                        </span>
+                      )}
                       {d.excluded && <span className="condition-pill tone-red" style={{ marginLeft: 8 }}>{t('smartImport.excludedBadge')}</span>}
                       {!d.excluded && d.issues.length > 0 && <span className="condition-pill tone-blue" style={{ marginLeft: 8 }}>{t('smartImport.correctionBadge')}</span>}
                     </div>
@@ -231,8 +294,13 @@ export default function SmartImportModal({ existingItems, onClose, onImported })
 
         {step === 'done' && (
           <>
-            <p>{t('smartImport.done', { count: importedCount })}</p>
+            <p>{undone ? t('smartImport.undone') : t('smartImport.done', { count: importedCount })}</p>
             <div className="modal-actions">
+              {!undone && importedIds.length > 0 && (
+                <button type="button" className="btn-secondary" onClick={handleUndo} disabled={undoing}>
+                  {undoing ? t('wishlist.loading') : t('smartImport.undo')}
+                </button>
+              )}
               <button type="button" className="btn-primary" onClick={onClose}>{t('catFields.close')}</button>
             </div>
           </>
