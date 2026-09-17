@@ -10,7 +10,7 @@ export default function ChatWindow({ conversationId, title, initials, isGroup, m
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const listRef = useRef(null);
   const inputRef = useRef(null);
-  const [pos, onDragHandleMouseDown] = useDraggable(`chat_${conversationId}`, defaultPosition);
+  const [pos, onDragHandleMouseDown] = useDraggable(`chat_${conversationId}`, defaultPosition, { width: 320, height: 400 });
 
   useEffect(() => {
     if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;

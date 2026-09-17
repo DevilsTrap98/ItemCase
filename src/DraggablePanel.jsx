@@ -10,16 +10,29 @@ function loadPosition(storageKey, fallback) {
   return fallback;
 }
 
+// How close to a viewport edge (in px) a drag has to end for the panel to
+// snap-dock against it, and how far off the edge a docked panel then sits.
+const DOCK_THRESHOLD = 60;
+const DOCK_MARGIN = 16;
+
 // Shared drag-by-handle logic. Position is per-panel (keyed by `id`) and
 // remembered in localStorage — a per-viewer convenience, not app state, so
 // it's fine if it doesn't survive a cleared profile. Returns the current
 // position plus an onMouseDown to attach to whatever element should act as
 // the drag handle (a component's own header, if it has one).
-export function useDraggable(id, defaultPosition) {
+//
+// `dockSize`, when given as { width, height }, turns on edge-docking: if a
+// drag ends with the panel close enough to the right and/or bottom edge of
+// the window, it snaps flush against whichever edge(s) it's near, so chat
+// windows can be "docked" back against the side of the app without the
+// user needing to line them up by hand.
+export function useDraggable(id, defaultPosition, dockSize) {
   const storageKey = `itemcase_panel_pos_${id}`;
   const [pos, setPos] = useState(() => loadPosition(storageKey, defaultPosition || { x: 40, y: 80 }));
   const posRef = useRef(pos);
   const dragState = useRef(null);
+  const dockSizeRef = useRef(dockSize);
+  dockSizeRef.current = dockSize;
 
   const onMouseDown = (e) => {
     dragState.current = { startX: e.clientX, startY: e.clientY, originX: posRef.current.x, originY: posRef.current.y };
@@ -39,6 +52,20 @@ export function useDraggable(id, defaultPosition) {
     const handleUp = () => {
       if (dragState.current) {
         dragState.current = null;
+        const size = dockSizeRef.current;
+        if (size) {
+          const docked = { ...posRef.current };
+          if (docked.x + size.width >= window.innerWidth - DOCK_THRESHOLD) {
+            docked.x = window.innerWidth - size.width - DOCK_MARGIN;
+          }
+          if (docked.y + size.height >= window.innerHeight - DOCK_THRESHOLD) {
+            docked.y = window.innerHeight - size.height - DOCK_MARGIN;
+          }
+          if (docked.x !== posRef.current.x || docked.y !== posRef.current.y) {
+            posRef.current = docked;
+            setPos(docked);
+          }
+        }
         try { localStorage.setItem(storageKey, JSON.stringify(posRef.current)); } catch (e) {}
       }
     };
