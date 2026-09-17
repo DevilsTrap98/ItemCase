@@ -95,6 +95,8 @@ export default function App() {
   const [showCommunityCatalog, setShowCommunityCatalog] = useState(false);
   const [activeCategory, setActiveCategory] = useState(ALL_CATEGORY);
   const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState('name');
+  const [showSortMenu, setShowSortMenu] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [addingCategory, setAddingCategory] = useState(false);
@@ -527,13 +529,18 @@ export default function App() {
 
   const filteredItems = useMemo(() => {
     const q = search.toLowerCase();
+    const sorters = {
+      name: (a, b) => a.name.localeCompare(b.name),
+      value: (a, b) => (Number(b.value) || 0) - (Number(a.value) || 0),
+      newest: (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
+    };
     return items.filter((item) => {
       const matchesCategory = activeCategory === ALL_CATEGORY || item.category === activeCategory;
       const matchesSearch = !q || item.name.toLowerCase().includes(q) ||
         (item.notes || '').toLowerCase().includes(q);
       return matchesCategory && matchesSearch;
-    }).sort((a, b) => a.name.localeCompare(b.name));
-  }, [items, activeCategory, search]);
+    }).sort(sorters[sortBy] || sorters.name);
+  }, [items, activeCategory, search, sortBy]);
 
   const showcaseItems = useMemo(() => items.filter((i) => i.showcase), [items]);
 
@@ -838,7 +845,54 @@ export default function App() {
               ))}
             </div>
           )
-        ) : showCategoryOverview ? (
+        ) : (
+        <>
+        <div className="collection-header">
+          <div>
+            <h1 className="collection-title">{activeCategory === ALL_CATEGORY ? t('collection.title') : activeCategory}</h1>
+            <p className="collection-tagline">{t('collection.tagline')}</p>
+          </div>
+        </div>
+
+        <div className="collection-toolbar">
+          <div className="catalog-chip-row">
+            <button
+              type="button"
+              className={activeCategory === ALL_CATEGORY ? 'catalog-chip active' : 'catalog-chip'}
+              onClick={() => setActiveCategory(ALL_CATEGORY)}
+            >
+              {t('sidebar.all')}
+            </button>
+            {categories.map((cat) => (
+              <button
+                type="button"
+                key={cat}
+                className={activeCategory === cat ? 'catalog-chip active' : 'catalog-chip'}
+                onClick={() => setActiveCategory(cat)}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+
+          <div className="user-menu-wrap">
+            <button type="button" className="btn-secondary" onClick={() => setShowSortMenu((v) => !v)}>
+              {t('collection.filter')} ▾
+            </button>
+            {showSortMenu && (
+              <>
+                <div className="user-menu-backdrop" onClick={() => setShowSortMenu(false)} />
+                <div className="user-menu">
+                  <button className={sortBy === 'name' ? 'active' : ''} onClick={() => { setSortBy('name'); setShowSortMenu(false); }}>{t('collection.sortName')}</button>
+                  <button className={sortBy === 'value' ? 'active' : ''} onClick={() => { setSortBy('value'); setShowSortMenu(false); }}>{t('collection.sortValue')}</button>
+                  <button className={sortBy === 'newest' ? 'active' : ''} onClick={() => { setSortBy('newest'); setShowSortMenu(false); }}>{t('collection.sortNewest')}</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {showCategoryOverview ? (
           <div className="category-overview-grid">
             {categories.map((cat) => (
               <CategoryOverviewCard
@@ -878,6 +932,8 @@ export default function App() {
               />
             ))}
           </div>
+        )}
+        </>
         )}
         </main>
 
