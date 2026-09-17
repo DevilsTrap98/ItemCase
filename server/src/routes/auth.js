@@ -64,14 +64,14 @@ router.post('/register', async (req, res, next) => {
 
 router.post('/login', async (req, res, next) => {
   try {
-    const email = normalizeEmail(req.body?.email);
+    const identifier = String(req.body?.identifier ?? req.body?.email ?? '').trim().toLowerCase();
     const password = String(req.body?.password || '');
-    if (!email || !password) {
-      return res.status(400).json({ error: 'email and password are required' });
+    if (!identifier || !password) {
+      return res.status(400).json({ error: 'identifier and password are required' });
     }
 
     const pool = getMysqlPool();
-    const [rows] = await pool.query('SELECT * FROM users WHERE email = ?', [email]);
+    const [rows] = await pool.query('SELECT * FROM users WHERE email = ? OR username = ?', [identifier, identifier]);
     if (rows.length === 0) {
       return res.status(401).json({ error: 'invalid email or password' });
     }

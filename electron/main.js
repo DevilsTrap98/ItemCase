@@ -971,9 +971,9 @@ ipcMain.handle('auth:register', async (_event, { name, email, username, password
   }
 });
 
-ipcMain.handle('auth:login', async (_event, { email, password }) => {
+ipcMain.handle('auth:login', async (_event, { identifier, password }) => {
   try {
-    const data = await apiFetch('/auth/login', { method: 'POST', body: { email, password } });
+    const data = await apiFetch('/auth/login', { method: 'POST', body: { identifier, password } });
     saveAuthToken(data.token);
     connectRealtime();
     return { ok: true, user: data.user };

@@ -8,6 +8,7 @@ export default function AuthScreen({ onLogin }) {
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
+  const [loginIdentifier, setLoginIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [passwordConfirm, setPasswordConfirm] = useState('');
   const [error, setError] = useState('');
@@ -17,7 +18,8 @@ export default function AuthScreen({ onLogin }) {
     e.preventDefault();
     setError('');
 
-    if (!email.trim() || !password.trim()) {
+    const identifierValue = mode === 'register' ? email : loginIdentifier;
+    if (!identifierValue.trim() || !password.trim()) {
       setError(t('auth.errorRequired'));
       return;
     }
@@ -47,7 +49,7 @@ export default function AuthScreen({ onLogin }) {
       }
       onLogin(result.user);
     } else {
-      const result = await window.api.login({ email: email.trim(), password });
+      const result = await window.api.login({ identifier: loginIdentifier.trim(), password });
       setSubmitting(false);
       if (!result.ok) {
         setError(result.error || t('auth.errorGeneric'));
@@ -111,16 +113,28 @@ export default function AuthScreen({ onLogin }) {
             </label>
           )}
 
-          <label>
-            {t('auth.email')}
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="max@example.com"
-              autoFocus={mode === 'login'}
-            />
-          </label>
+          {mode === 'register' ? (
+            <label>
+              {t('auth.email')}
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="max@example.com"
+              />
+            </label>
+          ) : (
+            <label>
+              {t('auth.loginIdentifier')}
+              <input
+                type="text"
+                value={loginIdentifier}
+                onChange={(e) => setLoginIdentifier(e.target.value)}
+                placeholder={t('auth.loginIdentifierPlaceholder')}
+                autoFocus
+              />
+            </label>
+          )}
 
           <label>
             {t('auth.password')}
