@@ -1197,6 +1197,31 @@ button {
   width: 680px;
 }
 
+.modal-xwide {
+  width: 1040px;
+  max-width: 94vw;
+}
+
+.item-form-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 28px;
+  align-items: start;
+}
+
+.item-form-col {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+@media (max-width: 860px) {
+  .item-form-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
 .modal h2 {
   margin: 0 0 16px 0;
   font-size: 18px;

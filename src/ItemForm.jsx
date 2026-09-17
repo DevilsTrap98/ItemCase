@@ -74,247 +74,253 @@ export default function ItemForm({ item, categories, categoryFields, onSave, onC
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
+      <div className="modal modal-xwide" onClick={(e) => e.stopPropagation()}>
         <h2>{item ? t('form.titleEdit') : t('form.titleNew')}</h2>
         <form onSubmit={handleSubmit} className="form">
-          <div className="form-row">
-            <div className="image-picker" onClick={handlePickImage}>
-              {imgPreview ? <img src={imgPreview} alt="preview" /> : <span>{t('form.pickImage')}</span>}
-            </div>
-            <div className="form-fields">
-              <label>
-                {t('form.name')}
-                <input
-                  type="text"
-                  value={form.name}
-                  onChange={(e) => update('name', e.target.value)}
-                  placeholder={t('form.namePlaceholder')}
-                  autoFocus
-                  required
-                />
-              </label>
-
-              <label>
-                {t('form.category')}
-                {!showNewCategory ? (
-                  <div className="inline-row">
-                    <select value={form.category} onChange={(e) => update('category', e.target.value)}>
-                      {categories.map((c) => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                    </select>
-                    <button type="button" className="link-btn" onClick={() => setShowNewCategory(true)}>{t('form.newCategoryAction')}</button>
-                  </div>
-                ) : (
-                  <div className="inline-row">
+          <div className="item-form-columns">
+            <div className="item-form-col">
+              <div className="form-row">
+                <div className="image-picker" onClick={handlePickImage}>
+                  {imgPreview ? <img src={imgPreview} alt="preview" /> : <span>{t('form.pickImage')}</span>}
+                </div>
+                <div className="form-fields">
+                  <label>
+                    {t('form.name')}
                     <input
                       type="text"
-                      list="new-category-suggestions"
-                      value={newCategory}
-                      onChange={(e) => setNewCategory(e.target.value)}
-                      placeholder={t('form.newCategoryPlaceholder')}
+                      value={form.name}
+                      onChange={(e) => update('name', e.target.value)}
+                      placeholder={t('form.namePlaceholder')}
                       autoFocus
-                    />
-                    <datalist id="new-category-suggestions">
-                      {SUGGESTED_CATEGORIES.filter((c) => !categories.includes(c)).map((c) => (
-                        <option key={c} value={c} />
-                      ))}
-                    </datalist>
-                    <button type="button" className="link-btn" onClick={() => setShowNewCategory(false)}>{t('form.cancelNewCategory')}</button>
-                  </div>
-                )}
-              </label>
-            </div>
-          </div>
-
-          <div className="form-grid">
-            <label>
-              {t('form.condition')}
-              <select value={form.condition} onChange={(e) => update('condition', e.target.value)}>
-                {conditionValues.map((c) => (
-                  <option key={c} value={c}>{t(`condition.${c}`)}</option>
-                ))}
-              </select>
-            </label>
-
-            <label>
-              {t('form.quantity')}
-              <input
-                type="number"
-                min="1"
-                value={form.quantity}
-                onChange={(e) => update('quantity', e.target.value)}
-              />
-            </label>
-
-            <label>
-              {t('form.ownershipStatus')}
-              <select value={form.ownershipStatus} onChange={(e) => update('ownershipStatus', e.target.value)}>
-                {ownershipStatusValues.map((s) => (
-                  <option key={s} value={s}>{t(`ownershipStatus.${s}`)}</option>
-                ))}
-              </select>
-            </label>
-
-            <label>
-              {t('form.purchasePrice')}
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={form.purchasePrice}
-                onChange={(e) => update('purchasePrice', e.target.value)}
-                placeholder="0.00"
-              />
-            </label>
-          </div>
-
-          <label>
-            {t('form.value')}
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={form.value}
-              onChange={(e) => update('value', e.target.value)}
-              placeholder="0.00"
-            />
-          </label>
-          <div className="field-hint">{t('form.valueHint')}</div>
-
-          {activeCategoryFields.length > 0 && (
-            <fieldset className="form-fieldset">
-              <legend>{t('form.customFieldsTitle', { category: form.category })}</legend>
-              <div className="form-grid">
-                {activeCategoryFields.map((field) => (
-                  <label key={field.key}>
-                    {field.label}
-                    <input
-                      type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
-                      value={form.customFields[field.key] || ''}
-                      onChange={(e) => updateCustomField(field.key, e.target.value)}
+                      required
                     />
                   </label>
-                ))}
+
+                  <label>
+                    {t('form.category')}
+                    {!showNewCategory ? (
+                      <div className="inline-row">
+                        <select value={form.category} onChange={(e) => update('category', e.target.value)}>
+                          {categories.map((c) => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
+                        <button type="button" className="link-btn" onClick={() => setShowNewCategory(true)}>{t('form.newCategoryAction')}</button>
+                      </div>
+                    ) : (
+                      <div className="inline-row">
+                        <input
+                          type="text"
+                          list="new-category-suggestions"
+                          value={newCategory}
+                          onChange={(e) => setNewCategory(e.target.value)}
+                          placeholder={t('form.newCategoryPlaceholder')}
+                          autoFocus
+                        />
+                        <datalist id="new-category-suggestions">
+                          {SUGGESTED_CATEGORIES.filter((c) => !categories.includes(c)).map((c) => (
+                            <option key={c} value={c} />
+                          ))}
+                        </datalist>
+                        <button type="button" className="link-btn" onClick={() => setShowNewCategory(false)}>{t('form.cancelNewCategory')}</button>
+                      </div>
+                    )}
+                  </label>
+                </div>
               </div>
-            </fieldset>
-          )}
 
-          <fieldset className="form-fieldset">
-            <legend>🏷️ {t('form.catalogTitle')}</legend>
-            <div className="field-hint" style={{ marginTop: 0 }}>{t('form.catalogHint')}</div>
-            <div className="form-grid">
-              <label>
-                {t('form.catalogBrand')}
-                <input
-                  type="text"
-                  value={form.catalogInfo.brand}
-                  onChange={(e) => updateCatalogInfo('brand', e.target.value)}
-                />
-              </label>
-              <label>
-                {t('form.catalogReleaseYear')}
-                <input
-                  type="number"
-                  value={form.catalogInfo.releaseYear}
-                  onChange={(e) => updateCatalogInfo('releaseYear', e.target.value)}
-                />
-              </label>
-              <label>
-                {t('form.catalogEan')}
-                <input
-                  type="text"
-                  value={form.catalogInfo.ean}
-                  onChange={(e) => updateCatalogInfo('ean', e.target.value)}
-                />
-              </label>
-              <label>
-                {t('form.catalogIsbn')}
-                <input
-                  type="text"
-                  value={form.catalogInfo.isbn}
-                  onChange={(e) => updateCatalogInfo('isbn', e.target.value)}
-                />
-              </label>
-              <label>
-                {t('form.catalogManufacturerNumber')}
-                <input
-                  type="text"
-                  value={form.catalogInfo.manufacturerNumber}
-                  onChange={(e) => updateCatalogInfo('manufacturerNumber', e.target.value)}
-                />
-              </label>
-            </div>
-          </fieldset>
+              <div className="form-grid">
+                <label>
+                  {t('form.condition')}
+                  <select value={form.condition} onChange={(e) => update('condition', e.target.value)}>
+                    {conditionValues.map((c) => (
+                      <option key={c} value={c}>{t(`condition.${c}`)}</option>
+                    ))}
+                  </select>
+                </label>
 
-          <fieldset className="form-fieldset">
-            <legend>📜 {t('form.storyTitle')}</legend>
-            <div className="form-grid">
-              <label>
-                {t('form.storyPlace')}
-                <input
-                  type="text"
-                  value={form.story.place}
-                  onChange={(e) => updateStory('place', e.target.value)}
-                  placeholder={t('form.storyPlacePlaceholder')}
-                />
-              </label>
-              <label>
-                {t('form.storyDate')}
-                <input
-                  type="date"
-                  value={form.story.date}
-                  onChange={(e) => updateStory('date', e.target.value)}
-                />
-              </label>
-            </div>
-            <div style={{ display: 'flex', gap: 20, marginTop: 4 }}>
+                <label>
+                  {t('form.quantity')}
+                  <input
+                    type="number"
+                    min="1"
+                    value={form.quantity}
+                    onChange={(e) => update('quantity', e.target.value)}
+                  />
+                </label>
+
+                <label>
+                  {t('form.ownershipStatus')}
+                  <select value={form.ownershipStatus} onChange={(e) => update('ownershipStatus', e.target.value)}>
+                    {ownershipStatusValues.map((s) => (
+                      <option key={s} value={s}>{t(`ownershipStatus.${s}`)}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  {t('form.purchasePrice')}
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={form.purchasePrice}
+                    onChange={(e) => update('purchasePrice', e.target.value)}
+                    placeholder="0.00"
+                  />
+                </label>
+
+                <label>
+                  {t('form.value')}
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={form.value}
+                    onChange={(e) => update('value', e.target.value)}
+                    placeholder="0.00"
+                  />
+                </label>
+              </div>
+              <div className="field-hint">{t('form.valueHint')}</div>
+
+              {activeCategoryFields.length > 0 && (
+                <fieldset className="form-fieldset">
+                  <legend>{t('form.customFieldsTitle', { category: form.category })}</legend>
+                  <div className="form-grid">
+                    {activeCategoryFields.map((field) => (
+                      <label key={field.key}>
+                        {field.label}
+                        <input
+                          type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
+                          value={form.customFields[field.key] || ''}
+                          onChange={(e) => updateCustomField(field.key, e.target.value)}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+              )}
+
               <label className="checkbox-row">
                 <input
                   type="checkbox"
-                  checked={!!form.story.isGift}
-                  onChange={(e) => updateStory('isGift', e.target.checked)}
+                  checked={!!form.showcase}
+                  onChange={(e) => update('showcase', e.target.checked)}
                 />
-                🎁 {t('form.storyGift')}
-              </label>
-              <label className="checkbox-row">
-                <input
-                  type="checkbox"
-                  checked={!!form.story.isFirstPiece}
-                  onChange={(e) => updateStory('isFirstPiece', e.target.checked)}
-                />
-                🥇 {t('form.storyFirstPiece')}
+                {t('form.showcase')}
               </label>
             </div>
-            <label style={{ marginTop: 10 }}>
-              {t('form.storyText')}
-              <textarea
-                rows="3"
-                value={form.story.text}
-                onChange={(e) => updateStory('text', e.target.value)}
-                placeholder={t('form.storyTextPlaceholder')}
-              />
-            </label>
-          </fieldset>
 
-          <label>
-            {t('form.notes')}
-            <textarea
-              rows="3"
-              value={form.notes}
-              onChange={(e) => update('notes', e.target.value)}
-              placeholder={t('form.notesPlaceholder')}
-            />
-          </label>
+            <div className="item-form-col">
+              <fieldset className="form-fieldset">
+                <legend>🏷️ {t('form.catalogTitle')}</legend>
+                <div className="field-hint" style={{ marginTop: 0 }}>{t('form.catalogHint')}</div>
+                <div className="form-grid">
+                  <label>
+                    {t('form.catalogBrand')}
+                    <input
+                      type="text"
+                      value={form.catalogInfo.brand}
+                      onChange={(e) => updateCatalogInfo('brand', e.target.value)}
+                    />
+                  </label>
+                  <label>
+                    {t('form.catalogReleaseYear')}
+                    <input
+                      type="number"
+                      value={form.catalogInfo.releaseYear}
+                      onChange={(e) => updateCatalogInfo('releaseYear', e.target.value)}
+                    />
+                  </label>
+                  <label>
+                    {t('form.catalogEan')}
+                    <input
+                      type="text"
+                      value={form.catalogInfo.ean}
+                      onChange={(e) => updateCatalogInfo('ean', e.target.value)}
+                    />
+                  </label>
+                  <label>
+                    {t('form.catalogIsbn')}
+                    <input
+                      type="text"
+                      value={form.catalogInfo.isbn}
+                      onChange={(e) => updateCatalogInfo('isbn', e.target.value)}
+                    />
+                  </label>
+                  <label>
+                    {t('form.catalogManufacturerNumber')}
+                    <input
+                      type="text"
+                      value={form.catalogInfo.manufacturerNumber}
+                      onChange={(e) => updateCatalogInfo('manufacturerNumber', e.target.value)}
+                    />
+                  </label>
+                </div>
+              </fieldset>
 
-          <label className="checkbox-row">
-            <input
-              type="checkbox"
-              checked={!!form.showcase}
-              onChange={(e) => update('showcase', e.target.checked)}
-            />
-            {t('form.showcase')}
-          </label>
+              <fieldset className="form-fieldset">
+                <legend>📜 {t('form.storyTitle')}</legend>
+                <div className="form-grid">
+                  <label>
+                    {t('form.storyPlace')}
+                    <input
+                      type="text"
+                      value={form.story.place}
+                      onChange={(e) => updateStory('place', e.target.value)}
+                      placeholder={t('form.storyPlacePlaceholder')}
+                    />
+                  </label>
+                  <label>
+                    {t('form.storyDate')}
+                    <input
+                      type="date"
+                      value={form.story.date}
+                      onChange={(e) => updateStory('date', e.target.value)}
+                    />
+                  </label>
+                </div>
+                <div style={{ display: 'flex', gap: 20, marginTop: 4 }}>
+                  <label className="checkbox-row">
+                    <input
+                      type="checkbox"
+                      checked={!!form.story.isGift}
+                      onChange={(e) => updateStory('isGift', e.target.checked)}
+                    />
+                    🎁 {t('form.storyGift')}
+                  </label>
+                  <label className="checkbox-row">
+                    <input
+                      type="checkbox"
+                      checked={!!form.story.isFirstPiece}
+                      onChange={(e) => updateStory('isFirstPiece', e.target.checked)}
+                    />
+                    🥇 {t('form.storyFirstPiece')}
+                  </label>
+                </div>
+                <label style={{ marginTop: 10 }}>
+                  {t('form.storyText')}
+                  <textarea
+                    rows="2"
+                    value={form.story.text}
+                    onChange={(e) => updateStory('text', e.target.value)}
+                    placeholder={t('form.storyTextPlaceholder')}
+                  />
+                </label>
+              </fieldset>
+
+              <label>
+                {t('form.notes')}
+                <textarea
+                  rows="2"
+                  value={form.notes}
+                  onChange={(e) => update('notes', e.target.value)}
+                  placeholder={t('form.notesPlaceholder')}
+                />
+              </label>
+            </div>
+          </div>
 
           <div className="modal-actions">
             <button type="button" className="btn-secondary" onClick={onClose}>{t('form.cancel')}</button>
