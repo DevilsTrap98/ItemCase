@@ -103,6 +103,9 @@ export const translations = {
     'smartImport.undone': 'Import rückgängig gemacht.',
     'smartImport.savedMappingApplied': 'Für eine Datei mit dieser Spaltenstruktur wurde bereits eine Zuordnung gespeichert und übernommen.',
     'smartImport.rememberMapping': 'Diese Zuordnung für Dateien mit gleicher Spaltenstruktur merken',
+    'smartImport.catalogLinked': 'Mit Katalogeintrag "{name}" verknüpft',
+    'smartImport.catalogSuggestion': 'Möglicher Katalogtreffer: "{name}"',
+    'smartImport.catalogAccept': 'Übernehmen',
 
     'quote.title': 'Tägliches Zitat',
     'sidebar.totalItems': 'Items gesamt',
@@ -749,6 +752,9 @@ export const translations = {
     'smartImport.undone': 'Import undone.',
     'smartImport.savedMappingApplied': 'A mapping saved earlier for a file with this column structure was applied.',
     'smartImport.rememberMapping': 'Remember this mapping for files with the same column structure',
+    'smartImport.catalogLinked': 'Linked to catalog entry "{name}"',
+    'smartImport.catalogSuggestion': 'Possible catalog match: "{name}"',
+    'smartImport.catalogAccept': 'Accept',
 
     'quote.title': 'Daily Quote',
     'sidebar.totalItems': 'Total items',

@@ -20,7 +20,7 @@ function saveMapping(signature, columns) {
   } catch (e) { /* localStorage unavailable — saved mapping is a convenience, not required */ }
 }
 
-export default function SmartImportModal({ existingItems, onClose, onImported }) {
+export default function SmartImportModal({ existingItems, catalog, onClose, onImported }) {
   const { t } = useI18n();
   const [step, setStep] = useState('pick');
   const [fileName, setFileName] = useState('');
@@ -36,6 +36,7 @@ export default function SmartImportModal({ existingItems, onClose, onImported })
   const [undone, setUndone] = useState(false);
   const [rememberMapping, setRememberMapping] = useState(false);
   const [appliedSavedMapping, setAppliedSavedMapping] = useState(false);
+  const [acceptedMatches, setAcceptedMatches] = useState({});
   const [error, setError] = useState('');
 
   const rows = sheets[sheetIndex]?.rows || [];
@@ -93,8 +94,10 @@ export default function SmartImportModal({ existingItems, onClose, onImported })
 
   const drafts = useMemo(() => {
     if (step !== 'preview') return [];
-    return buildItemDrafts(rows, hasHeader, columns, priceMeaning, existingItems);
-  }, [step, rows, hasHeader, columns, priceMeaning, existingItems]);
+    return buildItemDrafts(rows, hasHeader, columns, priceMeaning, existingItems, catalog).map((d) => (
+      acceptedMatches[d.rowIndex] ? { ...d, catalogItemId: d.catalogMatch?.catalogItemId || null } : d
+    ));
+  }, [step, rows, hasHeader, columns, priceMeaning, existingItems, catalog, acceptedMatches]);
 
   const summary = useMemo(() => {
     const ready = drafts.filter((d) => !d.excluded && !d.isDuplicate && d.issues.length === 0);
@@ -131,6 +134,7 @@ export default function SmartImportModal({ existingItems, onClose, onImported })
           value: draft.value ?? '',
           notes: draft.notes || '',
           catalogInfo: draft.catalogInfo,
+          catalogItemId: draft.catalogItemId || undefined,
           ownershipStatus: 'keep'
         });
         count++;
@@ -275,6 +279,22 @@ export default function SmartImportModal({ existingItems, onClose, onImported })
                     <div className="field-hint" style={{ margin: 0 }}>
                       {d.category} {d.condition ? `· ${t(`condition.${d.condition}`)}` : ''} {d.value != null ? `· ${d.value} €` : ''}
                     </div>
+                    {d.catalogMatch && (
+                      <div className="field-hint" style={{ margin: '4px 0 0 0' }}>
+                        {d.catalogMatch.confidence === 'high' ? (
+                          <>📚 {t('smartImport.catalogLinked', { name: d.catalogMatch.name })}</>
+                        ) : acceptedMatches[d.rowIndex] ? (
+                          <>📚 {t('smartImport.catalogLinked', { name: d.catalogMatch.name })}</>
+                        ) : (
+                          <>
+                            📚 {t('smartImport.catalogSuggestion', { name: d.catalogMatch.name })}{' '}
+                            <button type="button" className="link-btn" onClick={() => setAcceptedMatches((m) => ({ ...m, [d.rowIndex]: true }))}>
+                              {t('smartImport.catalogAccept')}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}

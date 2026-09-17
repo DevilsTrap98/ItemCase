@@ -171,9 +171,61 @@ export function needsPriceClarification(columns) {
   return columns.some((c) => c.type === 'price_ambiguous');
 }
 
+const SUMMARY_WORD_RE = /^(summe|gesamt|zwischensumme|subtotal|total|sum)\b/i;
+
+// A row with content in exactly one column, where that column isn't the
+// mapped "name" field, reads as a sub-heading (e.g. a bolded "Meine
+// Figuren" row spanning the sheet) rather than an item — a single filled
+// name-only cell is instead a minimal but real item (see acceptance
+// criterion: a header-less list must not lose its first row).
+function classifyRow(row, nameColIndex) {
+  const filled = row.map((c, i) => ({ v: (c || '').trim(), i })).filter((c) => c.v);
+  if (filled.length === 0) return 'empty';
+
+  // A summary/total row: exactly one non-numeric ("label") cell, matching a
+  // summary keyword, with every other filled cell looking like a number —
+  // covers both "Gesamt" alone in its own row and "Gesamt | | 99,49".
+  const nonNumeric = filled.filter((f) => !looksNumericish(f.v));
+  if (nonNumeric.length === 1 && SUMMARY_WORD_RE.test(nonNumeric[0].v)) return 'summary';
+
+  if (filled.length === 1 && filled[0].i !== nameColIndex) return 'sectionHeader';
+  return 'data';
+}
+
+// Matches a catalog entry by unique identifier first (EAN/ISBN/manufacturer
+// number, digits-only comparison), then by normalized name+brand — mirrors
+// the concept doc's "erst eindeutige Kennungen, danach Kombinationen aus
+// Name, Marke...". Only an identifier match is confident enough to attach
+// automatically; a name/brand match is returned as a low-confidence
+// suggestion the user must accept explicitly (never applied silently).
+function normalizeIdentifier(str) {
+  return (str || '').replace(/[^0-9a-z]/gi, '').toLowerCase();
+}
+
+export function matchCatalog(draft, catalog) {
+  if (!catalog || catalog.length === 0) return null;
+  const draftId = normalizeIdentifier(draft.catalogInfo?.ean);
+  if (draftId) {
+    const hit = catalog.find((c) =>
+      [c.ean, c.isbn, c.manufacturerNumber].some((v) => v && normalizeIdentifier(v) === draftId)
+    );
+    if (hit) return { catalogItemId: hit.id, name: hit.name, confidence: 'high' };
+  }
+  const draftName = (draft.name || '').trim().toLowerCase();
+  if (!draftName) return null;
+  const draftBrand = (draft.catalogInfo?.brand || '').trim().toLowerCase();
+  const hit = catalog.find((c) => {
+    const nameMatch = (c.name || '').trim().toLowerCase() === draftName;
+    if (!nameMatch) return false;
+    return !draftBrand || !c.brand || c.brand.trim().toLowerCase() === draftBrand;
+  });
+  return hit ? { catalogItemId: hit.id, name: hit.name, confidence: 'medium' } : null;
+}
+
 // Builds item drafts from confirmed column mapping. `priceMeaning` resolves
-// any 'price_ambiguous' column to 'purchasePrice' or 'value'.
-export function buildItemDrafts(rows, hasHeader, columns, priceMeaning, existingItems) {
+// any 'price_ambiguous' column to 'purchasePrice' or 'value'. `catalog`
+// (optional) enables the catalog-matching suggestions described above.
+export function buildItemDrafts(rows, hasHeader, columns, priceMeaning, existingItems, catalog) {
   const dataRows = hasHeader ? rows.slice(1) : rows;
   const byType = {};
   columns.forEach((c) => {
@@ -181,14 +233,24 @@ export function buildItemDrafts(rows, hasHeader, columns, priceMeaning, existing
     if (type === 'price_ambiguous') type = priceMeaning || 'value';
     if (type && type !== 'ignore') byType[type] = c.index;
   });
+  const nameColIndex = byType.name;
 
   const existingKeys = new Set((existingItems || []).map((i) => `${(i.name || '').toLowerCase()}|${(i.category || '').toLowerCase()}`));
   const seenInFile = new Map();
+  let pendingSectionCategory = null;
+  const drafts = [];
 
-  return dataRows.map((row, rowIndex) => {
+  dataRows.forEach((row, rowIndex) => {
+    const kind = classifyRow(row, nameColIndex);
+    if (kind === 'empty' || kind === 'summary') return;
+    if (kind === 'sectionHeader') {
+      pendingSectionCategory = row.find((c) => (c || '').trim())?.trim() || null;
+      return;
+    }
+
     const get = (type) => (byType[type] !== undefined ? (row[byType[type]] || '').trim() : '');
     const name = get('name');
-    const category = get('category');
+    const category = get('category') || pendingSectionCategory;
     const conditionRaw = get('condition');
     const condition = matchConditionWord(conditionRaw) || '';
     const quantityRaw = get('quantity');
@@ -213,7 +275,7 @@ export function buildItemDrafts(rows, hasHeader, columns, priceMeaning, existing
       else seenInFile.set(key, true);
     }
 
-    return {
+    const draft = {
       rowIndex,
       name,
       category: category || 'Sonstiges',
@@ -226,9 +288,21 @@ export function buildItemDrafts(rows, hasHeader, columns, priceMeaning, existing
       issues,
       isDuplicate: isDuplicateOfExisting || isDuplicateInFile,
       duplicateSource: isDuplicateOfExisting ? 'existing' : (isDuplicateInFile ? 'file' : null),
-      excluded: issues.includes('missingName')
+      excluded: issues.includes('missingName'),
+      catalogMatch: null,
+      catalogItemId: null
     };
+
+    const match = matchCatalog(draft, catalog);
+    if (match) {
+      draft.catalogMatch = match;
+      if (match.confidence === 'high') draft.catalogItemId = match.catalogItemId;
+    }
+
+    drafts.push(draft);
   });
+
+  return drafts;
 }
 
 // A stable signature for "this file has the same column structure as one

@@ -1092,6 +1092,7 @@ export default function App() {
       {showSmartImport && (
         <SmartImportModal
           existingItems={items}
+          catalog={communityCatalog}
           onImported={loadData}
           onClose={() => setShowSmartImport(false)}
         />
