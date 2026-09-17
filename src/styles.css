@@ -311,6 +311,20 @@ html, body {
   color: var(--text-muted);
 }
 
+.stat-privacy-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  width: fit-content;
+  background: rgba(52,211,153,0.15);
+  color: #2fae5c;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+
 .stat-hint {
   font-size: 10px;
   color: var(--text-muted);
@@ -547,7 +561,7 @@ html, body {
 .collection-toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 12px;
   flex-wrap: wrap;
   margin-bottom: 16px;
@@ -2568,32 +2582,6 @@ input:focus, select:focus, textarea:focus {
   color: var(--accent);
 }
 
-.friends-panel {
-  width: 220px;
-  flex-shrink: 0;
-  background: var(--bg-elevated);
-  border-left: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-}
-
-.friends-panel-header {
-  padding: 16px 14px 12px 14px;
-  border-bottom: 1px solid var(--border);
-}
-
-.friends-panel-title {
-  font-weight: 700;
-  font-size: 14px;
-}
-
-.friends-panel-preview {
-  font-size: 10px;
-  color: var(--text-muted);
-  margin-top: 3px;
-}
-
 .friends-panel-body {
   padding: 10px;
   display: flex;
@@ -2736,30 +2724,23 @@ input:focus, select:focus, textarea:focus {
   text-overflow: ellipsis;
 }
 
-.chat-dock {
-  position: fixed;
-  bottom: 0;
-  right: 20px;
-  display: flex;
-  flex-direction: row-reverse;
-  gap: 10px;
-  z-index: 20;
-}
-
 .chat-window {
+  position: fixed;
   width: 320px;
   height: 400px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-bottom: none;
-  border-radius: 10px 10px 0 0;
-  box-shadow: var(--card-shadow);
+  border-radius: 10px;
+  box-shadow: 0 16px 40px rgba(0,0,0,0.45);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  z-index: 40;
 }
 
 .chat-window-header {
+  cursor: grab;
+  user-select: none;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -3432,4 +3413,72 @@ input:focus, select:focus, textarea:focus {
   font-size: 12px;
   color: var(--text-muted);
   font-style: italic;
+}
+
+/* ---- Draggable floating panels (Friends, Chat) ---- */
+
+.draggable-panel {
+  position: fixed;
+  z-index: 40;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(0,0,0,0.45);
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 60px);
+  overflow: hidden;
+}
+
+.draggable-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  cursor: grab;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.draggable-panel-header:active {
+  cursor: grabbing;
+}
+
+.draggable-panel-grip {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.draggable-panel-title {
+  flex: 1;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.draggable-panel-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.draggable-panel-close:hover {
+  background: var(--border);
+  color: var(--text);
+}
+
+.draggable-panel-body {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
 }

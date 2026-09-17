@@ -13,6 +13,7 @@ import ImportExportModal from './ImportExportModal.jsx';
 import CommunityCatalogModal from './CommunityCatalogModal.jsx';
 import UpgradeModal from './UpgradeModal.jsx';
 import FriendsPanel from './FriendsPanel.jsx';
+import DraggablePanel from './DraggablePanel.jsx';
 import LegalModal from './LegalModal.jsx';
 import ChatWindow from './ChatWindow.jsx';
 import GroupsModal from './GroupsModal.jsx';
@@ -30,6 +31,13 @@ import { getTariff } from './tariff-defaults.js';
 
 const USER_STORAGE_KEY = 'collectorapp_user';
 const ALL_CATEGORY = '__all__';
+
+// The five built-in default categories store a leading emoji as part of
+// their name (e.g. "🎬 Filme & Serien") so old data/exports keep matching
+// on the exact string — this only strips it for on-screen display.
+function displayCategoryName(cat) {
+  return (cat || '').replace(/^\p{Extended_Pictographic}️?\s*/u, '');
+}
 
 function CategoryThumb({ fileName, onClick, title }) {
   const src = useImagePath(fileName);
@@ -117,6 +125,7 @@ export default function App() {
   const [notifications, setNotifications] = useState([]);
   const [toast, setToast] = useState(null);
   const [showGroups, setShowGroups] = useState(false);
+  const [showFriendsPanel, setShowFriendsPanel] = useState(true);
   const [showForumHub, setShowForumHub] = useState(false);
   const [showCommunityMenu, setShowCommunityMenu] = useState(false);
   const [draggedCategory, setDraggedCategory] = useState(null);
@@ -619,6 +628,7 @@ export default function App() {
           <div className="stat">
             <span className="stat-value">{currencyFmt(stats.totalValue)}</span>
             <span className="stat-label">{t('sidebar.totalValue')}</span>
+            <span className="stat-privacy-badge">🔒 {t('sidebar.privateCollection')}</span>
           </div>
         </div>
 
@@ -652,7 +662,7 @@ export default function App() {
                   className={activeCategory === cat ? 'category-item active' : 'category-item'}
                   onClick={() => setActiveCategory(cat)}
                 >
-                  <span className="category-item-label">{cat}</span>
+                  <span className="category-item-label">{displayCategoryName(cat)}</span>
                   <span className="count">{categoryCounts[cat] || 0}</span>
                 </button>
                 <div className="category-row-actions">
@@ -767,6 +777,9 @@ export default function App() {
 
           {!isGuest && (
             <>
+              <button className="icon-btn topbar-icon-btn" onClick={() => setShowFriendsPanel((v) => !v)} title={t('friends.title')}>
+                🧑‍🤝‍🧑
+              </button>
               <button className="icon-btn topbar-icon-btn" onClick={() => setShowGroups(true)} title={t('topbar.groups')}>
                 👥
               </button>
@@ -849,32 +862,12 @@ export default function App() {
         <>
         <div className="collection-header">
           <div>
-            <h1 className="collection-title">{activeCategory === ALL_CATEGORY ? t('collection.title') : activeCategory}</h1>
+            <h1 className="collection-title">{activeCategory === ALL_CATEGORY ? t('collection.title') : displayCategoryName(activeCategory)}</h1>
             <p className="collection-tagline">{t('collection.tagline')}</p>
           </div>
         </div>
 
         <div className="collection-toolbar">
-          <div className="catalog-chip-row">
-            <button
-              type="button"
-              className={activeCategory === ALL_CATEGORY ? 'catalog-chip active' : 'catalog-chip'}
-              onClick={() => setActiveCategory(ALL_CATEGORY)}
-            >
-              {t('sidebar.all')}
-            </button>
-            {categories.map((cat) => (
-              <button
-                type="button"
-                key={cat}
-                className={activeCategory === cat ? 'catalog-chip active' : 'catalog-chip'}
-                onClick={() => setActiveCategory(cat)}
-              >
-                {cat}
-              </button>
-            ))}
-          </div>
-
           <div className="user-menu-wrap">
             <button type="button" className="btn-secondary" onClick={() => setShowSortMenu((v) => !v)}>
               {t('collection.filter')} ▾
@@ -897,7 +890,7 @@ export default function App() {
             {categories.map((cat) => (
               <CategoryOverviewCard
                 key={cat}
-                name={cat}
+                name={displayCategoryName(cat)}
                 fileName={categoryImages[cat]}
                 countLabel={t('category.itemCount', { count: categoryCounts[cat] || 0 })}
                 valueLabel={currencyFmt(categoryValues[cat] || 0)}
@@ -937,16 +930,6 @@ export default function App() {
         )}
         </main>
 
-        <FriendsPanel
-          friends={friendsData.friends}
-          incoming={friendsData.incoming}
-          isGuest={isGuest}
-          onOpenChat={handleOpenChat}
-          onSendRequest={handleSendFriendRequest}
-          onAccept={handleAcceptFriendRequest}
-          onDecline={handleDeclineFriendRequest}
-          onBlock={handleBlockUser}
-        />
         </div>
       </div>
 
@@ -1052,23 +1035,40 @@ export default function App() {
         />
       )}
 
-      {openChats.length > 0 && (
-        <div className="chat-dock">
-          {openChats.map((chat) => (
-            <ChatWindow
-              key={chat.conversationId}
-              conversationId={chat.conversationId}
-              title={chat.title}
-              initials={chat.initials}
-              isGroup={chat.isGroup}
-              messages={messagesByConversation[chat.conversationId]}
-              currentUserId={user.id}
-              onSend={handleSendMessage}
-              onClose={() => handleCloseChat(chat.conversationId)}
-              onBlock={chat.peerId ? () => handleBlockUser(chat.peerId) : null}
-            />
-          ))}
-        </div>
+      {openChats.map((chat, index) => (
+        <ChatWindow
+          key={chat.conversationId}
+          conversationId={chat.conversationId}
+          title={chat.title}
+          initials={chat.initials}
+          isGroup={chat.isGroup}
+          messages={messagesByConversation[chat.conversationId]}
+          currentUserId={user.id}
+          onSend={handleSendMessage}
+          onClose={() => handleCloseChat(chat.conversationId)}
+          onBlock={chat.peerId ? () => handleBlockUser(chat.peerId) : null}
+          defaultPosition={{ x: window.innerWidth - 340 - index * 26, y: window.innerHeight - 440 - index * 26 }}
+        />
+      ))}
+
+      {showFriendsPanel && !isGuest && (
+        <DraggablePanel
+          id="friends"
+          title={`👥 ${t('friends.title')}`}
+          defaultPosition={{ x: window.innerWidth - 320, y: 90 }}
+          onClose={() => setShowFriendsPanel(false)}
+        >
+          <FriendsPanel
+            friends={friendsData.friends}
+            incoming={friendsData.incoming}
+            isGuest={isGuest}
+            onOpenChat={handleOpenChat}
+            onSendRequest={handleSendFriendRequest}
+            onAccept={handleAcceptFriendRequest}
+            onDecline={handleDeclineFriendRequest}
+            onBlock={handleBlockUser}
+          />
+        </DraggablePanel>
       )}
 
       {showGroups && (

@@ -28,13 +28,7 @@ export default function FriendsPanel({ friends, incoming, isGuest, onOpenChat, o
   };
 
   return (
-    <aside className="friends-panel">
-      <div className="friends-panel-header">
-        <div className="friends-panel-title">{t('friends.title')}</div>
-        <div className="friends-panel-preview">{t('friends.previewNote')}</div>
-      </div>
-
-      <div className="friends-panel-body">
+    <div className="friends-panel-body">
         {isGuest ? (
           <p className="field-hint" style={{ padding: '0 4px' }}>{t('friends.guestNotice')}</p>
         ) : (
@@ -98,7 +92,6 @@ export default function FriendsPanel({ friends, incoming, isGuest, onOpenChat, o
             </div>
           </>
         )}
-      </div>
-    </aside>
+    </div>
   );
 }

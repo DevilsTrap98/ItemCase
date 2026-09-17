@@ -2,13 +2,15 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useI18n } from './i18n.jsx';
 import EmojiPicker from './EmojiPicker.jsx';
 import { convertEmoticons } from './emoji-utils.js';
+import { useDraggable } from './DraggablePanel.jsx';
 
-export default function ChatWindow({ conversationId, title, initials, isGroup, messages, currentUserId, onSend, onClose, onBlock }) {
+export default function ChatWindow({ conversationId, title, initials, isGroup, messages, currentUserId, onSend, onClose, onBlock, defaultPosition }) {
   const { t } = useI18n();
   const [draft, setDraft] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const listRef = useRef(null);
   const inputRef = useRef(null);
+  const [pos, onDragHandleMouseDown] = useDraggable(`chat_${conversationId}`, defaultPosition);
 
   useEffect(() => {
     if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
@@ -29,8 +31,8 @@ export default function ChatWindow({ conversationId, title, initials, isGroup, m
   };
 
   return (
-    <div className="chat-window">
-      <div className="chat-window-header">
+    <div className="chat-window" style={{ left: pos.x, top: pos.y }}>
+      <div className="chat-window-header" onMouseDown={onDragHandleMouseDown}>
         <span className="friend-avatar small">{initials}</span>
         <span className="chat-window-name">{title}</span>
         {!isGroup && onBlock && (
