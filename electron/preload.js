@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('api', {
   proposeCatalogPhoto: (payload) => ipcRenderer.invoke('catalog:proposePhoto', payload),
   proposeCatalogCategory: (name) => ipcRenderer.invoke('catalog:proposeCategory', name),
   pickImage: () => ipcRenderer.invoke('image:pick'),
+  pickAvatar: () => ipcRenderer.invoke('image:pickAvatar'),
   getImagePath: (fileName) => ipcRenderer.invoke('image:getPath', fileName),
   sendFeedback: (payload) => ipcRenderer.invoke('feedback:send', payload),
   reportCatalogEntry: (payload) => ipcRenderer.invoke('catalog:report', payload),

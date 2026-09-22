@@ -829,10 +829,36 @@ ipcMain.handle('image:pick', async () => {
   try {
     // Normalize every uploaded image to the same shape the future catalog server will
     // store: resized, EXIF/GPS stripped (sharp drops metadata unless withMetadata() is
-    // called), and re-encoded as WebP.
+    // called), and re-encoded as WebP. fit:'inside' keeps the whole photo, uncropped —
+    // correct for item/listing photos, but NOT for an avatar (see image:pickAvatar).
     const buffer = await sharp(srcPath)
       .resize(1400, 1400, { fit: 'inside', withoutEnlargement: true })
       .webp({ quality: 80 })
+      .toBuffer();
+    return `data:image/webp;base64,${buffer.toString('base64')}`;
+  } catch (e) {
+    return fileToDataUrl(srcPath);
+  }
+});
+
+// A dedicated picker for avatars specifically: center-cropped to a square
+// at pick time, so what's stored already matches the circular frame it's
+// always displayed in (CSS object-fit:cover on a non-square source only
+// crops for *display*, it never changes what's actually saved — this makes
+// the saved file itself square, so there's no surprise between contexts).
+ipcMain.handle('image:pickAvatar', async () => {
+  const result = await dialog.showOpenDialog({
+    title: 'Profilbild auswählen',
+    properties: ['openFile'],
+    filters: [{ name: 'Bilder', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }]
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+
+  const srcPath = result.filePaths[0];
+  try {
+    const buffer = await sharp(srcPath)
+      .resize(512, 512, { fit: 'cover', position: 'attention' })
+      .webp({ quality: 85 })
       .toBuffer();
     return `data:image/webp;base64,${buffer.toString('base64')}`;
   } catch (e) {

@@ -193,7 +193,7 @@ export default function SettingsModal({ user, itemCount, onSave, onLogout, onClo
   const avatarSrc = useImagePath(user.avatarImage);
 
   const handlePickAvatar = async () => {
-    const fileName = await window.api.pickImage();
+    const fileName = await window.api.pickAvatar();
     if (fileName) {
       onSave({ ...user, avatarImage: fileName });
     }

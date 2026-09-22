@@ -88,6 +88,10 @@ export function createMobileApi() {
     proposeCatalogPhoto: (payload) => request(`/catalog/${payload.catalogItemId}/photo`, { method: 'POST', auth: true, body: { ...payload, imageData: payload.imagePath || null } }),
     proposeCatalogCategory: (name) => request('/catalog/categories', { method: 'POST', auth: true, body: { name } }),
     pickImage,
+    // No server-side crop pipeline in this fallback path yet — falls back
+    // to the same raw picker as pickImage (still stretched via CSS
+    // object-fit: cover for display, just not pre-cropped at pick time).
+    pickAvatar: pickImage,
     getImagePath: async (value) => value,
     sendFeedback: (body) => result(() => request('/feedback', { method: 'POST', auth: true, body: { ...body, appVersion: '1.0.0', platform: 'android' } }), true),
     reportCatalogEntry: (body) => result(() => request('/reports', { method: 'POST', auth: true, body }), true),
