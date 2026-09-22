@@ -5,7 +5,7 @@ const { requireAdmin } = require('../middleware/admin');
 const { publicImageUrl, removeStoredImage } = require('../utils/imageStorage');
 const { notify } = require('../utils/notify');
 const { recalculate } = require('../utils/communityValue');
-const { awardXp, reverseXp, reverseCatalogItemXp, getProgress } = require('../utils/collectorXp');
+const { awardXp, reverseXp, reverseCatalogItemXp, releaseWithheldXp, getProgress } = require('../utils/collectorXp');
 const { logCatalogHistory } = require('../utils/catalogHistory');
 const { decideChangeRequest, CHANGE_TYPE_XP } = require('../utils/changeRequests');
 
@@ -445,6 +445,56 @@ router.post('/xp-transactions/:id/reverse', async (req, res, next) => {
     if (error.status) return res.status(error.status).json({ error: error.message });
     next(error);
   }
+});
+
+// Lean Phase 3: withheld-XP review queue + release.
+router.get('/xp/withheld/list', async (_req, res, next) => {
+  try {
+    const [rows] = await getMysqlPool().query(
+      `SELECT tx.*, u.name AS user_name, u.username AS user_username
+       FROM contribution_xp_transactions tx JOIN users u ON u.id = tx.user_id
+       WHERE tx.status = 'withheld' ORDER BY tx.created_at ASC LIMIT 200`
+    );
+    res.json(rows);
+  } catch (error) { next(error); }
+});
+
+router.post('/xp-transactions/:id/release', async (req, res, next) => {
+  try {
+    const pool = getMysqlPool();
+    await releaseWithheldXp(pool, { transactionId: req.params.id, releasedBy: req.user.id });
+    res.json({ ok: true });
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ error: error.message });
+    next(error);
+  }
+});
+
+// A simple, non-automatic risk overview — flags accounts for a HUMAN to
+// look at; nothing here suspends or restricts anyone by itself (spec
+// feedback: "nicht automatisch sperren"). Two cheap, low-false-positive
+// signals for a lean pass: unusually high approved-contribution volume in
+// the last 24h, and accounts sitting on several withheld transactions.
+router.get('/risk-overview', async (_req, res, next) => {
+  try {
+    const pool = getMysqlPool();
+    const [highVelocity] = await pool.query(
+      `SELECT u.id, u.name, u.username, COUNT(*) AS approvals_24h
+       FROM contribution_xp_transactions tx JOIN users u ON u.id = tx.user_id
+       WHERE tx.status = 'confirmed' AND tx.xp_amount > 0 AND tx.created_at >= NOW() - INTERVAL 24 HOUR
+       GROUP BY u.id, u.name, u.username
+       HAVING COUNT(*) >= 8
+       ORDER BY approvals_24h DESC LIMIT 50`
+    );
+    const [withheldByUser] = await pool.query(
+      `SELECT u.id, u.name, u.username, COUNT(*) AS withheld_count, SUM(tx.xp_amount) AS withheld_xp
+       FROM contribution_xp_transactions tx JOIN users u ON u.id = tx.user_id
+       WHERE tx.status = 'withheld'
+       GROUP BY u.id, u.name, u.username
+       ORDER BY withheld_count DESC LIMIT 50`
+    );
+    res.json({ highVelocity, withheldByUser });
+  } catch (error) { next(error); }
 });
 
 // Manual tariff grants: a temporary or hand-approved paid tariff, with a

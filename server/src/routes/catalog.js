@@ -6,7 +6,7 @@ const { optionalAuth, requireAuth } = require('../middleware/auth');
 const { storeDataUrl, removeStoredImage, publicImageUrl } = require('../utils/imageStorage');
 const { recalculate, CONDITION_CODES } = require('../utils/communityValue');
 const { getProgress, effectiveFreeItemLimit, XP_PER_LEVEL, SLOT_XP_CAP } = require('../utils/collectorXp');
-const { getActiveProPlus, activateReward } = require('../utils/entitlements');
+const { getActiveProPlus, activateReward, promoteDueRewards } = require('../utils/entitlements');
 const { logCatalogHistory } = require('../utils/catalogHistory');
 const { createDirectRequest, proposeCorrection, resubmitChangeRequest, decideChangeRequest, CHANGE_TYPE_XP } = require('../utils/changeRequests');
 
@@ -169,6 +169,7 @@ router.get('/mine/xp-history', requireAuth, async (req, res, next) => {
 router.get('/mine/rewards', requireAuth, async (req, res, next) => {
   try {
     const pool = getMysqlPool();
+    await promoteDueRewards(pool, req.user.id);
     const [rows] = await pool.query('SELECT * FROM level_rewards WHERE user_id = ? ORDER BY reward_level ASC', [req.user.id]);
     res.json(rows);
   } catch (err) { next(err); }

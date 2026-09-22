@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 const TABS = [
   ['overview', '📊', 'Übersicht'], ['inbox', '📥', 'Inbox'], ['catalog', '✅', 'Freigaben'],
-  ['changeRequests', '📝', 'Korrekturen'],
+  ['changeRequests', '📝', 'Korrekturen'], ['risk', '🛡️', 'Risiko'],
   ['duplicates', '🧩', 'Duplikate'], ['reports', '🚩', 'Meldungen'], ['dealers', '🏪', 'Händler'], ['forum', '💬', 'Forum'], ['users', '👥', 'Nutzer']
 ];
 
@@ -32,6 +32,8 @@ export default function AdminDashboard({ currentUser, onClose, onCatalogChanged 
   const [dealers, setDealers] = useState([]);
   const [duplicates, setDuplicates] = useState([]);
   const [changeRequests, setChangeRequests] = useState([]);
+  const [withheldXp, setWithheldXp] = useState([]);
+  const [riskOverview, setRiskOverview] = useState({ highVelocity: [], withheldByUser: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [lastUpdated, setLastUpdated] = useState(null);
@@ -52,6 +54,8 @@ export default function AdminDashboard({ currentUser, onClose, onCatalogChanged 
       setDealers(result.dealers || []);
       setDuplicates(result.duplicates || []);
       setChangeRequests(result.changeRequests || []);
+      setWithheldXp(result.withheldXp || []);
+      setRiskOverview(result.riskOverview || { highVelocity: [], withheldByUser: [] });
       setLastUpdated(new Date());
     }
     setLoading(false);
@@ -114,6 +118,11 @@ export default function AdminDashboard({ currentUser, onClose, onCatalogChanged 
   };
 
   const XP_TYPE_LABELS = { new_item: 'Neues Item (10 XP)', new_variant: 'Neue Variante (6 XP)', new_image: 'Neues Bild (4 XP)', major_correction: 'Wesentliche Korrektur (3 XP)', identifier: 'Kennung ergänzt (2 XP)', minor_correction: 'Kleine Korrektur (1 XP)', duplicate_report: 'Duplikat gemeldet (1 XP)' };
+
+  const releaseXp = async (tx) => {
+    if (!window.confirm(`${tx.xp_amount} XP für ${tx.user_name} (@${tx.user_username}) freigeben?`)) return;
+    await act('releaseXp', { transactionId: tx.id });
+  };
 
   const pending = useMemo(() => [
     ...catalog.entries.filter((x) => x.status === 'pending').map((x) => ({ ...x, kind: 'entries', kindLabel: 'Katalog-Item', label: x.name })),
@@ -196,6 +205,35 @@ export default function AdminDashboard({ currentUser, onClose, onCatalogChanged 
               ))}
               {!changeRequests.length && <div className="admin-empty">Keine offenen Korrekturvorschläge.</div>}
             </section>
+          )}
+          {tab === 'risk' && (
+            <>
+              <section className="admin-panel">
+                <h2>Zurückgehaltene XP</h2>
+                <p className="field-hint" style={{ marginTop: 0 }}>Tageslimit: 50 vergütete XP pro Nutzer. Darüber hinaus verdiente XP werden hier zur Prüfung zurückgehalten, nicht gelöscht.</p>
+                {withheldXp.map((tx) => (
+                  <div className="admin-row" key={tx.id}>
+                    <div><strong>{tx.xp_amount} XP</strong><small> · {tx.user_name} (@{tx.user_username}) · {tx.reason} · {dateTime(tx.created_at)}</small></div>
+                    <button type="button" className="approve" onClick={() => releaseXp(tx)}>Freigeben</button>
+                  </div>
+                ))}
+                {!withheldXp.length && <div className="admin-empty">Keine zurückgehaltenen XP.</div>}
+              </section>
+              <section className="admin-panel">
+                <h2>Auffälligkeiten (nur Hinweis, keine Sperre)</h2>
+                <p className="field-hint" style={{ marginTop: 0 }}>Diese Übersicht sperrt oder beschränkt niemanden automatisch — sie markiert Konten lediglich zur manuellen Prüfung.</p>
+                <h3 style={{ fontSize: 14, opacity: 0.8 }}>Hohe Beitragsgeschwindigkeit (≥ 8 genehmigte Beiträge / 24 Std.)</h3>
+                {riskOverview.highVelocity.map((u) => (
+                  <div className="admin-row" key={u.id}><div><strong>{u.name}</strong><small> · @{u.username}</small></div><span className="admin-status">{u.approvals_24h} Beiträge</span></div>
+                ))}
+                {!riskOverview.highVelocity.length && <div className="admin-empty">Keine Auffälligkeiten.</div>}
+                <h3 style={{ fontSize: 14, opacity: 0.8, marginTop: 16 }}>Nutzer mit zurückgehaltenen XP</h3>
+                {riskOverview.withheldByUser.map((u) => (
+                  <div className="admin-row" key={u.id}><div><strong>{u.name}</strong><small> · @{u.username}</small></div><span className="admin-status">{u.withheld_count} Transaktionen · {u.withheld_xp} XP</span></div>
+                ))}
+                {!riskOverview.withheldByUser.length && <div className="admin-empty">Keine Auffälligkeiten.</div>}
+              </section>
+            </>
           )}
           {tab === 'duplicates' && (
             <section className="admin-panel">

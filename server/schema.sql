@@ -374,6 +374,19 @@ CREATE TABLE IF NOT EXISTS contribution_xp_transactions (
   INDEX idx_cxt_user (user_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Phase 3 (lean): a daily payout cap. XP earned past the cap is never
+-- deleted or refused — it's recorded as 'withheld' and simply doesn't
+-- count toward confirmed_lifetime_xp (and therefore level/slots) until an
+-- admin releases it. See collectorXp.js recomputeProgress/awardXp.
+ALTER TABLE contribution_xp_transactions ADD COLUMN status ENUM('confirmed', 'withheld') NOT NULL DEFAULT 'confirmed' AFTER xp_amount;
+ALTER TABLE contribution_xp_transactions ADD COLUMN released_by VARCHAR(36) NULL AFTER status;
+ALTER TABLE contribution_xp_transactions ADD COLUMN released_at DATETIME NULL AFTER released_by;
+
+-- A short safety hold before a milestone reward becomes redeemable —
+-- status starts 'Locked' with available_at in the future, and is promoted
+-- to 'Available' lazily once that time passes (entitlements.js).
+ALTER TABLE level_rewards ADD COLUMN available_at DATETIME NULL AFTER unlocked_at;
+
 -- Recomputed, disposable cache of the ledger above — never the source of
 -- truth, just a fast-to-read current standing. See
 -- server/src/utils/collectorXp.js:recomputeProgress.

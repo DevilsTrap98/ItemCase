@@ -1991,13 +1991,14 @@ ipcMain.handle('forum:likePost', async (_event, postId) => {
 // ---- Admin dashboard ----
 ipcMain.handle('admin:load', async () => {
   try {
-    const [summary, inbox, catalog, forum, users, dealers, duplicates, changeRequests] = await Promise.all([
+    const [summary, inbox, catalog, forum, users, dealers, duplicates, changeRequests, withheldXp, riskOverview] = await Promise.all([
       apiFetch('/admin/summary', { auth: true }), apiFetch('/admin/inbox', { auth: true }),
       apiFetch('/admin/catalog', { auth: true }), apiFetch('/admin/forum', { auth: true }), apiFetch('/admin/users', { auth: true }),
       apiFetch('/admin/dealers', { auth: true }), apiFetch('/admin/catalog/duplicates', { auth: true }),
-      apiFetch('/admin/change-requests?status=pending', { auth: true })
+      apiFetch('/admin/change-requests?status=pending', { auth: true }),
+      apiFetch('/admin/xp/withheld/list', { auth: true }), apiFetch('/admin/risk-overview', { auth: true })
     ]);
-    return { ok: true, summary, inbox, catalog, forum, users, dealers, duplicates, changeRequests };
+    return { ok: true, summary, inbox, catalog, forum, users, dealers, duplicates, changeRequests, withheldXp, riskOverview };
   } catch (e) { return { ok: false, error: e.data?.error || e.message }; }
 });
 
@@ -2012,6 +2013,7 @@ ipcMain.handle('admin:action', async (_event, { action, payload = {} }) => {
     dealerVerification: [`/admin/dealers/${payload.ownerId}/verification`, 'PATCH', { status: payload.status, reason: payload.reason }],
     mergeCatalogEntries: [`/admin/catalog/entries/${payload.sourceId}/merge`, 'POST', { intoId: payload.intoId, reason: payload.reason }],
     reverseXp: [`/admin/xp-transactions/${payload.transactionId}/reverse`, 'POST', { reason: payload.reason }],
+    releaseXp: [`/admin/xp-transactions/${payload.transactionId}/release`, 'POST'],
     decideChangeRequest: [`/admin/change-requests/${payload.id}/decide`, 'POST', { decision: payload.decision, reason: payload.reason, xpTypeOverride: payload.xpTypeOverride }]
   };
   const route = routes[action];

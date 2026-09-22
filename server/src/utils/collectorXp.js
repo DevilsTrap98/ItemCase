@@ -22,6 +22,9 @@ const XP_PER_LEVEL = 50;
 const SLOT_REWARD_LEVEL_CAP = 50;
 const SLOTS_PER_LEVEL = 2;
 const BASE_FREE_LIMIT = 100;
+// Lean Phase 3 abuse protection: XP is never deleted or refused past this,
+// it's just held back as 'withheld' until an admin releases it.
+const DAILY_XP_CAP = 50;
 
 function levelForXp(xp) {
   return Math.floor(Math.max(0, xp) / XP_PER_LEVEL);
@@ -33,8 +36,11 @@ function slotsForXp(xp) {
 }
 
 async function recomputeProgress(pool, userId) {
+  // Only 'confirmed' XP counts toward level/slots — 'withheld' rows exist
+  // in the ledger (for transparency and later release) but don't affect
+  // standing until an admin releases them.
   const [[row]] = await pool.query(
-    'SELECT COALESCE(SUM(xp_amount), 0) AS total FROM contribution_xp_transactions WHERE user_id = ?',
+    "SELECT COALESCE(SUM(xp_amount), 0) AS total FROM contribution_xp_transactions WHERE user_id = ? AND status = 'confirmed'",
     [userId]
   );
   const confirmedLifetimeXp = Number(row.total) || 0;
@@ -57,14 +63,45 @@ async function awardXp(pool, { userId, sourceType, sourceId, reason, approvedBy,
   if (!userId) return null; // legacy/anonymous submissions have no one to credit
   const amount = xpAmount ?? XP_VALUES[sourceType];
   if (!Number.isFinite(amount)) throw new Error(`Unknown XP source type: ${sourceType}`);
+
+  // Daily cap: XP is never lost, just withheld once the day's confirmed
+  // total would go over the cap. A 0-amount booking (e.g. a cooldown
+  // correction) never needs withholding either way.
+  let status = 'confirmed';
+  let finalReason = reason || null;
+  if (amount > 0) {
+    const [[today]] = await pool.query(
+      "SELECT COALESCE(SUM(xp_amount), 0) AS total FROM contribution_xp_transactions WHERE user_id = ? AND status = 'confirmed' AND created_at >= NOW() - INTERVAL 24 HOUR",
+      [userId]
+    );
+    if (Number(today.total) + amount > DAILY_XP_CAP) {
+      status = 'withheld';
+      finalReason = `${finalReason || ''} [Tageslimit erreicht — zurückgehalten bis Prüfung]`.trim();
+    }
+  }
+
   // changeRequestId (when given) is the real idempotency guard — a unique
   // DB constraint, not just an app-level flag (see schema.sql). A duplicate
   // insert throws ER_DUP_ENTRY, which callers treat as "already funded".
   await pool.query(
-    'INSERT INTO contribution_xp_transactions (id, user_id, source_type, source_id, change_request_id, xp_amount, reason, approved_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    [crypto.randomUUID(), userId, sourceType, sourceId || null, changeRequestId || null, amount, reason || null, approvedBy || null]
+    'INSERT INTO contribution_xp_transactions (id, user_id, source_type, source_id, change_request_id, xp_amount, status, reason, approved_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [crypto.randomUUID(), userId, sourceType, sourceId || null, changeRequestId || null, amount, status, finalReason, approvedBy || null]
   );
   return recomputeProgress(pool, userId);
+}
+
+// Admin releases a withheld transaction after review — it becomes
+// 'confirmed' and counts toward the ledger from that point on. Never
+// silent: released_by/released_at are recorded.
+async function releaseWithheldXp(pool, { transactionId, releasedBy }) {
+  const [[tx]] = await pool.query('SELECT * FROM contribution_xp_transactions WHERE id = ?', [transactionId]);
+  if (!tx) throw Object.assign(new Error('Transaktion nicht gefunden'), { status: 404 });
+  if (tx.status !== 'withheld') throw Object.assign(new Error('Diese Transaktion ist nicht zurückgehalten.'), { status: 400 });
+  await pool.query(
+    "UPDATE contribution_xp_transactions SET status = 'confirmed', released_by = ?, released_at = NOW() WHERE id = ?",
+    [releasedBy, transactionId]
+  );
+  return recomputeProgress(pool, tx.user_id);
 }
 
 // Reverses a specific transaction with its own counter-booking (spec
@@ -120,6 +157,6 @@ function effectiveFreeItemLimit(earnedCollectionSlots) {
 }
 
 module.exports = {
-  XP_VALUES, awardXp, reverseXp, reverseCatalogItemXp, recomputeProgress, getProgress,
-  levelForXp, slotsForXp, effectiveFreeItemLimit, BASE_FREE_LIMIT, SLOT_XP_CAP, XP_PER_LEVEL, SLOT_REWARD_LEVEL_CAP
+  XP_VALUES, awardXp, reverseXp, reverseCatalogItemXp, releaseWithheldXp, recomputeProgress, getProgress,
+  levelForXp, slotsForXp, effectiveFreeItemLimit, BASE_FREE_LIMIT, SLOT_XP_CAP, XP_PER_LEVEL, SLOT_REWARD_LEVEL_CAP, DAILY_XP_CAP
 };

@@ -11,19 +11,37 @@ const MILESTONES = {
   100: { rewardType: 'ProPlus', durationDays: 28 }
 };
 
+// Lean Phase 3: a short safety hold before a reward is even redeemable, so
+// a milestone crossed through suspicious/fast-paced activity isn't
+// instantly cashable. Doesn't require any blocking or manual review by
+// itself — it just buys time for the normal reporting/moderation flow to
+// catch something before the reward matters.
+const REWARD_HOLD_HOURS = 48;
+
 // Called from recomputeProgress whenever XP changes. Unlocks (but does not
-// activate) any milestone the user has newly reached. INSERT IGNORE is the
-// exactly-once guard — the unique key never lets the same milestone unlock twice.
+// activate) any milestone the user has newly reached, starting 'Locked'
+// with a hold period. INSERT IGNORE is the exactly-once guard — the unique
+// key never lets the same milestone unlock twice.
 async function unlockDueMilestones(pool, userId, collectorLevel) {
   for (const [levelStr, milestone] of Object.entries(MILESTONES)) {
     const level = Number(levelStr);
     if (collectorLevel < level) continue;
     await pool.query(
-      `INSERT IGNORE INTO level_rewards (id, user_id, reward_level, reward_type, duration_days, status)
-       VALUES (?, ?, ?, ?, ?, 'Available')`,
-      [crypto.randomUUID(), userId, level, milestone.rewardType, milestone.durationDays]
+      `INSERT IGNORE INTO level_rewards (id, user_id, reward_level, reward_type, duration_days, status, available_at)
+       VALUES (?, ?, ?, ?, ?, 'Locked', NOW() + INTERVAL ? HOUR)`,
+      [crypto.randomUUID(), userId, level, milestone.rewardType, milestone.durationDays, REWARD_HOLD_HOURS]
     );
   }
+}
+
+// Promotes any reward whose hold period has passed. Called lazily
+// wherever rewards are read or activated, same pattern as tariff/
+// entitlement expiry — no scheduled job needed.
+async function promoteDueRewards(pool, userId) {
+  await pool.query(
+    "UPDATE level_rewards SET status = 'Available' WHERE user_id = ? AND status = 'Locked' AND available_at <= NOW()",
+    [userId]
+  );
 }
 
 async function expireDueEntitlements(pool, userId) {
@@ -54,6 +72,7 @@ async function getActiveProPlus(pool, userId) {
 }
 
 async function activateReward(pool, { userId, rewardId }) {
+  await promoteDueRewards(pool, userId);
   const [[reward]] = await pool.query('SELECT * FROM level_rewards WHERE id = ? AND user_id = ?', [rewardId, userId]);
   if (!reward) throw Object.assign(new Error('Belohnung nicht gefunden'), { status: 404 });
   if (reward.status !== 'Available') {
@@ -77,4 +96,4 @@ async function activateReward(pool, { userId, rewardId }) {
   return { entitlementId, endsAt };
 }
 
-module.exports = { MILESTONES, unlockDueMilestones, expireDueEntitlements, getActiveProPlus, activateReward };
+module.exports = { MILESTONES, REWARD_HOLD_HOURS, unlockDueMilestones, promoteDueRewards, expireDueEntitlements, getActiveProPlus, activateReward };
