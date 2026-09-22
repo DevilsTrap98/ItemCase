@@ -26,6 +26,20 @@ CREATE TABLE IF NOT EXISTS users (
 -- Adds `username` to a users table created before this column existed.
 -- No-ops (via migrate.js's idempotent-error handling) once already applied.
 ALTER TABLE users ADD COLUMN username VARCHAR(32) NULL AFTER name;
+-- UI preferences previously lived only in React state and were lost on
+-- every restart (never persisted anywhere, client or server) — this is
+-- what actually fixes "Theme setzt sich nach jeder neuen Version zurück".
+ALTER TABLE users ADD COLUMN ui_theme VARCHAR(16) NOT NULL DEFAULT 'dark';
+ALTER TABLE users ADD COLUMN color_theme VARCHAR(32) NOT NULL DEFAULT 'indigo';
+ALTER TABLE users ADD COLUMN design_theme VARCHAR(32) NOT NULL DEFAULT 'classic';
+ALTER TABLE users ADD COLUMN background_choice VARCHAR(32) NOT NULL DEFAULT 'auto';
+ALTER TABLE users ADD COLUMN auto_color TINYINT(1) NOT NULL DEFAULT 1;
+ALTER TABLE users ADD COLUMN auto_background TINYINT(1) NOT NULL DEFAULT 1;
+ALTER TABLE users ADD COLUMN currency VARCHAR(8) NOT NULL DEFAULT 'EUR';
+ALTER TABLE users ADD COLUMN notify_on_import TINYINT(1) NOT NULL DEFAULT 1;
+ALTER TABLE users ADD COLUMN password_reset_token_hash CHAR(64) NULL;
+ALTER TABLE users ADD COLUMN password_reset_expires_at DATETIME NULL;
+ALTER TABLE users ADD UNIQUE KEY uniq_users_reset_token (password_reset_token_hash);
 UPDATE users SET username = CONCAT('collector_', SUBSTRING(REPLACE(id, '-', ''), 1, 8)) WHERE username IS NULL;
 ALTER TABLE users MODIFY COLUMN username VARCHAR(32) NOT NULL;
 ALTER TABLE users ADD UNIQUE KEY uniq_users_username (username);

@@ -181,6 +181,11 @@ export default function App() {
     setUser(userData);
   };
 
+  // Profile/preference fields (name, theme, colors, background, currency,
+  // notifications) were previously only ever set on local React state and
+  // never sent to the server at all — every restart silently reset them
+  // back to defaults. This persists whichever of those fields changed.
+  const PROFILE_FIELDS = ['name', 'theme', 'colorTheme', 'designTheme', 'background', 'autoColor', 'autoBackground', 'currency', 'notifyOnImport'];
   const handleSaveUser = async (updatedUser) => {
     if (updatedUser.tariff && updatedUser.tariff !== user?.tariff && window.api.setTariff) {
       const result = await window.api.setTariff(updatedUser.tariff);
@@ -189,6 +194,17 @@ export default function App() {
       return;
     }
     setUser(updatedUser);
+    if (isGuest) return;
+    const changed = {};
+    for (const field of PROFILE_FIELDS) {
+      if (updatedUser[field] !== undefined && updatedUser[field] !== user?.[field]) changed[field] = updatedUser[field];
+    }
+    if (!Object.keys(changed).length) return;
+    const result = await window.api.saveProfile?.(changed);
+    if (result && !result.ok) {
+      showAlert(result.error || t('errors.syncFailed'));
+      setUser(user); // revert the optimistic update — persistence failed
+    }
   };
 
   useEffect(() => {

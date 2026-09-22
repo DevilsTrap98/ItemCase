@@ -26,7 +26,7 @@ async function migrate() {
   // ALTER TABLE has no universal "IF NOT EXISTS" in MySQL, so a column/index
   // that a previous run already added throws here on a re-run — treated as
   // success rather than a failure.
-  const ALREADY_APPLIED = new Set(['ER_DUP_FIELDNAME', 'ER_DUP_KEYNAME']);
+  const ALREADY_APPLIED = new Set(['ER_DUP_FIELDNAME', 'ER_DUP_KEYNAME', 'ER_FK_DUP_NAME']);
 
   const pool = mysql.createPool(process.env.MYSQL_URL);
   try {

@@ -56,6 +56,8 @@ contextBridge.exposeInMainWorld('api', {
   getCaptcha: () => ipcRenderer.invoke('auth:getCaptcha'),
   login: (payload) => ipcRenderer.invoke('auth:login', payload),
   changePassword: (payload) => ipcRenderer.invoke('auth:changePassword', payload),
+  saveProfile: (payload) => ipcRenderer.invoke('auth:saveProfile', payload),
+  forgotPassword: (email) => ipcRenderer.invoke('auth:forgotPassword', email),
   setTariff: (tariff) => ipcRenderer.invoke('auth:setTariff', tariff),
   logout: () => ipcRenderer.invoke('auth:logout'),
   exportMyData: () => ipcRenderer.invoke('auth:exportData'),

@@ -61,4 +61,12 @@ const marketContactLimiter = rateLimit({
   handler: jsonHandler
 });
 
-module.exports = { globalLimiter, loginLimiter, registrationLimiter, verificationLimiter, captchaLimiter, submissionLimiter, marketContactLimiter };
+const resetPasswordLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  handler: jsonHandler
+});
+
+module.exports = { globalLimiter, loginLimiter, registrationLimiter, verificationLimiter, captchaLimiter, submissionLimiter, marketContactLimiter, resetPasswordLimiter };

@@ -5,13 +5,20 @@ const { getMysqlPool } = require('../config/db-mysql');
 const { signToken, requireAuth } = require('../middleware/auth');
 const { loginLimiter, registrationLimiter, verificationLimiter, captchaLimiter } = require('../middleware/rateLimits');
 const { createCaptcha, verifyCaptcha } = require('../security/captcha');
-const { sendVerificationEmail } = require('../services/email');
+const { sendVerificationEmail, sendPasswordResetEmail } = require('../services/email');
 const { removeAllUserFiles } = require('../utils/imageStorage');
+const { resetPasswordLimiter } = require('../middleware/rateLimits');
 
 const router = express.Router();
 
 function mapUser(row) {
-  return { id: row.id, name: row.name, email: row.email, username: row.username, role: row.role || 'user', tariff: row.tariff || 'free', tokenVersion: Number(row.token_version || 0) };
+  return {
+    id: row.id, name: row.name, email: row.email, username: row.username, role: row.role || 'user',
+    tariff: row.tariff || 'free', tokenVersion: Number(row.token_version || 0),
+    theme: row.ui_theme || 'dark', colorTheme: row.color_theme || 'indigo', designTheme: row.design_theme || 'classic',
+    background: row.background_choice || 'auto', autoColor: !!row.auto_color, autoBackground: !!row.auto_background,
+    currency: row.currency || 'EUR', notifyOnImport: row.notify_on_import === undefined ? true : !!row.notify_on_import
+  };
 }
 
 function normalizeEmail(email) {
@@ -246,6 +253,129 @@ router.post('/change-password', requireAuth, loginLimiter, async (req, res, next
 // Art. 15/20 DSGVO — a full, machine-readable export of the account's own
 // data. Deliberately excludes other users' data even where it's
 // referenced (e.g. friend names) — only this account's own rows.
+// Profile fields + UI preferences were previously never persisted anywhere
+// (only kept in React state) — every restart reset them. This is the fix.
+const PREFERENCE_COLUMNS = {
+  theme: 'ui_theme', colorTheme: 'color_theme', designTheme: 'design_theme', background: 'background_choice',
+  autoColor: 'auto_color', autoBackground: 'auto_background', currency: 'currency', notifyOnImport: 'notify_on_import'
+};
+
+router.patch('/profile', requireAuth, async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const pool = getMysqlPool();
+    const sets = [];
+    const params = [];
+
+    if (body.name !== undefined) {
+      const name = String(body.name).trim();
+      if (!name) return res.status(400).json({ error: 'Name darf nicht leer sein.' });
+      sets.push('name = ?'); params.push(name.slice(0, 255));
+    }
+    for (const [field, column] of Object.entries(PREFERENCE_COLUMNS)) {
+      if (body[field] === undefined) continue;
+      const value = typeof body[field] === 'boolean' ? (body[field] ? 1 : 0) : String(body[field]).slice(0, 32);
+      sets.push(`${column} = ?`); params.push(value);
+    }
+    if (!sets.length) return res.status(400).json({ error: 'Keine Änderungen angegeben.' });
+
+    params.push(req.user.id);
+    await pool.query(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`, params);
+    const [rows] = await pool.query('SELECT * FROM users WHERE id = ?', [req.user.id]);
+    const user = mapUser(rows[0]);
+    // Name is embedded in the JWT payload, so it needs a fresh token to
+    // actually show up anywhere the token is decoded client-side;
+    // preference-only changes don't touch the token at all.
+    res.json(body.name !== undefined ? { token: signToken(user), user } : { user });
+  } catch (err) { next(err); }
+});
+
+router.post('/forgot-password', resetPasswordLimiter, async (req, res, next) => {
+  try {
+    const email = normalizeEmail(req.body?.email);
+    // Always the same response whether or not the email exists — never
+    // reveal account existence through this endpoint.
+    const generic = { ok: true, message: 'Falls ein Konto mit dieser E-Mail-Adresse existiert, haben wir eine E-Mail zum Zurücksetzen des Passworts gesendet.' };
+    if (!EMAIL_RE.test(email)) return res.json(generic);
+
+    const pool = getMysqlPool();
+    const [rows] = await pool.query('SELECT id, name, email, account_status FROM users WHERE email = ?', [email]);
+    if (!rows.length || rows[0].account_status !== 'active') return res.json(generic);
+
+    const reset = createVerificationToken();
+    await pool.query(
+      'UPDATE users SET password_reset_token_hash = ?, password_reset_expires_at = DATE_ADD(NOW(), INTERVAL 1 HOUR) WHERE id = ?',
+      [reset.hash, rows[0].id]
+    );
+    try {
+      const resetUrl = `${publicBaseUrl(req)}/api/auth/reset-password?token=${encodeURIComponent(reset.token)}`;
+      await sendPasswordResetEmail({ to: rows[0].email, name: rows[0].name, resetUrl });
+    } catch (mailError) {
+      console.error('[auth] password reset email failed', mailError.message);
+    }
+    res.json(generic);
+  } catch (err) { next(err); }
+});
+
+function resetPasswordFormPage(res, { error, token }) {
+  res.status(error ? 400 : 200).type('html').send(`<!doctype html><html lang="de"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>ItemCase</title>
+  <body style="margin:0;background:#11131a;color:#f4f6fb;font:16px Arial,sans-serif;display:grid;place-items:center;min-height:100vh">
+  <main style="max-width:420px;margin:24px;padding:36px;background:#20232d;border:1px solid #343947;border-radius:16px">
+  <h1 style="margin-top:0">Neues Passwort festlegen</h1>
+  ${error ? `<p style="color:#ff8a8a">${error}</p>` : `
+  <form method="POST" action="/api/auth/reset-password">
+    <input type="hidden" name="token" value="${token}">
+    <label style="display:block;margin-bottom:14px">Neues Passwort (mind. 10 Zeichen)
+      <input type="password" name="password" minlength="10" maxlength="72" required style="width:100%;box-sizing:border-box;margin-top:6px;padding:10px;border-radius:8px;border:1px solid #343947;background:#11131a;color:#f4f6fb">
+    </label>
+    <button type="submit" style="width:100%;padding:12px;border:none;border-radius:8px;background:#4f7cff;color:#fff;font-size:15px;cursor:pointer">Passwort setzen</button>
+  </form>`}
+  </main></body></html>`);
+}
+
+router.get('/reset-password', async (req, res, next) => {
+  try {
+    const token = String(req.query.token || '');
+    const hash = crypto.createHash('sha256').update(token).digest('hex');
+    const pool = getMysqlPool();
+    const [rows] = await pool.query(
+      'SELECT id FROM users WHERE password_reset_token_hash = ? AND password_reset_expires_at > NOW()',
+      [hash]
+    );
+    if (!rows.length) return resetPasswordFormPage(res, { error: 'Dieser Link ist ungültig oder abgelaufen. Bitte fordere einen neuen an.' });
+    resetPasswordFormPage(res, { token });
+  } catch (err) { next(err); }
+});
+
+// This form posts as a plain HTML form (application/x-www-form-urlencoded),
+// not JSON — it's opened directly from the reset email in a browser, not
+// through the app's own API client.
+router.post('/reset-password', express.urlencoded({ extended: false }), resetPasswordLimiter, async (req, res, next) => {
+  try {
+    const token = String(req.body?.token || '');
+    const password = String(req.body?.password || '');
+    const hash = crypto.createHash('sha256').update(token).digest('hex');
+    if (password.length < 10 || password.length > 72) {
+      return resetPasswordFormPage(res, { error: 'Das Passwort muss 10 bis 72 Zeichen lang sein.' });
+    }
+    const pool = getMysqlPool();
+    const [rows] = await pool.query(
+      'SELECT id FROM users WHERE password_reset_token_hash = ? AND password_reset_expires_at > NOW()',
+      [hash]
+    );
+    if (!rows.length) return resetPasswordFormPage(res, { error: 'Dieser Link ist ungültig oder abgelaufen. Bitte fordere einen neuen an.' });
+
+    const passwordHash = await bcrypt.hash(password, 12);
+    await pool.query(
+      // Invalidates every existing session (token_version bump) and the
+      // reset token itself (single use).
+      'UPDATE users SET password_hash = ?, token_version = token_version + 1, password_reset_token_hash = NULL, password_reset_expires_at = NULL WHERE id = ?',
+      [passwordHash, rows[0].id]
+    );
+    res.status(200).type('html').send(`<!doctype html><html lang="de"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>ItemCase</title><body style="margin:0;background:#11131a;color:#f4f6fb;font:16px Arial,sans-serif;display:grid;place-items:center;min-height:100vh"><main style="max-width:420px;margin:24px;padding:36px;background:#20232d;border:1px solid #343947;border-radius:16px;text-align:center"><h1>Passwort geändert</h1><p style="color:#c2c8d5">Du kannst dieses Fenster schließen und dich in ItemCase mit deinem neuen Passwort anmelden.</p></main></body></html>`);
+  } catch (err) { next(err); }
+});
+
 router.get('/export', requireAuth, async (req, res, next) => {
   try {
     const pool = getMysqlPool();

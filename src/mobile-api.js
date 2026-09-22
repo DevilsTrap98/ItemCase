@@ -116,6 +116,12 @@ export function createMobileApi() {
     resendVerification: (email) => okResult(async () => await request('/auth/resend-verification', { method: 'POST', body: { email } })),
     login: (body) => okResult(async () => { const data = await request('/auth/login', { method: 'POST', body }); saveToken(data.token, body.rememberMe); return { user: data.user }; }),
     changePassword: (body) => okResult(async () => { const data = await request('/auth/change-password', { method: 'POST', auth: true, body }); saveToken(data.token, !!localStorage.getItem(TOKEN_KEY)); return {}; }),
+    saveProfile: (body) => okResult(async () => {
+      const data = await request('/auth/profile', { method: 'PATCH', auth: true, body });
+      if (data.token) saveToken(data.token, !!localStorage.getItem(TOKEN_KEY));
+      return { user: data.user };
+    }),
+    forgotPassword: (email) => okResult(async () => { const data = await request('/auth/forgot-password', { method: 'POST', body: { email } }); return { message: data.message }; }),
     setTariff: (tariff) => okResult(async () => { const data = await request('/auth/tariff', { method: 'PATCH', auth: true, body: { tariff } }); saveToken(data.token, !!localStorage.getItem(TOKEN_KEY)); return { user: data.user }; }),
     logout: async () => { localStorage.removeItem(TOKEN_KEY); sessionStorage.removeItem(TOKEN_KEY); return true; },
     exportMyData: () => okResult(async () => {

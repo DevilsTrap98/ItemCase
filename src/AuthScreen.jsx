@@ -18,6 +18,19 @@ export default function AuthScreen({ onLogin }) {
   const [captchaAnswer, setCaptchaAnswer] = useState('');
   const [verificationEmail, setVerificationEmail] = useState('');
   const [verificationStatus, setVerificationStatus] = useState('');
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotStatus, setForgotStatus] = useState('');
+  const [forgotSubmitting, setForgotSubmitting] = useState(false);
+
+  const handleForgotSubmit = async (e) => {
+    e.preventDefault();
+    if (!forgotEmail.trim()) return;
+    setForgotSubmitting(true);
+    setForgotStatus('');
+    const result = await window.api.forgotPassword(forgotEmail.trim());
+    setForgotSubmitting(false);
+    setForgotStatus(result.ok ? (result.message || t('auth.forgotSent')) : (result.error || t('auth.errorGeneric')));
+  };
 
   const refreshCaptcha = async () => {
     setCaptchaAnswer('');
@@ -101,7 +114,7 @@ export default function AuthScreen({ onLogin }) {
         <img src={logoFull} alt={t('app.brand')} className="auth-logo-img" />
         <p className="auth-subtitle">{t('auth.subtitle')}</p>
 
-        {mode !== 'verify' && <div className="auth-tabs">
+        {mode !== 'verify' && mode !== 'forgot' && <div className="auth-tabs">
           <button
             className={mode === 'login' ? 'auth-tab active' : 'auth-tab'}
             onClick={() => { setMode('login'); setError(''); }}
@@ -118,7 +131,22 @@ export default function AuthScreen({ onLogin }) {
           </button>
         </div>}
 
-        {mode === 'verify' ? (
+        {mode === 'forgot' ? (
+          <div className="auth-form auth-verification">
+            <h2>{t('auth.forgotTitle')}</h2>
+            <p>{t('auth.forgotHint')}</p>
+            {!forgotStatus ? (
+              <form onSubmit={handleForgotSubmit}>
+                <label>
+                  {t('auth.email')}
+                  <input type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)} placeholder="max@example.com" maxLength={254} autoFocus />
+                </label>
+                <button type="submit" className="btn-primary auth-submit" disabled={forgotSubmitting}>{t('auth.forgotSubmit')}</button>
+              </form>
+            ) : <div className="auth-error" style={{ color: 'inherit' }}>{forgotStatus}</div>}
+            <button type="button" className="btn-secondary auth-submit" onClick={() => { setMode('login'); setForgotStatus(''); }}>{t('auth.verifyToLogin')}</button>
+          </div>
+        ) : mode === 'verify' ? (
           <div className="auth-form auth-verification">
             <h2>{t('auth.verifyTitle')}</h2>
             <p>{t('auth.verifyText', { email: verificationEmail })}</p>
@@ -213,7 +241,7 @@ export default function AuthScreen({ onLogin }) {
                 <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} />
                 <span>{t('auth.rememberMe')}</span>
               </label>
-              <a href="#" onClick={(e) => e.preventDefault()}>{t('auth.forgot')}</a>
+              <a href="#" onClick={(e) => { e.preventDefault(); setForgotEmail(loginIdentifier.includes('@') ? loginIdentifier : ''); setForgotStatus(''); setMode('forgot'); setError(''); }}>{t('auth.forgot')}</a>
             </div>
           )}
 

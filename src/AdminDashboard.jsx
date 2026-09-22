@@ -39,6 +39,14 @@ export default function AdminDashboard({ currentUser, onClose, onCatalogChanged 
   const [lastUpdated, setLastUpdated] = useState(null);
   const [search, setSearch] = useState('');
   const [selectedApproval, setSelectedApproval] = useState(null);
+  // Electron does not implement window.prompt() at all (unlike alert/
+  // confirm, which map to native dialogs) — calling it silently did
+  // nothing, which is why "Ablehnen"/"Änderungen anfordern" appeared to be
+  // completely broken. This is a real in-app modal replacement.
+  const [promptState, setPromptState] = useState(null);
+  const askReason = (title, { defaultValue = '', optional = false } = {}) => new Promise((resolve) => {
+    setPromptState({ title, defaultValue, optional, resolve });
+  });
 
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
@@ -83,10 +91,10 @@ export default function AdminDashboard({ currentUser, onClose, onCatalogChanged 
   const reviewApproval = async (item, status) => {
     let reason = '';
     if (['rejected', 'needs_changes', 'removed'].includes(status)) {
-      reason = window.prompt(
-        status === 'needs_changes' ? 'Was muss der Einreicher ändern? (wird ihm angezeigt)' : 'Grund für die Ablehnung (wird dem Einreicher angezeigt):', ''
-      ) || '';
-      if (!reason.trim()) return;
+      reason = await askReason(
+        status === 'needs_changes' ? 'Was muss der Einreicher ändern? (wird ihm angezeigt)' : 'Grund für die Ablehnung (wird dem Einreicher angezeigt):'
+      );
+      if (reason === null || !reason.trim()) return;
     }
     if (await act('catalogStatus', { kind: item.kind, id: item.id, status, reason })) {
       setSelectedApproval(null);
@@ -96,23 +104,23 @@ export default function AdminDashboard({ currentUser, onClose, onCatalogChanged 
   const reviewDealer = async (dealer, status) => {
     let reason = '';
     if (status === 'rejected') {
-      reason = window.prompt('Grund für die Ablehnung (wird dem Händler angezeigt):', '') || '';
-      if (!reason.trim()) return;
+      reason = await askReason('Grund für die Ablehnung (wird dem Händler angezeigt):');
+      if (reason === null || !reason.trim()) return;
     }
     await act('dealerVerification', { ownerId: dealer.owner_id, status, reason });
   };
 
   const mergeIntoCanonical = async (sourceId, intoId, groupLabel) => {
-    const reason = window.prompt(`"${groupLabel}" wirklich zusammenführen? Grund/Begründung eingeben:`, 'Gleiches Produkt, doppelt eingereicht') || '';
-    if (!reason.trim()) return;
+    const reason = await askReason(`"${groupLabel}" wirklich zusammenführen? Grund/Begründung eingeben:`, { defaultValue: 'Gleiches Produkt, doppelt eingereicht' });
+    if (reason === null || !reason.trim()) return;
     await act('mergeCatalogEntries', { sourceId, intoId, reason });
   };
 
   const decideChangeRequest = async (cr, decision) => {
     let reason = '';
     if (decision !== 'approved') {
-      reason = window.prompt(decision === 'needs_changes' ? 'Was soll noch geprüft/geändert werden?' : 'Grund für die Ablehnung:', '') || '';
-      if (!reason.trim()) return;
+      reason = await askReason(decision === 'needs_changes' ? 'Was soll noch geprüft/geändert werden?' : 'Grund für die Ablehnung:');
+      if (reason === null || !reason.trim()) return;
     }
     await act('decideChangeRequest', { id: cr.id, decision, reason });
   };
@@ -121,7 +129,8 @@ export default function AdminDashboard({ currentUser, onClose, onCatalogChanged 
 
   const releaseXp = async (tx) => {
     if (!window.confirm(`${tx.xp_amount} XP für ${tx.user_name} (@${tx.user_username}) freigeben?`)) return;
-    const note = window.prompt('Interne Notiz zur Freigabe (optional):', '') || '';
+    const note = await askReason('Interne Notiz zur Freigabe (optional):', { optional: true });
+    if (note === null) return;
     await act('releaseXp', { transactionId: tx.id, note });
   };
 
@@ -171,7 +180,7 @@ export default function AdminDashboard({ currentUser, onClose, onCatalogChanged 
 
           {tab === 'inbox' && <section className="admin-panel"><h2>Feedback-Inbox</h2>{inbox.feedback.map((item) => <article className="admin-message" key={item.id}><div className="admin-message-head"><div><strong>{item.type}</strong><small>{item.sender_name || 'Unbekannt'} · {item.sender_email || 'keine E-Mail'} · {dateTime(item.created_at)}</small></div><StatusPill value={item.status} /></div><p>{item.message}</p><div className="admin-actions"><button onClick={() => act('feedbackStatus', { id: item.id, status: 'reviewed' })}>✓ Bearbeitet</button><button onClick={() => act('feedbackStatus', { id: item.id, status: 'archived' })}>Archivieren</button></div></article>)}{!inbox.feedback.length && <div className="admin-empty">Kein Feedback vorhanden.</div>}</section>}
 
-          {tab === 'reports' && <section className="admin-panel"><h2>Meldungen</h2>{inbox.reports.map((item) => <article className="admin-message" key={item.id}><div className="admin-message-head"><div><strong>{item.reason} · {item.target_name || item.target_id}</strong><small>{item.target_type} · gemeldet von {item.sender_name || 'Unbekannt'} · {dateTime(item.created_at)}</small></div><StatusPill value={item.status} /></div>{item.comment && <p>{item.comment}</p>}<div className="admin-actions"><button onClick={() => act('reportStatus', { id: item.id, status: 'reviewed' })}>✓ Geprüft</button><button onClick={() => act('reportStatus', { id: item.id, status: 'dismissed' })}>Verwerfen</button></div></article>)}{!inbox.reports.length && <div className="admin-empty">Keine Meldungen vorhanden.</div>}</section>}
+          {tab === 'reports' && <section className="admin-panel"><h2>Meldungen</h2>{inbox.reports.filter((item) => item.status === 'open').map((item) => <article className="admin-message" key={item.id}><div className="admin-message-head"><div><strong>{item.reason} · {item.target_name || item.target_id}</strong><small>{item.target_type} · gemeldet von {item.sender_name || 'Unbekannt'} · {dateTime(item.created_at)}</small></div><StatusPill value={item.status} /></div>{item.comment && <p>{item.comment}</p>}<div className="admin-actions"><button onClick={() => act('reportStatus', { id: item.id, status: 'reviewed' })}>✓ Geprüft</button><button onClick={() => act('reportStatus', { id: item.id, status: 'dismissed' })}>Verwerfen</button></div></article>)}{!inbox.reports.filter((item) => item.status === 'open').length && <div className="admin-empty">Keine offenen Meldungen.</div>}</section>}
 
           {tab === 'catalog' && <section className="admin-panel"><h2>Freigaben</h2>{pending.map((item) => <article className="admin-message admin-approval" role="button" tabIndex="0" key={`${item.kind}-${item.id}`} onClick={() => setSelectedApproval(item)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSelectedApproval(item); }}>{item.image_url && <img src={item.image_url} alt={`Vorschau von ${item.label}`} />}<div className="admin-approval-body"><div className="admin-message-head"><div><strong>{item.label}</strong><small>{item.kindLabel} · von {item.contributor || 'Unbekannt'} · {dateTime(item.submitted_at)}</small></div><StatusPill value={item.status} /></div>{item.kind === 'entries' && <p>{[item.brand, item.category, item.release_year].filter(Boolean).join(' · ') || 'Keine weiteren Angaben'}</p>}<div className="admin-actions"><button type="button" onClick={(e) => { e.stopPropagation(); setSelectedApproval(item); }}>Details ansehen</button><button type="button" className="approve" onClick={(e) => { e.stopPropagation(); reviewApproval(item, 'approved'); }}>✓ Genehmigen</button>{item.kind === 'entries' && <button type="button" onClick={(e) => { e.stopPropagation(); reviewApproval(item, 'needs_changes'); }}>✎ Änderungen anfordern</button>}<button type="button" className="reject" onClick={(e) => { e.stopPropagation(); reviewApproval(item, 'rejected'); }}>✕ Ablehnen</button></div></div></article>)}{!pending.length && <div className="admin-empty">Keine ausstehenden Vorschläge.</div>}</section>}
 
@@ -293,6 +302,21 @@ export default function AdminDashboard({ currentUser, onClose, onCatalogChanged 
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {promptState && (
+        <div className="modal-overlay" onClick={() => { promptState.resolve(null); setPromptState(null); }}>
+          <div className="modal admin-prompt-modal" onClick={(e) => e.stopPropagation()}>
+            <form onSubmit={(e) => { e.preventDefault(); const value = e.target.elements.reason.value; promptState.resolve(value); setPromptState(null); }}>
+              <p>{promptState.title}</p>
+              <textarea name="reason" autoFocus defaultValue={promptState.defaultValue} rows={3} required={!promptState.optional} />
+              <div className="modal-actions">
+                <button type="button" className="btn-secondary" onClick={() => { promptState.resolve(null); setPromptState(null); }}>Abbrechen</button>
+                <button type="submit" className="btn-primary">OK</button>
+              </div>
+            </form>
           </div>
         </div>
       )}

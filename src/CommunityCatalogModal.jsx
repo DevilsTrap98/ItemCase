@@ -12,6 +12,13 @@ import LogoPlaceholder from './LogoPlaceholder.jsx';
 const ALL_CAT = '__all__';
 const CONDITION_ORDER = ['sealed', 'mint', 'nearMint', 'excellent', 'veryGood', 'good', 'incomplete', 'played', 'poor', 'damaged'];
 
+// Category names carry a leading emoji in the stored string (e.g. "🎬 Filme
+// & Serien") — stripped only for display here, never mutating the actual
+// category value used for filtering/storage.
+function stripCategoryIcon(name) {
+  return String(name || '').replace(/^\p{Extended_Pictographic}️?\s*/u, '');
+}
+
 const emptySubmission = {
   name: '',
   category: '',
@@ -81,11 +88,10 @@ function CatalogCard({ entry, onAdopt, adopted, onOpenPhotoForm, photoSubmitted,
   );
 }
 
-// Beitragslevel: earned strictly from approved Community-Katalog
-// contributions (see server/src/utils/collectorXp.js) — a different system
-// from the collection-completeness "Level" shown elsewhere via the trophy
-// icon, named distinctly here on purpose to avoid confusing the two.
-const LAST_SEEN_LEVEL_KEY = 'itemcase_last_seen_contrib_level';
+// The level/XP/rewards themselves are shown in one place — the existing
+// Sammlerlevel screen (CollectorLevel.jsx) — not duplicated here. This tab
+// only shows catalog-specific history: what was submitted, and why XP was
+// (or wasn't) awarded for it.
 const XP_SOURCE_LABELS = {
   CatalogItemApproved: 'catalog.xpSource.CatalogItemApproved',
   VariantApproved: 'catalog.xpSource.VariantApproved',
@@ -96,55 +102,19 @@ const XP_SOURCE_LABELS = {
   RewardReversed: 'catalog.xpSource.RewardReversed',
   ManualCorrection: 'catalog.xpSource.ManualCorrection'
 };
-const REWARD_DURATION_LABEL = { 25: '1 Woche', 50: '3 Wochen', 100: '4 Wochen' };
-
 function MyContributions({ t }) {
-  const [progress, setProgress] = useState(null);
   const [submissions, setSubmissions] = useState([]);
-  const [rewards, setRewards] = useState([]);
   const [xpHistory, setXpHistory] = useState([]);
   const [changeRequests, setChangeRequests] = useState([]);
   const [resubmitId, setResubmitId] = useState(null);
   const [resubmitFields, setResubmitFields] = useState({});
-  const [leveledUp, setLeveledUp] = useState(false);
-  const [busyRewardId, setBusyRewardId] = useState(null);
-  const [rewardError, setRewardError] = useState('');
 
   const load = () => {
-    window.api.getCollectorProgress?.().then((p) => {
-      if (!p) return;
-      setProgress(p);
-      // Purely a per-viewer convenience (never authoritative): remembers
-      // the level last shown on this device so a level-up banner can
-      // appear once, even though XP is usually awarded while offline.
-      try {
-        const lastSeen = Number(localStorage.getItem(LAST_SEEN_LEVEL_KEY) || 0);
-        if (p.collectorLevel > lastSeen) setLeveledUp(true);
-        localStorage.setItem(LAST_SEEN_LEVEL_KEY, String(p.collectorLevel));
-      } catch (e) { /* ignore */ }
-    });
     window.api.getMySubmissions?.().then((s) => setSubmissions(s || []));
-    window.api.getMyRewards?.().then((r) => setRewards(r || []));
     window.api.getMyXpHistory?.().then((h) => setXpHistory(h || []));
     window.api.getMyChangeRequests?.().then((c) => setChangeRequests(c || []));
   };
   useEffect(load, []);
-
-  if (!progress) return null;
-  const xpToNext = progress.xpPerLevel - progress.xpIntoCurrentLevel;
-  const progressPct = Math.round((progress.xpIntoCurrentLevel / progress.xpPerLevel) * 100);
-  const slotsCapped = progress.earnedCollectionSlots >= 100;
-  const availableRewards = rewards.filter((r) => r.status === 'Available');
-  const otherRewards = rewards.filter((r) => r.status !== 'Available');
-
-  const activate = async (rewardId) => {
-    setBusyRewardId(rewardId);
-    setRewardError('');
-    const res = await window.api.activateReward(rewardId);
-    setBusyRewardId(null);
-    if (!res?.ok) { setRewardError(res?.error || 'Aktivierung fehlgeschlagen.'); return; }
-    load();
-  };
 
   const resubmitCorrection = async (cr) => {
     const res = await window.api.resubmitCorrection({ changeRequestId: cr.id, fields: resubmitFields });
@@ -153,55 +123,6 @@ function MyContributions({ t }) {
 
   return (
     <div className="contribution-progress">
-      {leveledUp && (
-        <div className="contribution-levelup" onClick={() => setLeveledUp(false)}>
-          🎉 {t('catalog.levelUpBanner', { level: progress.collectorLevel })}
-        </div>
-      )}
-
-      <div className="contribution-progress-head">
-        <div className="contribution-level">{t('catalog.contribLevel', { level: progress.collectorLevel })}</div>
-        <div className="field-hint">{t('catalog.contribXpToNext', { xp: xpToNext })}</div>
-      </div>
-      <div className="contribution-bar"><div className="contribution-bar-fill" style={{ width: `${progressPct}%` }} /></div>
-      <div className="field-hint contribution-slots">
-        {slotsCapped ? t('catalog.contribSlotsComplete') : t('catalog.contribSlots', { earned: progress.earnedCollectionSlots, limit: progress.effectiveFreeItemLimit })}
-      </div>
-      {progress.proPlus?.active && (
-        <div className="field-hint contribution-proplus-active">
-          ⭐ {t('catalog.proPlusActiveUntil', { date: new Date(progress.proPlus.endsAt).toLocaleDateString('de-DE') })}
-        </div>
-      )}
-      {progress.pendingWithheldXp?.count > 0 && (
-        <div className="contribution-withheld-notice">
-          ⏳ {t('catalog.withheldXpNotice', { xp: progress.pendingWithheldXp.totalAmount })}
-        </div>
-      )}
-
-      {availableRewards.length > 0 && (
-        <>
-          <h3 className="contribution-submissions-title">{t('catalog.rewardsAvailableTitle')}</h3>
-          {rewardError && <p className="field-hint cv-error">{rewardError}</p>}
-          {availableRewards.map((r) => (
-            <div className="admin-row" key={r.id}>
-              <div><strong>{t('catalog.rewardLevel', { level: r.reward_level })}</strong><small> · {REWARD_DURATION_LABEL[r.reward_level] || `${r.duration_days} Tage`} ItemCase Pro+</small></div>
-              <button type="button" className="btn-primary" disabled={busyRewardId === r.id} onClick={() => activate(r.id)}>{t('catalog.activateReward')}</button>
-            </div>
-          ))}
-        </>
-      )}
-      {otherRewards.length > 0 && (
-        <>
-          <h3 className="contribution-submissions-title">{t('catalog.rewardsTitle')}</h3>
-          {otherRewards.map((r) => (
-            <div className="admin-row" key={r.id}>
-              <div><strong>{t('catalog.rewardLevel', { level: r.reward_level })}</strong></div>
-              <span className={`admin-status admin-status-${r.status}`}>{r.status}</span>
-            </div>
-          ))}
-        </>
-      )}
-
       <h3 className="contribution-submissions-title">{t('catalog.mySubmissionsTitle')}</h3>
       {!submissions.length && <p className="field-hint">{t('catalog.noSubmissionsYet')}</p>}
       {submissions.map((s) => (
@@ -487,21 +408,14 @@ export default function CommunityCatalogModal({ catalog, catalogCategories, item
                 </label>
                 <div className="catalog-category-filter">
                   <div className={categoriesExpanded ? 'catalog-category-chips expanded' : 'catalog-category-chips'}>
-                    <button
-                      type="button"
-                      className={activeCat === ALL_CAT ? 'catalog-chip active' : 'catalog-chip'}
-                      onClick={() => setActiveCat(ALL_CAT)}
-                    >
-                      {t('sidebar.all')}
-                    </button>
                     {filterCategories.map((cat) => (
                       <button
                         type="button"
                         key={cat}
                         className={activeCat === cat ? 'catalog-chip active' : 'catalog-chip'}
-                        onClick={() => setActiveCat(cat)}
+                        onClick={() => setActiveCat(activeCat === cat ? ALL_CAT : cat)}
                       >
-                        {cat}
+                        {stripCategoryIcon(cat)}
                       </button>
                     ))}
                   </div>
@@ -551,7 +465,7 @@ export default function CommunityCatalogModal({ catalog, catalogCategories, item
               ) : (
                 <>
                 <div className="catalog-results-head">
-                  <div><span>{activeCat === ALL_CAT ? t('catalog.allDiscoveries') : activeCat}</span><strong>{filtered.length} {t('catalog.entries')}</strong></div>
+                  <div><span>{activeCat === ALL_CAT ? t('catalog.allDiscoveries') : stripCategoryIcon(activeCat)}</span><strong>{filtered.length} {t('catalog.entries')}</strong></div>
                   <span>{t('catalog.openHint')}</span>
                 </div>
                 <div className="grid catalog-grid">

@@ -1584,7 +1584,7 @@ label {
   color: var(--text-muted);
 }
 
-input, select, textarea {
+input:not([type="checkbox"]):not([type="radio"]), select, textarea {
   background: var(--bg-card);
   border: min(var(--control-border-width), 2px) solid var(--control-border-color);
   color: var(--text);
@@ -1977,11 +1977,13 @@ input:focus, select:focus, textarea:focus {
   position: absolute;
   top: 46px;
   right: 0;
-  width: 220px;
+  width: max-content;
+  min-width: 160px;
+  max-width: 220px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 8px;
+  border-radius: 10px;
+  padding: 6px;
   box-shadow: 0 12px 32px rgba(0,0,0,0.4);
   z-index: 16;
   display: flex;
@@ -2000,8 +2002,9 @@ input:focus, select:focus, textarea:focus {
   border: none;
   color: var(--text);
   text-align: left;
-  padding: 9px 10px;
-  border-radius: 8px;
+  white-space: nowrap;
+  padding: 7px 10px;
+  border-radius: 7px;
   cursor: pointer;
   font-size: 13px;
 }
@@ -2110,6 +2113,9 @@ input:focus, select:focus, textarea:focus {
   color: var(--danger);
 }
 
+.admin-prompt-modal { max-width: 420px; }
+.admin-prompt-modal p { margin: 0 0 10px 0; }
+.admin-prompt-modal textarea { width: 100%; box-sizing: border-box; background: var(--bg-input, var(--bg-card)); color: inherit; border: 1px solid var(--border); border-radius: 8px; padding: 10px; font: inherit; resize: vertical; }
 .settings-data-section .settings-danger-title { color: var(--danger); margin-top: 8px; }
 .settings-data-section .settings-nav-item.danger { display: inline-block; margin-top: 0; padding: 8px 14px; border: 1px solid var(--danger); border-radius: 8px; }
 
@@ -4531,7 +4537,8 @@ input:focus, select:focus, textarea:focus {
 
 .showcase-settings { margin-bottom: 20px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-card); }
 .showcase-settings-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
-.showcase-toggle { display: flex; align-items: center; gap: 8px; }
+.showcase-toggle { display: flex; flex-direction: row; align-items: center; gap: 8px; font-size: 14px; color: var(--text); cursor: pointer; }
+.showcase-toggle input[type="checkbox"] { width: 16px; height: 16px; margin: 0; accent-color: var(--accent, #6c8cff); }
 .showcase-link { display: flex; align-items: center; gap: 8px; }
 .showcase-link code { font-size: 12px; color: var(--text-muted); }
 .showcase-settings-fields { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }

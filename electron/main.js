@@ -1420,6 +1420,25 @@ ipcMain.handle('auth:login', async (_event, { identifier, password, rememberMe =
   }
 });
 
+ipcMain.handle('auth:saveProfile', async (_event, payload) => {
+  try {
+    const data = await apiFetch('/auth/profile', { method: 'PATCH', auth: true, body: payload });
+    if (data.token) {
+      saveAuthToken(data.token, fs.existsSync(authFile));
+      disconnectRealtime();
+      connectRealtime();
+    }
+    return { ok: true, user: data.user };
+  } catch (e) { return { ok: false, error: e.data?.error || e.message }; }
+});
+
+ipcMain.handle('auth:forgotPassword', async (_event, email) => {
+  try {
+    const data = await apiFetch('/auth/forgot-password', { method: 'POST', body: { email } });
+    return { ok: true, message: data.message };
+  } catch (e) { return { ok: false, error: e.data?.error || e.message }; }
+});
+
 ipcMain.handle('auth:changePassword', async (_event, { currentPassword, newPassword }) => {
   try {
     const data = await apiFetch('/auth/change-password', { method: 'POST', auth: true, body: { currentPassword, newPassword } });
