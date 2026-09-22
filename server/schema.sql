@@ -340,6 +340,10 @@ ALTER TABLE catalog_entries ADD COLUMN condition_values JSON NULL AFTER market_v
 -- (reports, history, wishlist entries) ever dangles.
 ALTER TABLE catalog_entries MODIFY COLUMN status ENUM('pending', 'approved', 'rejected', 'needs_changes', 'reported', 'removed', 'merged') NOT NULL DEFAULT 'pending';
 ALTER TABLE catalog_entries ADD COLUMN submitted_by_user_id VARCHAR(36) NULL AFTER contributor;
+-- Account deletion (Art. 17 DSGVO) must not silently delete shared public
+-- catalog data along with the account — the entry stays, attribution is
+-- pseudonymized (SET NULL) instead of cascade-deleted.
+ALTER TABLE catalog_entries ADD CONSTRAINT fk_ce_submitter FOREIGN KEY (submitted_by_user_id) REFERENCES users(id) ON DELETE SET NULL;
 ALTER TABLE catalog_entries ADD COLUMN moderation_reason TEXT NULL AFTER status;
 ALTER TABLE catalog_entries ADD COLUMN moderated_by VARCHAR(36) NULL AFTER moderation_reason;
 ALTER TABLE catalog_entries ADD COLUMN moderated_at DATETIME NULL AFTER moderated_by;
@@ -505,6 +509,7 @@ CREATE TABLE IF NOT EXISTS catalog_entry_history (
   CONSTRAINT fk_ceh_item FOREIGN KEY (catalog_item_id) REFERENCES catalog_entries(id) ON DELETE CASCADE,
   INDEX idx_ceh_item (catalog_item_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+ALTER TABLE catalog_entry_history ADD CONSTRAINT fk_ceh_actor FOREIGN KEY (actor_user_id) REFERENCES users(id) ON DELETE SET NULL;
 ALTER TABLE collection_items ADD COLUMN image_path VARCHAR(500) NULL AFTER notes;
 ALTER TABLE collection_items ADD COLUMN case_design VARCHAR(64) NULL AFTER image_path;
 ALTER TABLE catalog_entries ADD COLUMN image_path VARCHAR(500) NULL AFTER manufacturer_number;
@@ -588,6 +593,7 @@ CREATE TABLE IF NOT EXISTS catalog_photo_proposals (
 
 ALTER TABLE catalog_photo_proposals ADD COLUMN image_path VARCHAR(500) NULL AFTER catalog_item_id;
 ALTER TABLE catalog_photo_proposals ADD COLUMN submitted_by_user_id VARCHAR(36) NULL AFTER contributor;
+ALTER TABLE catalog_photo_proposals ADD CONSTRAINT fk_cpp_submitter FOREIGN KEY (submitted_by_user_id) REFERENCES users(id) ON DELETE SET NULL;
 
 CREATE TABLE IF NOT EXISTS catalog_categories (
   id INT AUTO_INCREMENT PRIMARY KEY,
@@ -621,8 +627,10 @@ CREATE TABLE IF NOT EXISTS feedback (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 ALTER TABLE reports ADD COLUMN submitted_by_user_id VARCHAR(36) NULL;
+ALTER TABLE reports ADD CONSTRAINT fk_reports_submitter FOREIGN KEY (submitted_by_user_id) REFERENCES users(id) ON DELETE SET NULL;
 ALTER TABLE feedback ADD COLUMN status ENUM('open', 'reviewed', 'archived') NOT NULL DEFAULT 'open';
 ALTER TABLE feedback ADD COLUMN submitted_by_user_id VARCHAR(36) NULL;
+ALTER TABLE feedback ADD CONSTRAINT fk_feedback_submitter FOREIGN KEY (submitted_by_user_id) REFERENCES users(id) ON DELETE SET NULL;
 
 -- Ownership status per item (Phase 1 of the "Differenzierungsfunktionen"
 -- concept): lets an owner flag an item as a duplicate, tradable, for sale,

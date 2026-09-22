@@ -118,6 +118,21 @@ export function createMobileApi() {
     changePassword: (body) => okResult(async () => { const data = await request('/auth/change-password', { method: 'POST', auth: true, body }); saveToken(data.token, !!localStorage.getItem(TOKEN_KEY)); return {}; }),
     setTariff: (tariff) => okResult(async () => { const data = await request('/auth/tariff', { method: 'PATCH', auth: true, body: { tariff } }); saveToken(data.token, !!localStorage.getItem(TOKEN_KEY)); return { user: data.user }; }),
     logout: async () => { localStorage.removeItem(TOKEN_KEY); sessionStorage.removeItem(TOKEN_KEY); return true; },
+    exportMyData: () => okResult(async () => {
+      const data = await request('/auth/export', { auth: true });
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'itemcase-daten-export.json';
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      return {};
+    }),
+    deleteAccount: (password) => okResult(async () => {
+      await request('/auth/account', { method: 'DELETE', auth: true, body: { password } });
+      localStorage.removeItem(TOKEN_KEY); sessionStorage.removeItem(TOKEN_KEY);
+      return {};
+    }),
     getSession: async () => token() ? result(async () => (await request('/auth/me', { auth: true })).user, null) : null,
     friendsList: () => result(() => request('/friends', { auth: true }), { friends: [], incoming: [], outgoing: [] }),
     friendsSendRequest: (identifier) => okResult(async () => { await request('/friends/requests', { method: 'POST', auth: true, body: { identifier } }); return {}; }),

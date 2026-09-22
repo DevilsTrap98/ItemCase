@@ -26,6 +26,76 @@ const backgroundIcons = {
   pitch: '🌱'
 };
 
+// Art. 15/17/20 DSGVO self-service: a full data export and account
+// deletion, both reachable directly by the user — not just documented as
+// "possible on request".
+function DataAndAccountSection({ t }) {
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportResult, setExportResult] = useState(null);
+  const [showDeleteForm, setShowDeleteForm] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleteError, setDeleteError] = useState('');
+  const [deleteBusy, setDeleteBusy] = useState(false);
+
+  const handleExport = async () => {
+    setExportBusy(true);
+    setExportResult(null);
+    const res = await window.api.exportMyData();
+    setExportBusy(false);
+    setExportResult(res?.ok ? 'ok' : (res?.canceled ? null : 'error'));
+  };
+
+  const handleDelete = async (e) => {
+    e.preventDefault();
+    setDeleteError('');
+    if (deleteConfirmText.trim().toUpperCase() !== t('settings.deleteConfirmWord').toUpperCase()) {
+      setDeleteError(t('settings.deleteConfirmMismatch'));
+      return;
+    }
+    setDeleteBusy(true);
+    const res = await window.api.deleteAccount(deletePassword);
+    setDeleteBusy(false);
+    if (!res?.ok) { setDeleteError(res?.error || t('auth.errorGeneric')); return; }
+    // Successful deletion clears the session; the app's own auth-state
+    // watcher (session-expired path) takes it from here back to the login screen.
+  };
+
+  return (
+    <div className="form settings-data-section">
+      <h3>{t('settings.dataTitle')}</h3>
+      <p className="field-hint">{t('settings.dataExportHint')}</p>
+      <div className="modal-actions" style={{ marginBottom: 24 }}>
+        <button type="button" className="btn-secondary" onClick={handleExport} disabled={exportBusy}>{t('settings.exportData')}</button>
+        {exportResult === 'ok' && <span className="saved-hint">{t('settings.exportSaved')}</span>}
+        {exportResult === 'error' && <span className="auth-error">{t('auth.errorGeneric')}</span>}
+      </div>
+
+      <h3 className="settings-danger-title">{t('settings.dangerZone')}</h3>
+      {!showDeleteForm ? (
+        <button type="button" className="settings-nav-item danger" onClick={() => setShowDeleteForm(true)}>{t('settings.deleteAccount')}</button>
+      ) : (
+        <form className="form" onSubmit={handleDelete}>
+          <p className="field-hint">{t('settings.deleteAccountHint')}</p>
+          <label>
+            {t('settings.currentPassword')}
+            <input type="password" value={deletePassword} onChange={(e) => setDeletePassword(e.target.value)} placeholder="••••••••" maxLength={72} required />
+          </label>
+          <label>
+            {t('settings.deleteConfirmLabel')}
+            <input type="text" value={deleteConfirmText} onChange={(e) => setDeleteConfirmText(e.target.value)} placeholder={t('settings.deleteConfirmWord')} required />
+          </label>
+          <div className="modal-actions">
+            {deleteError && <span className="auth-error">{deleteError}</span>}
+            <button type="button" className="btn-secondary" onClick={() => setShowDeleteForm(false)}>{t('catalog.close')}</button>
+            <button type="submit" className="btn-danger" disabled={deleteBusy}>{t('settings.deleteAccountConfirm')}</button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
 export default function SettingsModal({ user, itemCount, onSave, onLogout, onClose }) {
   const { lang, setLang, t } = useI18n();
   const [tab, setTab] = useState('profile');
@@ -227,6 +297,8 @@ export default function SettingsModal({ user, itemCount, onSave, onLogout, onClo
                 </div>
               </form>
             )}
+
+            {tab === 'security' && <DataAndAccountSection t={t} />}
 
             {tab === 'preferences' && (
               <form className="form settings-preferences-form" onSubmit={handleSavePreferences}>

@@ -1443,6 +1443,31 @@ ipcMain.handle('auth:setTariff', async (_event, tariff) => {
   } catch (e) { return { ok: false, error: e.data?.error || e.message }; }
 });
 
+ipcMain.handle('auth:exportData', async () => {
+  try {
+    const data = await apiFetch('/auth/export', { auth: true });
+    const result = await dialog.showSaveDialog({
+      title: 'Meine Daten exportieren',
+      defaultPath: 'itemcase-daten-export.json',
+      filters: [{ name: 'JSON', extensions: ['json'] }]
+    });
+    if (result.canceled || !result.filePath) return { ok: false, canceled: true };
+    fs.writeFileSync(result.filePath, JSON.stringify(data, null, 2), 'utf8');
+    return { ok: true, filePath: result.filePath };
+  } catch (e) { return { ok: false, error: e.data?.error || e.message }; }
+});
+
+ipcMain.handle('auth:deleteAccount', async (_event, password) => {
+  try {
+    await apiFetch('/auth/account', { method: 'DELETE', auth: true, body: { password } });
+    clearAuthToken();
+    disconnectRealtime();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.data?.error || e.message };
+  }
+});
+
 ipcMain.handle('auth:logout', () => {
   clearAuthToken();
   disconnectRealtime();

@@ -2110,6 +2110,9 @@ input:focus, select:focus, textarea:focus {
   color: var(--danger);
 }
 
+.settings-data-section .settings-danger-title { color: var(--danger); margin-top: 8px; }
+.settings-data-section .settings-nav-item.danger { display: inline-block; margin-top: 0; padding: 8px 14px; border: 1px solid var(--danger); border-radius: 8px; }
+
 .settings-content {
   flex: 1;
   padding: 20px 28px 24px;

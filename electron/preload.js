@@ -58,6 +58,8 @@ contextBridge.exposeInMainWorld('api', {
   changePassword: (payload) => ipcRenderer.invoke('auth:changePassword', payload),
   setTariff: (tariff) => ipcRenderer.invoke('auth:setTariff', tariff),
   logout: () => ipcRenderer.invoke('auth:logout'),
+  exportMyData: () => ipcRenderer.invoke('auth:exportData'),
+  deleteAccount: (password) => ipcRenderer.invoke('auth:deleteAccount', password),
   getSession: () => ipcRenderer.invoke('auth:getSession'),
   friendsList: () => ipcRenderer.invoke('friends:list'),
   friendsSendRequest: (identifier) => ipcRenderer.invoke('friends:sendRequest', identifier),

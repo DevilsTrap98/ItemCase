@@ -152,4 +152,20 @@ function authorizePrivateImage(req, res, next) {
   next();
 }
 
-module.exports = { uploadsRoot, storeDataUrl, removeStoredImage, copyToNamespace, publicImageUrl, authorizePrivateImage };
+// Every namespace that stores files under a per-user folder (owner_id ==
+// the folder name) — used on account deletion to actually remove the
+// files from disk, since a DB cascade never touches the filesystem.
+// 'catalog' (the entries' own images) is deliberately excluded: those
+// belong to shared public catalog data that survives account deletion
+// (attribution is pseudonymized instead, see schema.sql's ON DELETE SET
+// NULL constraints), not to the deleted account.
+const PER_USER_NAMESPACES = ['collections', 'market', 'dealer-logos', 'category-backgrounds', 'forum', 'catalog-proposals', 'showcase'];
+
+async function removeAllUserFiles(userId) {
+  for (const namespace of PER_USER_NAMESPACES) {
+    const dir = path.join(uploadsRoot, safeSegment(namespace), safeSegment(userId));
+    await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+module.exports = { uploadsRoot, storeDataUrl, removeStoredImage, copyToNamespace, publicImageUrl, authorizePrivateImage, removeAllUserFiles };

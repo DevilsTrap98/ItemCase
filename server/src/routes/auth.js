@@ -6,6 +6,7 @@ const { signToken, requireAuth } = require('../middleware/auth');
 const { loginLimiter, registrationLimiter, verificationLimiter, captchaLimiter } = require('../middleware/rateLimits');
 const { createCaptcha, verifyCaptcha } = require('../security/captcha');
 const { sendVerificationEmail } = require('../services/email');
+const { removeAllUserFiles } = require('../utils/imageStorage');
 
 const router = express.Router();
 
@@ -240,6 +241,69 @@ router.post('/change-password', requireAuth, loginLimiter, async (req, res, next
   } catch (err) {
     next(err);
   }
+});
+
+// Art. 15/20 DSGVO — a full, machine-readable export of the account's own
+// data. Deliberately excludes other users' data even where it's
+// referenced (e.g. friend names) — only this account's own rows.
+router.get('/export', requireAuth, async (req, res, next) => {
+  try {
+    const pool = getMysqlPool();
+    const userId = req.user.id;
+    const [
+      [userRows], [collectionItems], [collectionSettings], [catalogSubmissions], [changeRequests],
+      [communityValueEstimates], [xpTransactions], [levelRewards], [entitlementRows], [wishlistItems],
+      [showcaseProfile], [dealerProfile], [marketListings], [notificationRows], [reportsFiled], [feedbackFiled]
+    ] = await Promise.all([
+      pool.query('SELECT id, name, email, username, role, tariff, account_status, created_at FROM users WHERE id = ?', [userId]),
+      pool.query('SELECT * FROM collection_items WHERE owner_id = ?', [userId]),
+      pool.query('SELECT * FROM collection_settings WHERE owner_id = ?', [userId]),
+      pool.query('SELECT * FROM catalog_entries WHERE submitted_by_user_id = ?', [userId]),
+      pool.query('SELECT * FROM catalog_change_requests WHERE submitted_by = ?', [userId]),
+      pool.query('SELECT * FROM community_value_estimates WHERE user_id = ?', [userId]),
+      pool.query('SELECT * FROM contribution_xp_transactions WHERE user_id = ?', [userId]),
+      pool.query('SELECT * FROM level_rewards WHERE user_id = ?', [userId]),
+      pool.query('SELECT * FROM entitlements WHERE user_id = ?', [userId]),
+      pool.query('SELECT * FROM wishlist_items WHERE owner_id = ?', [userId]),
+      pool.query('SELECT * FROM showcase_profiles WHERE owner_id = ?', [userId]),
+      pool.query('SELECT * FROM dealer_profiles WHERE owner_id = ?', [userId]),
+      pool.query('SELECT * FROM market_listings WHERE owner_id = ?', [userId]),
+      pool.query('SELECT * FROM notifications WHERE user_id = ?', [userId]),
+      pool.query('SELECT * FROM reports WHERE submitted_by_user_id = ?', [userId]),
+      pool.query('SELECT * FROM feedback WHERE submitted_by_user_id = ?', [userId])
+    ]);
+    res.setHeader('Content-Disposition', 'attachment; filename="itemcase-daten-export.json"');
+    res.json({
+      exportedAt: new Date().toISOString(),
+      account: userRows[0] || null,
+      collection: { items: collectionItems, settings: collectionSettings[0] || null },
+      catalogSubmissions, catalogChangeRequests: changeRequests, communityValueEstimates,
+      xp: { transactions: xpTransactions, levelRewards, entitlements: entitlementRows },
+      wishlist: wishlistItems, showcaseProfile: showcaseProfile[0] || null, dealerProfile: dealerProfile[0] || null,
+      marketListings, notifications: notificationRows, reportsFiled, feedbackFiled
+    });
+  } catch (err) { next(err); }
+});
+
+// Art. 17 DSGVO — full account deletion. Requires the current password
+// (a destructive, irreversible action shouldn't be a single stolen-token
+// away). Cascades to every table of genuinely personal data via the FK
+// constraints in schema.sql; shared public content (approved catalog
+// entries) survives with its attribution set to NULL rather than being
+// deleted along with the account. Files on disk are removed separately —
+// no DB cascade touches the filesystem.
+router.delete('/account', requireAuth, loginLimiter, async (req, res, next) => {
+  try {
+    const password = String(req.body?.password || '');
+    const pool = getMysqlPool();
+    const [rows] = await pool.query('SELECT password_hash FROM users WHERE id = ?', [req.user.id]);
+    if (!rows.length || !(await bcrypt.compare(password, rows[0].password_hash))) {
+      return res.status(401).json({ error: 'Das Passwort ist nicht korrekt.' });
+    }
+    await pool.query('DELETE FROM users WHERE id = ?', [req.user.id]);
+    await removeAllUserFiles(req.user.id);
+    res.json({ ok: true });
+  } catch (err) { next(err); }
 });
 
 module.exports = router;
