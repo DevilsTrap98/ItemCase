@@ -3,8 +3,14 @@ const TOKEN_KEY = 'itemcase_mobile_token';
 
 const token = () => sessionStorage.getItem(TOKEN_KEY) || localStorage.getItem(TOKEN_KEY);
 
+// Identifies this client to the server (see server/src/middleware/
+// clientFilter.js) — not a secret, ships inside the distributed app/web
+// bundle and can be read out of it. Only filters generic bots/scanners,
+// never a substitute for the real JWT auth already required on every route.
+const CLIENT_APP_ID = 'itemcase-mobile-v1';
+
 async function request(path, { method = 'GET', body, auth = false } = {}) {
-  const headers = { 'Content-Type': 'application/json' };
+  const headers = { 'Content-Type': 'application/json', 'X-ItemCase-Client': CLIENT_APP_ID };
   if (auth && token()) headers.Authorization = `Bearer ${token()}`;
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method,

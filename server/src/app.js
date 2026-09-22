@@ -21,6 +21,7 @@ const adminRoutes = require('./routes/admin');
 const { FEATURES, requireFeature } = require('./config/featureFlags');
 const { errorHandler } = require('./middleware/errorHandler');
 const { globalLimiter, submissionLimiter } = require('./middleware/rateLimits');
+const { requireKnownClient } = require('./middleware/clientFilter');
 const { uploadsRoot, authorizePrivateImage } = require('./utils/imageStorage');
 
 // Express app definition only — no listen(), no DB connect — so it can be
@@ -54,6 +55,13 @@ function createApp() {
       res.setHeader('X-Content-Type-Options', 'nosniff');
     }
   }));
+
+  // Restricts every /api/* route to requests carrying the app's own client
+  // identifier (see clientFilter.js's own caveats — this is a coarse
+  // filter, not real access control; /uploads and /showcase above/below
+  // this line are untouched on purpose, since those must stay reachable by
+  // any ordinary browser).
+  app.use('/api', requireKnownClient);
 
   // Public — the client reads this once at startup to decide which nav
   // entries and screens to render. The server-side requireFeature() gates

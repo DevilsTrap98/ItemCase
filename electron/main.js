@@ -103,8 +103,14 @@ function clearAuthToken() {
 }
 
 // Thin wrapper around the ItemCase backend (server/).
+// Identifies this app to the server (see server/src/middleware/clientFilter.js).
+// Not a secret — it ships inside the distributed .exe and can be read out
+// of it — this only filters generic bots/scanners hitting the API with no
+// client at all, never a substitute for the real JWT auth on every route.
+const CLIENT_APP_ID = 'itemcase-desktop-v1';
+
 async function apiFetch(urlPath, { method = 'GET', body, auth = false } = {}) {
-  const headers = { 'Content-Type': 'application/json' };
+  const headers = { 'Content-Type': 'application/json', 'X-ItemCase-Client': CLIENT_APP_ID };
   if (auth) {
     const token = loadAuthToken();
     if (token) headers.Authorization = `Bearer ${token}`;
