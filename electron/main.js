@@ -1242,6 +1242,18 @@ ipcMain.handle('data:importCsv', async () => {
 
 // ---- Auth & Friends (server/src/routes/auth.js, friends.js) ----
 
+// Public, unauthenticated — the client asks this once at startup to decide
+// which nav entries to render. The server's own requireFeature() gates are
+// what actually block a disabled feature; this only drives the UI.
+ipcMain.handle('config:features', async () => {
+  try {
+    return await apiFetch('/config/features');
+  } catch (e) {
+    // If the server can't be reached yet, fail safe: show nothing extra.
+    return { forum: false, friends: false, groups: false, chat: false, market: false, dealer: false };
+  }
+});
+
 ipcMain.handle('auth:getCaptcha', async () => {
   try {
     return { ok: true, ...(await apiFetch('/auth/captcha')) };

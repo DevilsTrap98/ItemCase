@@ -10,6 +10,7 @@ function subscribe(channel, callback) {
 
 contextBridge.exposeInMainWorld('api', {
   setTitleBarColor: (color, symbolColor) => ipcRenderer.invoke('window:setTitleBarColor', { color, symbolColor }),
+  getFeatureFlags: () => ipcRenderer.invoke('config:features'),
   getAll: () => ipcRenderer.invoke('items:getAll'),
   saveItem: (item) => ipcRenderer.invoke('items:save', item),
   deleteItem: (id) => ipcRenderer.invoke('items:delete', id),

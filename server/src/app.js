@@ -16,6 +16,7 @@ const catalogRoutes = require('./routes/catalog');
 const reportsRoutes = require('./routes/reports');
 const feedbackRoutes = require('./routes/feedback');
 const adminRoutes = require('./routes/admin');
+const { FEATURES, requireFeature } = require('./config/featureFlags');
 const { errorHandler } = require('./middleware/errorHandler');
 const { globalLimiter, submissionLimiter } = require('./middleware/rateLimits');
 const { uploadsRoot, authorizePrivateImage } = require('./utils/imageStorage');
@@ -52,17 +53,26 @@ function createApp() {
     }
   }));
 
+  // Public — the client reads this once at startup to decide which nav
+  // entries and screens to render. The server-side requireFeature() gates
+  // below are what actually enforce this; the client hiding itself is just
+  // UX, never the security boundary (spec: "eine rein visuelle Ausblendung
+  // im Client reicht nicht aus").
+  app.get('/api/config/features', (_req, res) => res.json(FEATURES));
+
   app.get('/api/health', (_req, res) => res.json({ ok: true }));
   app.use('/api/auth', authRoutes);
-  app.use('/api/friends', friendsRoutes);
-  app.use('/api/blocks', blocksRoutes);
-  app.use('/api/groups', groupsRoutes);
-  app.use('/api/forum', forumRoutes);
-  app.use('/api/conversations', conversationsRoutes);
+  app.use('/api/friends', requireFeature('friends'), friendsRoutes);
+  // user_blocks is shared plumbing for the friends-block and market-block
+  // features; it has no reason to be reachable unless at least one of them is on.
+  app.use('/api/blocks', (req, res, next) => (FEATURES.friends || FEATURES.market ? next() : res.status(404).json({ error: 'not found' })), blocksRoutes);
+  app.use('/api/groups', requireFeature('groups'), groupsRoutes);
+  app.use('/api/forum', requireFeature('forum'), forumRoutes);
+  app.use('/api/conversations', requireFeature('chat'), conversationsRoutes);
   app.use('/api/notifications', notificationsRoutes);
   app.use('/api/collection', collectionRoutes);
   app.use('/api/wishlist', wishlistRoutes);
-  app.use('/api/market', marketRoutes);
+  app.use('/api/market', requireFeature('market'), marketRoutes);
   app.use('/api/catalog', catalogRoutes);
   app.use('/api/reports', submissionLimiter, reportsRoutes);
   app.use('/api/feedback', submissionLimiter, feedbackRoutes);

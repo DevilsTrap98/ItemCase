@@ -104,6 +104,16 @@ export default function App() {
   const [sessionLoading, setSessionLoading] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  // V1 scope: Forum/Freunde/Gruppen/Chat/CommunityMarkt/Händlermodus are
+  // built but hidden until the server flag turns them on (see
+  // server/src/config/featureFlags.js). Default everything off so a slow or
+  // failed fetch never briefly reveals a route that's actually disabled.
+  const [features, setFeatures] = useState({ forum: false, friends: false, groups: false, chat: false, market: false, dealer: false });
+  useEffect(() => {
+    let cancelled = false;
+    window.api.getFeatureFlags?.().then((flags) => { if (!cancelled && flags) setFeatures(flags); });
+    return () => { cancelled = true; };
+  }, []);
 
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -821,14 +831,16 @@ export default function App() {
                   <button onClick={() => { setShowCommunityCatalog(true); setShowCommunityMenu(false); }}>
                     <UiIcon name="book" /> {t('topbar.communityCatalog')}
                   </button>
-                  {!isGuest && (
+                  {!isGuest && features.forum && (
                     <button onClick={() => { setShowForumHub(true); setShowCommunityMenu(false); }}>
                       <UiIcon name="message" /> {t('topbar.forum')}
                     </button>
                   )}
-                  <button onClick={() => { setShowMarket(true); setShowCommunityMenu(false); }}>
-                    <UiIcon name="store" /> {t('topbar.communityMarket')}
-                  </button>
+                  {features.market && (
+                    <button onClick={() => { setShowMarket(true); setShowCommunityMenu(false); }}>
+                      <UiIcon name="store" /> {t('topbar.communityMarket')}
+                    </button>
+                  )}
                 </div>
               </>
             )}
@@ -855,9 +867,11 @@ export default function App() {
               <button className="icon-btn topbar-icon-btn" onClick={() => setShowWishlist(true)} title={t('wishlist.title')}>
                 <UiIcon name="heart" />
               </button>
-              <button className="icon-btn topbar-icon-btn" onClick={() => setShowFriendsPanel((v) => !v)} title={t('friends.title')}>
-                <UiIcon name="users" />
-              </button>
+              {features.friends && (
+                <button className="icon-btn topbar-icon-btn" onClick={() => setShowFriendsPanel((v) => !v)} title={t('friends.title')}>
+                  <UiIcon name="users" />
+                </button>
+              )}
               <NotificationBell
                 notifications={notifications}
                 onMarkRead={handleMarkNotificationRead}
@@ -1200,7 +1214,7 @@ export default function App() {
         />
       )}
 
-      {showGroups && (
+      {showGroups && features.groups && (
         <GroupsModal
           user={user}
           onClose={() => setShowGroups(false)}
@@ -1208,7 +1222,7 @@ export default function App() {
         />
       )}
 
-      {showForumHub && (
+      {showForumHub && features.forum && (
         <ForumHubModal
           user={user}
           myLevel={computeCollectorLevel(items, categories)}
@@ -1217,7 +1231,7 @@ export default function App() {
         />
       )}
 
-      {showMarket && (
+      {showMarket && features.market && (
         <MarketModal
           user={user}
           isGuest={isGuest}

@@ -59,6 +59,7 @@ const collectionCall = (path, options) => request(`/collection${path}`, { auth: 
 export function createMobileApi() {
   return {
     setTitleBarColor: async () => true,
+    getFeatureFlags: () => result(() => request('/config/features'), { forum: false, friends: false, groups: false, chat: false, market: false, dealer: false }),
     getAll: async () => {
       const collection = token() ? await request('/collection', { auth: true }) : { items: [], categories: [], categoryImages: {}, categoryFields: {}, categoryTargets: {}, categoryCaseDesigns: {} };
       const [catalog, catalogCategories] = await Promise.all([
