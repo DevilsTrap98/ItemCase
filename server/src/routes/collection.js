@@ -4,6 +4,7 @@ const { getMysqlPool } = require('../config/db-mysql');
 const { requireAuth } = require('../middleware/auth');
 const { notify } = require('../utils/notify');
 const { storeDataUrl, removeStoredImage, publicImageUrl } = require('../utils/imageStorage');
+const { CONDITION_CODES } = require('../utils/communityValue');
 
 const OWNERSHIP_STATUSES = ['keep', 'duplicate', 'tradable', 'for_sale', 'looking_for'];
 
@@ -382,6 +383,46 @@ router.put('/categories/:name/case-design', async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+// Spec section 19: sum of Community-Schätzwerte across catalog-linked items,
+// always shown with its own data coverage — never silently valuing an
+// unmatched item at 0. Requires an exact match between the item's free-text
+// condition and one of the six unified condition codes; items that don't
+// match yet are counted as "ohne Schätzwert" rather than guessed at.
+router.get('/community-value-summary', async (req, res, next) => {
+  try {
+    const pool = getMysqlPool();
+    const [items] = await pool.query(
+      'SELECT id, quantity, item_condition, catalog_item_id FROM collection_items WHERE owner_id = ? AND catalog_item_id IS NOT NULL',
+      [req.user.id]
+    );
+    const linkedTotal = items.length;
+    let lowerSum = 0, upperSum = 0, coveredCount = 0;
+    const byCode = (c) => CONDITION_CODES.find((code) => code.toLowerCase() === String(c || '').toLowerCase());
+
+    for (const item of items) {
+      const code = byCode(item.item_condition);
+      if (!code) continue;
+      const [[agg]] = await pool.query(
+        'SELECT lower_value_minor, upper_value_minor, confidence_level FROM community_value_aggregates WHERE catalog_item_id = ? AND condition_code = ?',
+        [item.catalog_item_id, code]
+      );
+      if (!agg || agg.confidence_level === 'Insufficient' || agg.lower_value_minor === null) continue;
+      const qty = Number(item.quantity) || 1;
+      lowerSum += (agg.lower_value_minor / 100) * qty;
+      upperSum += (agg.upper_value_minor / 100) * qty;
+      coveredCount += 1;
+    }
+
+    res.json({
+      lowerValue: coveredCount ? Math.round(lowerSum) : null,
+      upperValue: coveredCount ? Math.round(upperSum) : null,
+      coveredItems: coveredCount,
+      totalLinkedItems: linkedTotal,
+      coveragePercent: linkedTotal ? Math.round((coveredCount / linkedTotal) * 100) : 0
+    });
+  } catch (err) { next(err); }
 });
 
 module.exports = router;

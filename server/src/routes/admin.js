@@ -4,6 +4,7 @@ const { requireAuth } = require('../middleware/auth');
 const { requireAdmin } = require('../middleware/admin');
 const { publicImageUrl, removeStoredImage } = require('../utils/imageStorage');
 const { notify } = require('../utils/notify');
+const { recalculate } = require('../utils/communityValue');
 
 const router = express.Router();
 router.use(requireAuth, requireAdmin);
@@ -190,6 +191,78 @@ router.patch('/dealers/:ownerId/verification', async (req, res, next) => {
     await notify(req.app.get('io'), req.params.ownerId, `dealer_verification_${status}`, { reason: req.body?.reason || null });
     res.json({ ok: true });
   } catch (error) { next(error); }
+});
+
+// ---- Community-Schätzwert moderation ----
+// Admins review flagged patterns and can exclude/restore individual
+// estimates or pause a whole item's calculation. They can never set or
+// override a value directly (spec section 16).
+
+router.get('/community-values/flags', async (_req, res, next) => {
+  try {
+    const pool = getMysqlPool();
+    // Heuristic v1: surface aggregates with low confidence-to-volume ratio
+    // is not meaningful yet without real usage data, so for now this lists
+    // recently-changed aggregates plus any estimate an admin has already
+    // excluded, so the review queue has something concrete to act on.
+    const [aggregates] = await pool.query(
+      `SELECT cva.*, ce.name AS item_name
+       FROM community_value_aggregates cva
+       JOIN catalog_entries ce ON ce.id = cva.catalog_item_id
+       ORDER BY cva.calculated_at DESC LIMIT 50`
+    );
+    const [excluded] = await pool.query(
+      `SELECT cve.*, ce.name AS item_name
+       FROM community_value_estimates cve
+       JOIN catalog_entries ce ON ce.id = cve.catalog_item_id
+       WHERE cve.status IN ('Excluded', 'Flagged') ORDER BY cve.updated_at DESC LIMIT 50`
+    );
+    res.json({ aggregates, excludedEstimates: excluded });
+  } catch (err) { next(err); }
+});
+
+router.post('/community-values/estimates/:id/exclude', async (req, res, next) => {
+  try {
+    const pool = getMysqlPool();
+    const [rows] = await pool.query('SELECT * FROM community_value_estimates WHERE id = ?', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'Schätzung nicht gefunden' });
+    await pool.query(
+      "UPDATE community_value_estimates SET status = 'Excluded', exclude_reason = ?, updated_at = NOW() WHERE id = ?",
+      [String(req.body?.reason || ''), req.params.id]
+    );
+    await recalculate(pool, rows[0].catalog_item_id, rows[0].condition_code);
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+router.post('/community-values/estimates/:id/restore', async (req, res, next) => {
+  try {
+    const pool = getMysqlPool();
+    const [rows] = await pool.query('SELECT * FROM community_value_estimates WHERE id = ?', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'Schätzung nicht gefunden' });
+    await pool.query("UPDATE community_value_estimates SET status = 'Active', exclude_reason = NULL, updated_at = NOW() WHERE id = ?", [req.params.id]);
+    await recalculate(pool, rows[0].catalog_item_id, rows[0].condition_code);
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// "Pausing" an item's calculation means excluding every active estimate for
+// it without deleting them — recalculate() then reports Insufficient/no
+// public value until an admin restores them individually.
+router.post('/community-values/items/:id/pause', async (req, res, next) => {
+  try {
+    const pool = getMysqlPool();
+    const [conditions] = await pool.query(
+      "SELECT DISTINCT condition_code FROM community_value_estimates WHERE catalog_item_id = ? AND status = 'Active'",
+      [req.params.id]
+    );
+    await pool.query(
+      "UPDATE community_value_estimates SET status = 'Flagged', exclude_reason = ?, updated_at = NOW() WHERE catalog_item_id = ? AND status = 'Active'",
+      [String(req.body?.reason || 'Wertberechnung pausiert'), req.params.id]
+    );
+    for (const row of conditions) await recalculate(pool, req.params.id, row.condition_code);
+    res.json({ ok: true });
+  } catch (err) { next(err); }
 });
 
 module.exports = router;

@@ -4509,6 +4509,23 @@ input:focus, select:focus, textarea:focus {
 .market-legal-notice { padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-card); }
 .market-safety-actions { display: flex; gap: 16px; margin-top: 10px; }
 
+.cv-box { margin: 16px 0; padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-card); }
+.cv-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.cv-header h4 { margin: 0; }
+.cv-result { margin: 8px 0; }
+.cv-median { font-size: 26px; font-weight: 700; }
+.cv-range { color: var(--text-muted); }
+.cv-meta { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+.cv-disclaimer { margin-top: 8px; }
+.cv-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 10px; }
+.cv-mine { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.cv-form { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; width: 100%; }
+.cv-form-actions { display: flex; gap: 8px; }
+.cv-error { color: #d64545; }
+.cv-how-link { background: none; border: none; padding: 0; margin-top: 10px; color: var(--text-muted); text-decoration: underline; cursor: pointer; font-size: 12px; }
+.cv-collection-summary { margin: 14px 0; padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-card); }
+.cv-collection-summary .cv-median { font-size: 22px; }
+
 .market-dealer-header { display: flex; gap: 20px; align-items: flex-start; margin: 18px 0 20px 0; }
 .market-dealer-header h1 { margin: 0 0 6px 0; font-size: 22px; }
 .market-dealer-details { display: flex; flex-direction: column; gap: 12px; margin-bottom: 26px; }

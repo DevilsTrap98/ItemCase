@@ -3,8 +3,11 @@ import { useI18n } from './i18n.jsx';
 import useImagePath from './useImagePath.js';
 import { CASE_DESIGNS, CASE_DESIGN_IDS } from './theme-defaults.js';
 import LogoPlaceholder from './LogoPlaceholder.jsx';
+import CommunityValueBox from './CommunityValueBox.jsx';
 
-export default function ItemDetailModal({ item, categoryCaseDesign, onSaveFrame, onEdit, onClose }) {
+const CV_CODES = ['NewSealed', 'LikeNew', 'VeryGood', 'Good', 'Used', 'Damaged'];
+
+export default function ItemDetailModal({ item, categoryCaseDesign, isGuest, onSaveFrame, onEdit, onClose }) {
   const { lang, t } = useI18n();
   const imageSrc = useImagePath(item.imagePath);
   const [frame, setFrame] = useState(item.caseDesign || '');
@@ -45,6 +48,15 @@ export default function ItemDetailModal({ item, categoryCaseDesign, onSaveFrame,
               {item.catalogInfo?.releaseYear && <div><span>{t('form.catalogReleaseYear')}</span><strong>{item.catalogInfo.releaseYear}</strong></div>}
               {item.catalogInfo?.manufacturerNumber && <div><span>{t('form.catalogManufacturerNumber')}</span><strong>{item.catalogInfo.manufacturerNumber}</strong></div>}
             </div>
+
+            {item.catalogItemId && (
+              <CommunityValueBox
+                catalogItemId={item.catalogItemId}
+                initialCondition={CV_CODES.find((c) => c.toLowerCase() === String(item.condition || '').toLowerCase()) || ''}
+                isGuest={isGuest}
+                itemName={item.name}
+              />
+            )}
 
             {(item.story?.place || item.story?.date || item.story?.text || item.story?.isGift || item.story?.isFirstPiece) && (
               <section className="item-detail-story">

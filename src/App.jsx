@@ -1258,6 +1258,7 @@ export default function App() {
         <ItemDetailModal
           item={selectedItem}
           categoryCaseDesign={categoryCaseDesigns[selectedItem.category] || ''}
+          isGuest={isGuest}
           onSaveFrame={handleSaveItemFrame}
           onEdit={handleDetailEdit}
           onClose={() => setSelectedItem(null)}

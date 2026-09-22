@@ -595,6 +595,46 @@ ipcMain.handle('catalog:proposeCategory', async (_event, name) => {
   return db.catalogCategories;
 });
 
+ipcMain.handle('catalog:communityValues', async (_event, catalogItemId) => {
+  try {
+    return await apiFetch(`/catalog/${catalogItemId}/community-values`, { auth: !!loadAuthToken() });
+  } catch (e) {
+    return null;
+  }
+});
+
+ipcMain.handle('catalog:submitCommunityValueEstimate', async (_event, { catalogItemId, conditionCode, value }) => {
+  try {
+    return { ok: true, ...(await apiFetch(`/catalog/${catalogItemId}/community-value-estimate`, { method: 'POST', auth: true, body: { conditionCode, value } })) };
+  } catch (e) {
+    return { ok: false, error: e.data?.error || e.message };
+  }
+});
+
+ipcMain.handle('catalog:confirmCommunityValueEstimate', async (_event, { catalogItemId, conditionCode }) => {
+  try {
+    return { ok: true, ...(await apiFetch(`/catalog/${catalogItemId}/community-value-estimate/${conditionCode}/confirm`, { method: 'POST', auth: true })) };
+  } catch (e) {
+    return { ok: false, error: e.data?.error || e.message };
+  }
+});
+
+ipcMain.handle('catalog:withdrawCommunityValueEstimate', async (_event, { catalogItemId, conditionCode }) => {
+  try {
+    return { ok: true, ...(await apiFetch(`/catalog/${catalogItemId}/community-value-estimate/${conditionCode}`, { method: 'DELETE', auth: true })) };
+  } catch (e) {
+    return { ok: false, error: e.data?.error || e.message };
+  }
+});
+
+ipcMain.handle('collection:communityValueSummary', async () => {
+  try {
+    return await apiFetch('/collection/community-value-summary', { auth: true });
+  } catch (e) {
+    return null;
+  }
+});
+
 ipcMain.handle('categories:setCaseDesign', async (_event, { name, caseDesign }) => {
   if (loadAuthToken()) return remoteCollectionCall(`/categories/${encodeURIComponent(name)}/case-design`, { method: 'PUT', body: { caseDesign } });
 

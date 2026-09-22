@@ -329,6 +329,50 @@ ALTER TABLE collection_items ADD COLUMN case_design VARCHAR(64) NULL AFTER image
 ALTER TABLE catalog_entries ADD COLUMN image_path VARCHAR(500) NULL AFTER manufacturer_number;
 ALTER TABLE forum_threads ADD COLUMN image_path VARCHAR(500) NULL AFTER category;
 
+-- Community-Schätzwert: value comes only from voluntary, anonymized user
+-- estimates per CatalogItem + condition — never from a personal purchase
+-- price and never from an external price API (see product spec "ItemCase
+-- Anleitung für den Community Schätzwert"). One active estimate per
+-- user/item/condition; the aggregate table holds the last computed result
+-- so the client only ever reads a stored number, never computes it itself.
+CREATE TABLE IF NOT EXISTS community_value_estimates (
+  id VARCHAR(36) PRIMARY KEY,
+  catalog_item_id VARCHAR(36) NOT NULL,
+  user_id VARCHAR(36) NOT NULL,
+  condition_code ENUM('NewSealed', 'LikeNew', 'VeryGood', 'Good', 'Used', 'Damaged') NOT NULL,
+  estimated_value_minor BIGINT NOT NULL,
+  currency_code CHAR(3) NOT NULL DEFAULT 'EUR',
+  status ENUM('Active', 'Expired', 'Excluded', 'Flagged', 'Deleted') NOT NULL DEFAULT 'Active',
+  exclude_reason TEXT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  confirmed_at DATETIME NULL,
+  last_used_at DATETIME NULL,
+  CONSTRAINT fk_cve_catalog_item FOREIGN KEY (catalog_item_id) REFERENCES catalog_entries(id) ON DELETE CASCADE,
+  CONSTRAINT fk_cve_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  UNIQUE KEY uniq_user_item_condition (user_id, catalog_item_id, condition_code),
+  INDEX idx_cve_item_condition (catalog_item_id, condition_code, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- One row per (item, condition, currency) holding the last computed result.
+-- Recalculated server-side whenever an estimate changes (see
+-- server/src/utils/communityValue.js) — the client never computes this.
+CREATE TABLE IF NOT EXISTS community_value_aggregates (
+  catalog_item_id VARCHAR(36) NOT NULL,
+  condition_code ENUM('NewSealed', 'LikeNew', 'VeryGood', 'Good', 'Used', 'Damaged') NOT NULL,
+  currency_code CHAR(3) NOT NULL DEFAULT 'EUR',
+  median_value_minor BIGINT NULL,
+  lower_value_minor BIGINT NULL,
+  upper_value_minor BIGINT NULL,
+  estimate_count INT NOT NULL DEFAULT 0,
+  contributor_count INT NOT NULL DEFAULT 0,
+  fresh_estimate_count INT NOT NULL DEFAULT 0,
+  confidence_level ENUM('Insufficient', 'Low', 'Medium', 'High') NOT NULL DEFAULT 'Insufficient',
+  calculated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (catalog_item_id, condition_code, currency_code),
+  CONSTRAINT fk_cva_catalog_item FOREIGN KEY (catalog_item_id) REFERENCES catalog_entries(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE IF NOT EXISTS catalog_photo_proposals (
   id VARCHAR(36) PRIMARY KEY,
   catalog_item_id VARCHAR(36) NOT NULL,

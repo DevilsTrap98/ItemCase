@@ -1,11 +1,24 @@
 const express = require('express');
 const crypto = require('crypto');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const { getMysqlPool } = require('../config/db-mysql');
-const { optionalAuth } = require('../middleware/auth');
+const { optionalAuth, requireAuth } = require('../middleware/auth');
 const { storeDataUrl, removeStoredImage, publicImageUrl } = require('../utils/imageStorage');
+const { recalculate, CONDITION_CODES } = require('../utils/communityValue');
 
 const router = express.Router();
 router.use(optionalAuth);
+
+// Spec section 10: "maximal 20 neue oder geänderte Schätzungen pro Tag".
+// Keyed per-user (not per-IP) since this only applies to authenticated writes.
+const valueEstimateLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  limit: 20,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  keyGenerator: (req) => req.user?.id || ipKeyGenerator(req.ip),
+  handler: (_req, res) => res.status(429).json({ error: 'Tageslimit für Wertschätzungen erreicht. Bitte versuche es morgen wieder.' })
+});
 
 function mapEntry(row, req) {
   return {
@@ -139,6 +152,112 @@ router.post('/categories', async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+// ---- Community-Schätzwert ----
+// Public read (so the catalog page works for guests too); writes require a
+// verified, non-suspended account (requireAuth already checks account_status;
+// email verification is enforced at login, so reaching here implies both).
+
+function minorToMajor(minor) {
+  return minor === null || minor === undefined ? null : Math.round(minor) / 100;
+}
+
+router.get('/:id/community-values', async (req, res, next) => {
+  try {
+    const pool = getMysqlPool();
+    const [aggregates] = await pool.query(
+      'SELECT * FROM community_value_aggregates WHERE catalog_item_id = ?',
+      [req.params.id]
+    );
+    let mine = [];
+    if (req.user) {
+      const [rows] = await pool.query(
+        "SELECT condition_code, estimated_value_minor, confirmed_at, updated_at FROM community_value_estimates WHERE catalog_item_id = ? AND user_id = ? AND status = 'Active'",
+        [req.params.id, req.user.id]
+      );
+      mine = rows;
+    }
+    const byCondition = {};
+    for (const code of CONDITION_CODES) {
+      const agg = aggregates.find((a) => a.condition_code === code);
+      const own = mine.find((m) => m.condition_code === code);
+      byCondition[code] = {
+        conditionCode: code,
+        medianValue: agg ? minorToMajor(agg.median_value_minor) : null,
+        lowerValue: agg ? minorToMajor(agg.lower_value_minor) : null,
+        upperValue: agg ? minorToMajor(agg.upper_value_minor) : null,
+        estimateCount: agg ? agg.estimate_count : 0,
+        contributorCount: agg ? agg.contributor_count : 0,
+        confidenceLevel: agg ? agg.confidence_level : 'Insufficient',
+        calculatedAt: agg ? agg.calculated_at : null,
+        currency: 'EUR',
+        myEstimate: own ? { value: minorToMajor(own.estimated_value_minor), confirmedAt: own.confirmed_at, updatedAt: own.updated_at } : null
+      };
+    }
+    res.json(byCondition);
+  } catch (err) { next(err); }
+});
+
+router.post('/:id/community-value-estimate', requireAuth, valueEstimateLimiter, async (req, res, next) => {
+  try {
+    const conditionCode = String(req.body?.conditionCode || '');
+    const value = Number(req.body?.value);
+    if (!CONDITION_CODES.includes(conditionCode)) return res.status(400).json({ error: 'invalid conditionCode' });
+    if (!Number.isFinite(value) || value <= 0 || value > 1000000) return res.status(400).json({ error: 'invalid value' });
+
+    const pool = getMysqlPool();
+    const [items] = await pool.query('SELECT id FROM catalog_entries WHERE id = ? AND status = "approved"', [req.params.id]);
+    if (!items.length) return res.status(404).json({ error: 'Katalogeintrag nicht gefunden' });
+
+    const valueMinor = Math.round(value * 100);
+    const id = crypto.randomUUID();
+    await pool.query(
+      `INSERT INTO community_value_estimates (id, catalog_item_id, user_id, condition_code, estimated_value_minor, currency_code, status, confirmed_at)
+       VALUES (?, ?, ?, ?, ?, 'EUR', 'Active', NOW())
+       ON DUPLICATE KEY UPDATE estimated_value_minor = VALUES(estimated_value_minor), status = 'Active', confirmed_at = NOW(), updated_at = NOW()`,
+      [id, req.params.id, req.user.id, conditionCode, valueMinor]
+    );
+
+    const result = await recalculate(pool, req.params.id, conditionCode);
+    res.status(201).json({
+      ok: true,
+      conditionCode,
+      myEstimate: { value },
+      aggregate: {
+        medianValue: minorToMajor(result.medianValueMinor), lowerValue: minorToMajor(result.lowerValueMinor),
+        upperValue: minorToMajor(result.upperValueMinor), estimateCount: result.estimateCount,
+        contributorCount: result.contributorCount, confidenceLevel: result.confidenceLevel
+      }
+    });
+  } catch (err) { next(err); }
+});
+
+router.post('/:id/community-value-estimate/:conditionCode/confirm', requireAuth, async (req, res, next) => {
+  try {
+    if (!CONDITION_CODES.includes(req.params.conditionCode)) return res.status(400).json({ error: 'invalid conditionCode' });
+    const pool = getMysqlPool();
+    const [result] = await pool.query(
+      "UPDATE community_value_estimates SET confirmed_at = NOW() WHERE catalog_item_id = ? AND user_id = ? AND condition_code = ? AND status = 'Active'",
+      [req.params.id, req.user.id, req.params.conditionCode]
+    );
+    if (!result.affectedRows) return res.status(404).json({ error: 'Keine aktive Einschätzung gefunden' });
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+router.delete('/:id/community-value-estimate/:conditionCode', requireAuth, async (req, res, next) => {
+  try {
+    if (!CONDITION_CODES.includes(req.params.conditionCode)) return res.status(400).json({ error: 'invalid conditionCode' });
+    const pool = getMysqlPool();
+    const [result] = await pool.query(
+      "UPDATE community_value_estimates SET status = 'Deleted', updated_at = NOW() WHERE catalog_item_id = ? AND user_id = ? AND condition_code = ? AND status = 'Active'",
+      [req.params.id, req.user.id, req.params.conditionCode]
+    );
+    if (!result.affectedRows) return res.status(404).json({ error: 'Keine aktive Einschätzung gefunden' });
+    await recalculate(pool, req.params.id, req.params.conditionCode);
+    res.json({ ok: true });
+  } catch (err) { next(err); }
 });
 
 module.exports = router;

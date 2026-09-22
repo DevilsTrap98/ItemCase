@@ -1,5 +1,30 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useI18n } from './i18n.jsx';
+
+function money(v) {
+  return v === null || v === undefined ? '–' : Number(v).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+}
+
+// Spec section 19: a total is only ever shown alongside its own data
+// coverage, never as a bare number that implies every item was priced.
+function CollectionValueSummary({ t }) {
+  const [summary, setSummary] = useState(null);
+  useEffect(() => { window.api.getCollectionValueSummary?.().then((s) => s && setSummary(s)); }, []);
+  if (!summary) return null;
+  return (
+    <div className="cv-collection-summary">
+      <h4>{t('cv.collectionSummary')}</h4>
+      {summary.coveredItems > 0 ? (
+        <>
+          <div className="cv-median">{money(summary.lowerValue)} – {money(summary.upperValue)}</div>
+          <div className="cv-meta">{t('cv.collectionCoverage', { covered: summary.coveredItems, total: summary.totalLinkedItems })} · {summary.coveragePercent}%</div>
+        </>
+      ) : (
+        <p className="field-hint">{t('cv.collectionNoData')}</p>
+      )}
+    </div>
+  );
+}
 
 const DNA_COLORS = ['#6c8cff', '#34d399', '#f472b6', '#f5a524', '#38bdf8', '#a78bfa', '#94a3b8', '#fb7185'];
 
@@ -117,6 +142,7 @@ export default function CollectionDNA({ items, categoryFields, onClose }) {
         </div>
 
         <div className="level-content">
+          <CollectionValueSummary t={t} />
           {dna.total === 0 ? (
             <p className="field-hint">{t('dna.empty')}</p>
           ) : (

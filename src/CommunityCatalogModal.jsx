@@ -3,6 +3,7 @@ import { useI18n } from './i18n.jsx';
 import useImagePath from './useImagePath.js';
 import CatalogPhotoModal from './CatalogPhotoModal.jsx';
 import ReportModal from './ReportModal.jsx';
+import CommunityValueBox from './CommunityValueBox.jsx';
 import { SUGGESTED_CATEGORIES } from './category-defaults.js';
 import TitleBar from './TitleBar.jsx';
 import UiIcon from './UiIcon.jsx';
@@ -494,6 +495,7 @@ export default function CommunityCatalogModal({ catalog, catalogCategories, item
                 )}
                 {!CONDITION_ORDER.some((condition) => Number(detailEntry.conditionValues?.[condition]) > 0) && !detailEntry.marketValue && <div className="admin-empty">{t('catalog.noVariantValues')}</div>}
               </div>
+              <CommunityValueBox catalogItemId={detailEntry.id} isGuest={!user?.id || !!user?.guest} itemName={detailEntry.name} />
               <button type="button" className="btn-primary" disabled={adoptedIds.includes(detailEntry.id)} onClick={() => handleAdopt(detailEntry)}>{adoptedIds.includes(detailEntry.id) ? t('catalog.adopted') : t('catalog.adopt')}</button>
             </div>
           </div>
