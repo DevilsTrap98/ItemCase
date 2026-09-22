@@ -1,9 +1,11 @@
 const fs = require('fs/promises');
 const path = require('path');
 const crypto = require('crypto');
+const sharp = require('sharp');
 
 const uploadsRoot = path.resolve(process.env.UPLOADS_DIR || path.join(__dirname, '..', '..', 'uploads'));
 const MAX_IMAGE_BYTES = Number(process.env.MAX_IMAGE_BYTES || 6 * 1024 * 1024);
+const MAX_IMAGE_DIMENSION = 4000; // px, either side — downscaled, never rejected outright
 
 const TYPES = {
   'image/jpeg': { extension: '.jpg', signatures: [[0xff, 0xd8, 0xff]] },
@@ -33,18 +35,46 @@ function validateImage(mime, buffer) {
   return type;
 }
 
-function decodeDataUrl(dataUrl) {
+// Re-decodes the image through sharp and re-encodes it from scratch —
+// never trusting or forwarding the uploaded bytes as-is. This is what
+// actually strips EXIF/GPS metadata (sharp drops it unless withMetadata()
+// is called) and neutralizes any file that merely *looks* like an image to
+// the magic-byte check but smuggles something else past a naive decoder.
+// .rotate() bakes in EXIF orientation before the metadata is dropped, so a
+// photo taken sideways doesn't end up looking sideways once stripped.
+async function reencodeStrippingMetadata(buffer, mime) {
+  const pipeline = sharp(buffer, { animated: mime === 'image/gif' })
+    .rotate()
+    .resize({ width: MAX_IMAGE_DIMENSION, height: MAX_IMAGE_DIMENSION, fit: 'inside', withoutEnlargement: true });
+  switch (mime) {
+    case 'image/png': return pipeline.png().toBuffer();
+    case 'image/webp': return pipeline.webp().toBuffer();
+    case 'image/gif': return pipeline.gif().toBuffer();
+    default: return pipeline.jpeg({ quality: 90 }).toBuffer();
+  }
+}
+
+async function decodeDataUrl(dataUrl) {
   if (!dataUrl) return null;
   const match = /^data:(image\/(?:jpeg|png|webp|gif));base64,([a-zA-Z0-9+/=\r\n]+)$/.exec(String(dataUrl));
   if (!match) throw Object.assign(new Error('invalid image data'), { status: 400 });
-  const buffer = Buffer.from(match[2], 'base64');
-  const type = validateImage(match[1], buffer);
+  const rawBuffer = Buffer.from(match[2], 'base64');
+  const type = validateImage(match[1], rawBuffer);
+  let buffer;
+  try {
+    buffer = await reencodeStrippingMetadata(rawBuffer, match[1]);
+  } catch (e) {
+    // sharp refusing to decode it at all is itself a strong signal the
+    // bytes aren't a genuine image of the claimed type, regardless of what
+    // the magic-byte check thought.
+    throw Object.assign(new Error('image could not be safely processed'), { status: 415 });
+  }
   return { buffer, extension: type.extension };
 }
 
 async function storeDataUrl(dataUrl, namespace, ownerId, imageId) {
   if (!dataUrl) return null;
-  const decoded = decodeDataUrl(dataUrl);
+  const decoded = await decodeDataUrl(dataUrl);
   const relativeDir = path.posix.join(safeSegment(namespace), safeSegment(ownerId));
   const fileName = `${safeSegment(imageId)}-${crypto.randomBytes(8).toString('hex')}${decoded.extension}`;
   const relativePath = path.posix.join(relativeDir, fileName);
