@@ -2071,6 +2071,14 @@ input:focus, select:focus, textarea:focus {
   border-bottom: 1px solid var(--border);
 }
 
+/* A flex item's default min-width is `auto`, which lets its content (the
+   name/email text) overflow the row instead of shrinking — text-overflow:
+   ellipsis on the children below never engages without this. */
+.settings-avatar-block > div:last-child {
+  min-width: 0;
+  flex: 1;
+}
+
 .settings-user-name {
   font-weight: 600;
   font-size: 13.5px;

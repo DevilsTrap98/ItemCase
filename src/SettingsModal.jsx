@@ -219,8 +219,8 @@ export default function SettingsModal({ user, itemCount, onSave, onLogout, onClo
                 <span className="avatar-edit-overlay">✎</span>
               </button>
               <div>
-                <div className="settings-user-name">{user.name}</div>
-                <div className="settings-user-email">{user.email}</div>
+                <div className="settings-user-name" title={user.name}>{user.name}</div>
+                <div className="settings-user-email" title={user.email}>{user.email}</div>
               </div>
             </div>
             <button className={tab === 'profile' ? 'settings-nav-item active' : 'settings-nav-item'} onClick={() => setTab('profile')}>
