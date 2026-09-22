@@ -5,6 +5,8 @@ const { requireAuth, optionalAuth } = require('../middleware/auth');
 const { storeDataUrl, removeStoredImage, publicImageUrl } = require('../utils/imageStorage');
 const { filterText } = require('../utils/wordFilter');
 const { emitToUsers } = require('../realtime');
+const { notify } = require('../utils/notify');
+const { marketContactLimiter } = require('../middleware/rateLimits');
 
 const router = express.Router();
 
@@ -81,6 +83,12 @@ router.get('/', optionalAuth, async (req, res, next) => {
     if (maxPrice) { where.push('ml.price <= ?'); params.push(Number(maxPrice)); }
     if (location) { where.push('ml.location LIKE ?'); params.push(`%${location}%`); }
     if (shipping && SHIPPING_OPTIONS.includes(shipping)) { where.push('ml.shipping_option IN (?, "both")'); params.push(shipping); }
+    // A viewer never sees listings from a seller they've blocked (or who
+    // blocked them) — independent of the market's own moderation state.
+    if (req.user) {
+      where.push('ml.owner_id NOT IN (SELECT blocked_id FROM user_blocks WHERE blocker_id = ?) AND ml.owner_id NOT IN (SELECT blocker_id FROM user_blocks WHERE blocked_id = ?)');
+      params.push(req.user.id, req.user.id);
+    }
 
     let orderBy = 'ml.published_at DESC';
     if (section === 'popular') orderBy = 'favorite_count DESC, ml.views DESC';
@@ -150,7 +158,7 @@ router.get('/dealers/:username', optionalAuth, async (req, res, next) => {
 
     res.json({
       dealer: {
-        username: dealer.username, name: dealer.name, shopName: dealer.shop_name || dealer.name,
+        id: dealer.id, username: dealer.username, name: dealer.name, shopName: dealer.shop_name || dealer.name,
         logoPath: publicImageUrl(dealer.logo_path, req), shortDescription: dealer.short_description || '',
         location: dealer.location || '', shippingArea: dealer.shipping_area || '',
         contactEmail: dealer.contact_email || '', contactPhone: dealer.contact_phone || '',
@@ -319,12 +327,21 @@ router.delete('/listings/:id/favorite', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// A market inquiry starts a direct conversation between buyer and seller
-// even when they aren't friends (conversations.js's own /direct route
-// requires an accepted friendship, which doesn't apply to a commercial
-// contact from a public listing) — reuses the same conversations/messages
-// tables so it shows up as an ordinary chat for both sides afterwards.
-router.post('/listings/:id/contact', async (req, res, next) => {
+function mapContactRequest(row) {
+  return {
+    id: row.id, listingId: row.listing_id, listingTitle: row.listing_title,
+    buyerId: row.buyer_id, buyerName: row.buyer_name, buyerUsername: row.buyer_username,
+    sellerId: row.seller_id, message: row.message, status: row.status,
+    conversationId: row.conversation_id, createdAt: row.created_at, respondedAt: row.responded_at
+  };
+}
+
+// A market inquiry from a stranger never lands straight in the recipient's
+// chat inbox — it's a pending request the seller must explicitly accept,
+// decline, or block first (see accept/decline/block below), separate from
+// the existing friend-chat system's own /direct route (which requires an
+// accepted friendship — not applicable to a commercial contact).
+router.post('/listings/:id/contact', marketContactLimiter, async (req, res, next) => {
   try {
     const message = String(req.body?.message || '').trim();
     if (!message) return res.status(400).json({ error: 'message is required' });
@@ -342,36 +359,103 @@ router.post('/listings/:id/contact', async (req, res, next) => {
     );
     if (blocks.length > 0) return res.status(403).json({ error: 'blocked' });
 
-    let [existing] = await pool.query(
+    const { text, blocked, masked } = await filterText(message);
+    if (blocked) return res.status(422).json({ error: 'message rejected by content filter' });
+
+    const [pendingCount] = await pool.query(
+      `SELECT COUNT(*) AS count FROM market_contact_requests WHERE buyer_id = ? AND seller_id = ? AND status = 'pending'`,
+      [req.user.id, sellerId]
+    );
+    if (Number(pendingCount[0].count) > 0) return res.status(429).json({ error: 'Du hast diesem Verkäufer bereits eine Anfrage geschickt, die noch aussteht.' });
+
+    const id = crypto.randomUUID();
+    await pool.query(
+      'INSERT INTO market_contact_requests (id, listing_id, buyer_id, seller_id, message) VALUES (?, ?, ?, ?, ?)',
+      [id, req.params.id, req.user.id, sellerId, text]
+    );
+    await notify(req.app.get('io'), sellerId, 'market_contact_request', { requestId: id, listingId: req.params.id, listingTitle: listings[0].title, from: { id: req.user.id, name: req.user.name } });
+
+    res.status(201).json({ ok: true, requestId: id, filtered: masked });
+  } catch (err) { next(err); }
+});
+
+router.get('/mine/contact-requests', async (req, res, next) => {
+  try {
+    const pool = getMysqlPool();
+    const [rows] = await pool.query(
+      `SELECT mcr.*, ml.title AS listing_title, u.name AS buyer_name, u.username AS buyer_username
+       FROM market_contact_requests mcr
+       JOIN market_listings ml ON ml.id = mcr.listing_id
+       JOIN users u ON u.id = mcr.buyer_id
+       WHERE mcr.seller_id = ? ORDER BY mcr.created_at DESC`,
+      [req.user.id]
+    );
+    res.json(rows.map(mapContactRequest));
+  } catch (err) { next(err); }
+});
+
+router.post('/contact-requests/:id/accept', async (req, res, next) => {
+  try {
+    const pool = getMysqlPool();
+    const [rows] = await pool.query('SELECT * FROM market_contact_requests WHERE id = ? AND seller_id = ?', [req.params.id, req.user.id]);
+    if (!rows.length) return res.status(404).json({ error: 'Anfrage nicht gefunden' });
+    const request = rows[0];
+    if (request.status !== 'pending') return res.status(400).json({ error: 'Anfrage wurde bereits bearbeitet' });
+
+    let [existingConv] = await pool.query(
       `SELECT c.id FROM conversations c
        JOIN conversation_members m1 ON m1.conversation_id = c.id AND m1.user_id = ?
        JOIN conversation_members m2 ON m2.conversation_id = c.id AND m2.user_id = ?
        WHERE c.type = 'direct'`,
-      [req.user.id, sellerId]
+      [request.buyer_id, request.seller_id]
     );
-    let conversationId = existing[0]?.id;
+    let conversationId = existingConv[0]?.id;
     if (!conversationId) {
       conversationId = crypto.randomUUID();
       await pool.query('INSERT INTO conversations (id, type) VALUES (?, "direct")', [conversationId]);
-      await pool.query('INSERT INTO conversation_members (conversation_id, user_id) VALUES (?, ?), (?, ?)', [conversationId, req.user.id, conversationId, sellerId]);
+      await pool.query('INSERT INTO conversation_members (conversation_id, user_id) VALUES (?, ?), (?, ?)', [conversationId, request.buyer_id, conversationId, request.seller_id]);
     }
 
-    const { text, blocked, masked } = await filterText(message);
-    if (blocked) return res.status(422).json({ error: 'message rejected by content filter' });
-
+    const [[listing]] = await pool.query('SELECT title FROM market_listings WHERE id = ?', [request.listing_id]);
     const messageId = crypto.randomUUID();
-    const fullText = `📦 ${listings[0].title}\n${text}`;
+    const fullText = `📦 ${listing?.title || ''}\n${request.message}`;
     await pool.query(
-      'INSERT INTO messages (id, conversation_id, sender_id, body, filtered) VALUES (?, ?, ?, ?, ?)',
-      [messageId, conversationId, req.user.id, fullText, masked ? 1 : 0]
+      'INSERT INTO messages (id, conversation_id, sender_id, body, filtered) VALUES (?, ?, ?, ?, 0)',
+      [messageId, conversationId, request.buyer_id, fullText]
     );
-    await pool.query('UPDATE conversation_members SET last_read_at = NOW() WHERE conversation_id = ? AND user_id = ?', [conversationId, req.user.id]);
+    await pool.query('UPDATE conversation_members SET last_read_at = NOW() WHERE conversation_id = ? AND user_id = ?', [conversationId, request.seller_id]);
+    await pool.query('UPDATE market_contact_requests SET status = "accepted", conversation_id = ?, responded_at = NOW() WHERE id = ?', [conversationId, req.params.id]);
 
-    emitToUsers(req.app.get('io'), [sellerId, req.user.id], 'message:new', {
-      id: messageId, conversationId, senderId: req.user.id, senderName: req.user.name, body: fullText, filtered: masked, createdAt: new Date().toISOString()
+    const io = req.app.get('io');
+    emitToUsers(io, [request.buyer_id, request.seller_id], 'message:new', {
+      id: messageId, conversationId, senderId: request.buyer_id, senderName: null, body: fullText, filtered: false, createdAt: new Date().toISOString()
     });
+    await notify(io, request.buyer_id, 'market_contact_accepted', { requestId: req.params.id, conversationId });
 
-    res.status(201).json({ conversationId });
+    res.json({ ok: true, conversationId });
+  } catch (err) { next(err); }
+});
+
+router.post('/contact-requests/:id/decline', async (req, res, next) => {
+  try {
+    const pool = getMysqlPool();
+    const [result] = await pool.query(
+      `UPDATE market_contact_requests SET status = "declined", responded_at = NOW() WHERE id = ? AND seller_id = ? AND status = 'pending'`,
+      [req.params.id, req.user.id]
+    );
+    if (!result.affectedRows) return res.status(404).json({ error: 'Anfrage nicht gefunden' });
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+router.post('/contact-requests/:id/block', async (req, res, next) => {
+  try {
+    const pool = getMysqlPool();
+    const [rows] = await pool.query('SELECT buyer_id FROM market_contact_requests WHERE id = ? AND seller_id = ?', [req.params.id, req.user.id]);
+    if (!rows.length) return res.status(404).json({ error: 'Anfrage nicht gefunden' });
+    await pool.query('INSERT IGNORE INTO user_blocks (blocker_id, blocked_id) VALUES (?, ?)', [req.user.id, rows[0].buyer_id]);
+    await pool.query('UPDATE market_contact_requests SET status = "blocked", responded_at = NOW() WHERE id = ?', [req.params.id]);
+    res.json({ ok: true });
   } catch (err) { next(err); }
 });
 
@@ -383,7 +467,8 @@ function mapOwnProfile(row, req) {
     shopName: row.shop_name || '', logoPath: publicImageUrl(row.logo_path, req), shortDescription: row.short_description || '',
     location: row.location || '', shippingArea: row.shipping_area || '', contactEmail: row.contact_email || '',
     contactPhone: row.contact_phone || '', returnPolicy: row.return_policy || '', shippingInfo: row.shipping_info || '',
-    paymentInfo: row.payment_info || '', verificationStatus: row.verification_status
+    paymentInfo: row.payment_info || '', businessRegistrationNote: row.business_registration_note || '',
+    verificationStatus: row.verification_status, verifiedAt: row.verified_at, rejectionReason: row.rejection_reason || ''
   };
 }
 
@@ -408,14 +493,22 @@ router.put('/profile', async (req, res, next) => {
 
     const fields = [
       body.shopName || '', logoPath, body.shortDescription || '', body.location || '', body.shippingArea || '',
-      body.contactEmail || '', body.contactPhone || '', body.returnPolicy || '', body.shippingInfo || '', body.paymentInfo || ''
+      body.contactEmail || '', body.contactPhone || '', body.returnPolicy || '', body.shippingInfo || '', body.paymentInfo || '',
+      body.businessRegistrationNote || ''
     ];
+
+    // Editing the profile after a rejection resets it back to pending — an
+    // admin needs to look at the corrected info again, it doesn't become
+    // "verified" again on its own.
+    const resetsVerification = existing.length && existing[0].verification_status !== 'pending';
 
     if (existing.length) {
       try {
         await pool.query(
           `UPDATE dealer_profiles SET shop_name=?, logo_path=?, short_description=?, location=?, shipping_area=?,
-             contact_email=?, contact_phone=?, return_policy=?, shipping_info=?, payment_info=?, updated_at=NOW()
+             contact_email=?, contact_phone=?, return_policy=?, shipping_info=?, payment_info=?, business_registration_note=?,
+             ${resetsVerification ? "verification_status='pending', verified_at=NULL, verified_by=NULL, rejection_reason=NULL," : ''}
+             updated_at=NOW()
            WHERE owner_id = ?`,
           [...fields, req.user.id]
         );
@@ -428,8 +521,8 @@ router.put('/profile', async (req, res, next) => {
       try {
         await pool.query(
           `INSERT INTO dealer_profiles
-             (owner_id, shop_name, logo_path, short_description, location, shipping_area, contact_email, contact_phone, return_policy, shipping_info, payment_info)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             (owner_id, shop_name, logo_path, short_description, location, shipping_area, contact_email, contact_phone, return_policy, shipping_info, payment_info, business_registration_note)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [req.user.id, ...fields]
         );
       } catch (error) {

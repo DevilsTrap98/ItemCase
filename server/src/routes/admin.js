@@ -3,6 +3,7 @@ const { getMysqlPool } = require('../config/db-mysql');
 const { requireAuth } = require('../middleware/auth');
 const { requireAdmin } = require('../middleware/admin');
 const { publicImageUrl, removeStoredImage } = require('../utils/imageStorage');
+const { notify } = require('../utils/notify');
 
 const router = express.Router();
 router.use(requireAuth, requireAdmin);
@@ -14,19 +15,20 @@ const VALID_FEEDBACK_STATUSES = new Set(['open', 'reviewed', 'archived']);
 router.get('/summary', async (_req, res, next) => {
   try {
     const pool = getMysqlPool();
-    const [[feedback], [reports], [entries], [photos], [categories], [users], [threads]] = await Promise.all([
+    const [[feedback], [reports], [entries], [photos], [categories], [users], [threads], [dealers]] = await Promise.all([
       pool.query("SELECT COUNT(*) count FROM feedback WHERE status = 'open'"),
       pool.query("SELECT COUNT(*) count FROM reports WHERE status = 'open'"),
       pool.query("SELECT COUNT(*) count FROM catalog_entries WHERE status = 'pending'"),
       pool.query("SELECT COUNT(*) count FROM catalog_photo_proposals WHERE status = 'pending'"),
       pool.query("SELECT COUNT(*) count FROM catalog_categories WHERE status = 'pending'"),
       pool.query('SELECT COUNT(*) count FROM users'),
-      pool.query('SELECT COUNT(*) count FROM forum_threads')
+      pool.query('SELECT COUNT(*) count FROM forum_threads'),
+      pool.query("SELECT COUNT(*) count FROM dealer_profiles WHERE verification_status = 'pending'")
     ]);
     res.json({
       openFeedback: Number(feedback[0].count), openReports: Number(reports[0].count),
       pendingEntries: Number(entries[0].count), pendingPhotos: Number(photos[0].count), pendingCategories: Number(categories[0].count),
-      users: Number(users[0].count), forumThreads: Number(threads[0].count)
+      users: Number(users[0].count), forumThreads: Number(threads[0].count), pendingDealers: Number(dealers[0].count)
     });
   } catch (error) { next(error); }
 });
@@ -153,6 +155,39 @@ router.patch('/users/:id/status', async (req, res, next) => {
     const status = req.body?.status === 'suspended' ? 'suspended' : 'active';
     if (req.params.id === req.user.id && status !== 'active') return res.status(400).json({ error: 'Du kannst dein eigenes Konto nicht sperren.' });
     await getMysqlPool().query('UPDATE users SET account_status = ?, token_version = token_version + 1 WHERE id = ?', [status, req.params.id]);
+    res.json({ ok: true });
+  } catch (error) { next(error); }
+});
+
+// CommunityMarkt: dealer verification queue. "Verified" only ever means an
+// admin looked at the profile's stated business info/contact details and
+// approved them here — never anything automated, and never a claim about
+// registry lookups we don't actually perform.
+router.get('/dealers', async (_req, res, next) => {
+  try {
+    const [rows] = await getMysqlPool().query(
+      `SELECT dp.*, u.name, u.username, u.email,
+              (SELECT COUNT(*) FROM market_listings ml WHERE ml.owner_id = dp.owner_id) AS listing_count
+       FROM dealer_profiles dp JOIN users u ON u.id = dp.owner_id
+       ORDER BY FIELD(dp.verification_status, 'pending', 'rejected', 'verified'), dp.updated_at DESC LIMIT 300`
+    );
+    res.json(rows.map((row) => ({ ...row, logo_url: publicImageUrl(row.logo_path, _req), listing_count: Number(row.listing_count) })));
+  } catch (error) { next(error); }
+});
+
+router.patch('/dealers/:ownerId/verification', async (req, res, next) => {
+  try {
+    const status = String(req.body?.status || '');
+    if (!['verified', 'rejected', 'pending'].includes(status)) return res.status(400).json({ error: 'Ungültiger Status' });
+    const pool = getMysqlPool();
+    await pool.query(
+      `UPDATE dealer_profiles SET verification_status = ?, verified_at = ?, verified_by = ?, rejection_reason = ? WHERE owner_id = ?`,
+      [
+        status, status === 'verified' ? new Date() : null, status === 'verified' ? req.user.id : null,
+        status === 'rejected' ? String(req.body?.reason || '').slice(0, 2000) : null, req.params.ownerId
+      ]
+    );
+    await notify(req.app.get('io'), req.params.ownerId, `dealer_verification_${status}`, { reason: req.body?.reason || null });
     res.json({ ok: true });
   } catch (error) { next(error); }
 });

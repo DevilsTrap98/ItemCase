@@ -53,4 +53,12 @@ const submissionLimiter = rateLimit({
   handler: jsonHandler
 });
 
-module.exports = { globalLimiter, loginLimiter, registrationLimiter, verificationLimiter, captchaLimiter, submissionLimiter };
+const marketContactLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 15,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  handler: jsonHandler
+});
+
+module.exports = { globalLimiter, loginLimiter, registrationLimiter, verificationLimiter, captchaLimiter, submissionLimiter, marketContactLimiter };

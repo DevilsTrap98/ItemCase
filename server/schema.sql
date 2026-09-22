@@ -465,6 +465,37 @@ CREATE TABLE IF NOT EXISTS market_favorites (
   CONSTRAINT fk_mf_listing FOREIGN KEY (listing_id) REFERENCES market_listings(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Dealer verification becomes a real, admin-reviewed decision instead of a
+-- flag anyone could flip: business_registration_note is what the dealer
+-- states about themselves (Gewerbeanmeldung/USt-ID etc.) for an admin to
+-- read before approving; verified_at/verified_by/rejection_reason record
+-- who decided what, so "verified" has an actual, inspectable meaning.
+ALTER TABLE dealer_profiles ADD COLUMN business_registration_note TEXT NULL AFTER payment_info;
+ALTER TABLE dealer_profiles ADD COLUMN verified_at DATETIME NULL AFTER verification_status;
+ALTER TABLE dealer_profiles ADD COLUMN verified_by VARCHAR(36) NULL AFTER verified_at;
+ALTER TABLE dealer_profiles ADD COLUMN rejection_reason TEXT NULL AFTER verified_by;
+
+-- A market inquiry starts as a pending request the seller must accept,
+-- decline, or block before it becomes an ordinary chat conversation — an
+-- unsolicited message from a stranger shouldn't land in the same inbox as
+-- friend chats without the recipient choosing that.
+CREATE TABLE IF NOT EXISTS market_contact_requests (
+  id VARCHAR(36) PRIMARY KEY,
+  listing_id VARCHAR(36) NOT NULL,
+  buyer_id VARCHAR(36) NOT NULL,
+  seller_id VARCHAR(36) NOT NULL,
+  message TEXT NOT NULL,
+  status ENUM('pending', 'accepted', 'declined', 'blocked') NOT NULL DEFAULT 'pending',
+  conversation_id VARCHAR(36) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  responded_at DATETIME NULL,
+  CONSTRAINT fk_mcr_listing FOREIGN KEY (listing_id) REFERENCES market_listings(id) ON DELETE CASCADE,
+  CONSTRAINT fk_mcr_buyer FOREIGN KEY (buyer_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_mcr_seller FOREIGN KEY (seller_id) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX idx_mcr_seller_status (seller_id, status),
+  INDEX idx_mcr_buyer (buyer_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- Seed the same three demo items the local Electron store starts with
 -- (electron/main.js demoCatalogEntries), so the shared catalog isn't empty
 -- on a fresh install.

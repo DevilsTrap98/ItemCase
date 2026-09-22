@@ -1640,8 +1640,43 @@ ipcMain.handle('market:favorite', async (_event, { id, favorite }) => {
 
 ipcMain.handle('market:contactSeller', async (_event, { id, message }) => {
   try {
-    const data = await apiFetch(`/market/listings/${id}/contact`, { method: 'POST', auth: true, body: { message } });
+    await apiFetch(`/market/listings/${id}/contact`, { method: 'POST', auth: true, body: { message } });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.data?.error || e.message };
+  }
+});
+
+ipcMain.handle('market:mineContactRequests', async () => {
+  try {
+    return await apiFetch('/market/mine/contact-requests', { auth: true });
+  } catch (e) {
+    return [];
+  }
+});
+
+ipcMain.handle('market:acceptContactRequest', async (_event, id) => {
+  try {
+    const data = await apiFetch(`/market/contact-requests/${id}/accept`, { method: 'POST', auth: true });
     return { ok: true, conversationId: data.conversationId };
+  } catch (e) {
+    return { ok: false, error: e.data?.error || e.message };
+  }
+});
+
+ipcMain.handle('market:declineContactRequest', async (_event, id) => {
+  try {
+    await apiFetch(`/market/contact-requests/${id}/decline`, { method: 'POST', auth: true });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.data?.error || e.message };
+  }
+});
+
+ipcMain.handle('market:blockContactRequest', async (_event, id) => {
+  try {
+    await apiFetch(`/market/contact-requests/${id}/block`, { method: 'POST', auth: true });
+    return { ok: true };
   } catch (e) {
     return { ok: false, error: e.data?.error || e.message };
   }
@@ -1814,11 +1849,12 @@ ipcMain.handle('forum:likePost', async (_event, postId) => {
 // ---- Admin dashboard ----
 ipcMain.handle('admin:load', async () => {
   try {
-    const [summary, inbox, catalog, forum, users] = await Promise.all([
+    const [summary, inbox, catalog, forum, users, dealers] = await Promise.all([
       apiFetch('/admin/summary', { auth: true }), apiFetch('/admin/inbox', { auth: true }),
-      apiFetch('/admin/catalog', { auth: true }), apiFetch('/admin/forum', { auth: true }), apiFetch('/admin/users', { auth: true })
+      apiFetch('/admin/catalog', { auth: true }), apiFetch('/admin/forum', { auth: true }), apiFetch('/admin/users', { auth: true }),
+      apiFetch('/admin/dealers', { auth: true })
     ]);
-    return { ok: true, summary, inbox, catalog, forum, users };
+    return { ok: true, summary, inbox, catalog, forum, users, dealers };
   } catch (e) { return { ok: false, error: e.data?.error || e.message }; }
 });
 
@@ -1829,7 +1865,8 @@ ipcMain.handle('admin:action', async (_event, { action, payload = {} }) => {
     catalogStatus: [`/admin/catalog/${payload.kind}/${payload.id}`, 'PATCH', { status: payload.status }],
     deleteThread: [`/admin/forum/threads/${payload.id}`, 'DELETE'],
     userRole: [`/admin/users/${payload.id}/role`, 'PATCH', { role: payload.role }],
-    userStatus: [`/admin/users/${payload.id}/status`, 'PATCH', { status: payload.status }]
+    userStatus: [`/admin/users/${payload.id}/status`, 'PATCH', { status: payload.status }],
+    dealerVerification: [`/admin/dealers/${payload.ownerId}/verification`, 'PATCH', { status: payload.status, reason: payload.reason }]
   };
   const route = routes[action];
   if (!route) return { ok: false, error: 'Unbekannte Admin-Aktion' };

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 const TABS = [
   ['overview', '📊', 'Übersicht'], ['inbox', '📥', 'Inbox'], ['catalog', '✅', 'Freigaben'],
-  ['reports', '🚩', 'Meldungen'], ['forum', '💬', 'Forum'], ['users', '👥', 'Nutzer']
+  ['reports', '🚩', 'Meldungen'], ['dealers', '🏪', 'Händler'], ['forum', '💬', 'Forum'], ['users', '👥', 'Nutzer']
 ];
 
 const dateTime = (value) => value ? new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '–';
@@ -28,6 +28,7 @@ export default function AdminDashboard({ currentUser, onClose, onCatalogChanged 
   const [catalog, setCatalog] = useState({ entries: [], photos: [], categories: [] });
   const [threads, setThreads] = useState([]);
   const [users, setUsers] = useState([]);
+  const [dealers, setDealers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [lastUpdated, setLastUpdated] = useState(null);
@@ -45,6 +46,7 @@ export default function AdminDashboard({ currentUser, onClose, onCatalogChanged 
       setCatalog(result.catalog || { entries: [], photos: [], categories: [] });
       setThreads(result.forum || []);
       setUsers(result.users || []);
+      setDealers(result.dealers || []);
       setLastUpdated(new Date());
     }
     setLoading(false);
@@ -75,6 +77,15 @@ export default function AdminDashboard({ currentUser, onClose, onCatalogChanged 
     }
   };
 
+  const reviewDealer = async (dealer, status) => {
+    let reason = '';
+    if (status === 'rejected') {
+      reason = window.prompt('Grund für die Ablehnung (wird dem Händler angezeigt):', '') || '';
+      if (!reason.trim()) return;
+    }
+    await act('dealerVerification', { ownerId: dealer.owner_id, status, reason });
+  };
+
   const pending = useMemo(() => [
     ...catalog.entries.filter((x) => x.status === 'pending').map((x) => ({ ...x, kind: 'entries', kindLabel: 'Katalog-Item', label: x.name })),
     ...catalog.photos.filter((x) => x.status === 'pending').map((x) => ({ ...x, kind: 'photos', kindLabel: 'Foto', label: x.item_name })),
@@ -93,6 +104,7 @@ export default function AdminDashboard({ currentUser, onClose, onCatalogChanged 
             {id === 'inbox' && summary.openFeedback > 0 && <b>{summary.openFeedback}</b>}
             {id === 'catalog' && pending.length > 0 && <b>{pending.length}</b>}
             {id === 'reports' && summary.openReports > 0 && <b>{summary.openReports}</b>}
+            {id === 'dealers' && summary.pendingDealers > 0 && <b>{summary.pendingDealers}</b>}
           </button>
         ))}</nav>
         <div className="admin-sidebar-user"><small>Angemeldet als</small><strong>{currentUser.name}</strong><span>{currentUser.email}</span></div>
@@ -111,6 +123,7 @@ export default function AdminDashboard({ currentUser, onClose, onCatalogChanged 
               <button onClick={() => setTab('inbox')}><span>📥</span><strong>{summary.openFeedback || 0}</strong><small>Offenes Feedback</small></button>
               <button onClick={() => setTab('reports')}><span>🚩</span><strong>{summary.openReports || 0}</strong><small>Offene Meldungen</small></button>
               <button onClick={() => setTab('catalog')}><span>✅</span><strong>{pending.length}</strong><small>Ausstehende Freigaben</small></button>
+              <button onClick={() => setTab('dealers')}><span>🏪</span><strong>{summary.pendingDealers || 0}</strong><small>Händler zu prüfen</small></button>
               <button onClick={() => setTab('users')}><span>👥</span><strong>{summary.users || 0}</strong><small>Nutzer</small></button>
               <button onClick={() => setTab('forum')}><span>💬</span><strong>{summary.forumThreads || 0}</strong><small>Forum-Themen</small></button>
             </div>
@@ -122,6 +135,8 @@ export default function AdminDashboard({ currentUser, onClose, onCatalogChanged 
           {tab === 'reports' && <section className="admin-panel"><h2>Meldungen</h2>{inbox.reports.map((item) => <article className="admin-message" key={item.id}><div className="admin-message-head"><div><strong>{item.reason} · {item.target_name || item.target_id}</strong><small>{item.target_type} · gemeldet von {item.sender_name || 'Unbekannt'} · {dateTime(item.created_at)}</small></div><StatusPill value={item.status} /></div>{item.comment && <p>{item.comment}</p>}<div className="admin-actions"><button onClick={() => act('reportStatus', { id: item.id, status: 'reviewed' })}>✓ Geprüft</button><button onClick={() => act('reportStatus', { id: item.id, status: 'dismissed' })}>Verwerfen</button></div></article>)}{!inbox.reports.length && <div className="admin-empty">Keine Meldungen vorhanden.</div>}</section>}
 
           {tab === 'catalog' && <section className="admin-panel"><h2>Freigaben</h2>{pending.map((item) => <article className="admin-message admin-approval" role="button" tabIndex="0" key={`${item.kind}-${item.id}`} onClick={() => setSelectedApproval(item)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSelectedApproval(item); }}>{item.image_url && <img src={item.image_url} alt={`Vorschau von ${item.label}`} />}<div className="admin-approval-body"><div className="admin-message-head"><div><strong>{item.label}</strong><small>{item.kindLabel} · von {item.contributor || 'Unbekannt'} · {dateTime(item.submitted_at)}</small></div><StatusPill value={item.status} /></div>{item.kind === 'entries' && <p>{[item.brand, item.category, item.release_year].filter(Boolean).join(' · ') || 'Keine weiteren Angaben'}</p>}<div className="admin-actions"><button type="button" onClick={(e) => { e.stopPropagation(); setSelectedApproval(item); }}>Details ansehen</button><button type="button" className="approve" onClick={(e) => { e.stopPropagation(); reviewApproval(item, 'approved'); }}>✓ Genehmigen</button><button type="button" className="reject" onClick={(e) => { e.stopPropagation(); reviewApproval(item, 'rejected'); }}>✕ Ablehnen</button></div></div></article>)}{!pending.length && <div className="admin-empty">Keine ausstehenden Vorschläge.</div>}</section>}
+
+          {tab === 'dealers' && <section className="admin-panel"><h2>Händlerverifizierung</h2>{dealers.map((d) => <div className="admin-row" key={d.owner_id}><div><strong>{d.shop_name || d.name}</strong><small>@{d.username} · {d.email} · {d.listing_count} Angebote{d.business_registration_note ? ` · ${d.business_registration_note}` : ''}</small></div><StatusPill value={d.verification_status} />{d.verification_status !== 'verified' && <button className="approve" onClick={() => reviewDealer(d, 'verified')}>✓ Verifizieren</button>}{d.verification_status !== 'rejected' && <button className="reject" onClick={() => reviewDealer(d, 'rejected')}>✕ Ablehnen</button>}</div>)}{!dealers.length && <div className="admin-empty">Keine Händlerprofile vorhanden.</div>}</section>}
 
           {tab === 'forum' && <section className="admin-panel"><h2>Forum verwalten</h2>{threads.map((thread) => <div className="admin-row" key={thread.id}><div><strong>{thread.title}</strong><small>{thread.author_name} (@{thread.author_username}) · {thread.category} · {thread.post_count} Beiträge · {dateTime(thread.created_at)}</small></div><StatusPill value={thread.status} /><button className="danger" onClick={() => { if (window.confirm('Forum-Thema wirklich endgültig löschen?')) act('deleteThread', { id: thread.id }); }}>Löschen</button></div>)}{!threads.length && <div className="admin-empty">Keine Forum-Themen vorhanden.</div>}</section>}
 

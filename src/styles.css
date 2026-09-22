@@ -4505,6 +4505,9 @@ input:focus, select:focus, textarea:focus {
 .market-listing-description { margin: 14px 0; line-height: 1.6; white-space: pre-wrap; }
 .market-seller-box { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); margin: 14px 0; }
 .market-success { color: #2fae5c; }
+.market-seller-type { margin-bottom: 6px; }
+.market-legal-notice { padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-card); }
+.market-safety-actions { display: flex; gap: 16px; margin-top: 10px; }
 
 .market-dealer-header { display: flex; gap: 20px; align-items: flex-start; margin: 18px 0 20px 0; }
 .market-dealer-header h1 { margin: 0 0 6px 0; font-size: 22px; }

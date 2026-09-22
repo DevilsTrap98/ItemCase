@@ -4,6 +4,7 @@ import useImagePath from './useImagePath.js';
 import LogoPlaceholder from './LogoPlaceholder.jsx';
 import UiIcon from './UiIcon.jsx';
 import TitleBar from './TitleBar.jsx';
+import ReportModal from './ReportModal.jsx';
 import { getTariff, tariffPriceLabel } from './tariff-defaults.js';
 
 const MARKET_CATEGORIES = [
@@ -75,6 +76,8 @@ export default function MarketModal({ user, isGuest, items, currencyFmt, onConta
   const [listingForm, setListingForm] = useState(null);
   const [contactMessage, setContactMessage] = useState('');
   const [contactSent, setContactSent] = useState(false);
+  const [contactRequests, setContactRequests] = useState([]);
+  const [reportTarget, setReportTarget] = useState(null);
   const [error, setError] = useState('');
 
   const tariff = getTariff(user?.tariff);
@@ -135,21 +138,46 @@ export default function MarketModal({ user, isGuest, items, currencyFmt, onConta
     const result = await window.api.marketContactSeller(selectedListing.id, contactMessage.trim());
     if (result.ok) {
       setContactSent(true);
-      onContacted?.(result.conversationId, selectedListing.sellerName);
     } else {
       setError(result.error || t('groups.errorGeneric'));
     }
   };
 
+  const handleBlockSeller = async () => {
+    if (!selectedListing) return;
+    await window.api.blockUser(selectedListing.ownerId);
+    setView('home');
+  };
+
+  const submitReport = async ({ reason, comment }) => {
+    await window.api.reportCatalogEntry({
+      targetType: reportTarget.type, targetId: reportTarget.id, targetName: reportTarget.name, reason, comment
+    });
+  };
+
   const loadMine = async () => {
-    const [listings, stats, ownProfile] = await Promise.all([
+    const [listings, stats, ownProfile, requests] = await Promise.all([
       window.api.marketMineListings(),
       window.api.marketMineStats(),
-      window.api.marketGetProfile()
+      window.api.marketGetProfile(),
+      window.api.marketMineContactRequests()
     ]);
     setMineListings(listings);
     setMineStats(stats);
     setProfile(ownProfile);
+    setContactRequests(requests);
+  };
+
+  const respondToRequest = async (request, action) => {
+    if (action === 'accept') {
+      const result = await window.api.marketAcceptContactRequest(request.id);
+      if (result.ok) onContacted?.(result.conversationId, request.buyerName);
+    } else if (action === 'decline') {
+      await window.api.marketDeclineContactRequest(request.id);
+    } else if (action === 'block') {
+      await window.api.marketBlockContactRequest(request.id);
+    }
+    await loadMine();
   };
 
   const openMine = async () => {
@@ -217,7 +245,7 @@ export default function MarketModal({ user, isGuest, items, currencyFmt, onConta
   const openProfileForm = () => {
     setProfileForm(profile || {
       shopName: '', logoPath: null, shortDescription: '', location: '', shippingArea: '',
-      contactEmail: '', contactPhone: '', returnPolicy: '', shippingInfo: '', paymentInfo: ''
+      contactEmail: '', contactPhone: '', returnPolicy: '', shippingInfo: '', paymentInfo: '', businessRegistrationNote: ''
     });
     setMineTab('profile');
   };
@@ -287,6 +315,7 @@ export default function MarketModal({ user, isGuest, items, currencyFmt, onConta
                   <option value="shipping">{t('market.shipping.shipping')}</option>
                 </select>
               </div>
+              <p className="field-hint" style={{ marginTop: -14, marginBottom: 20 }}>{t('market.locationHint')}</p>
 
               {activeListings !== null ? (
                 <section className="market-section">
@@ -312,6 +341,7 @@ export default function MarketModal({ user, isGuest, items, currencyFmt, onConta
 
                   <section className="market-section">
                     <h2>{t('market.popularListings')}</h2>
+                    <p className="field-hint" style={{ marginTop: -8 }}>{t('market.popularExplainer')}</p>
                     {popularListings.length === 0 ? <p className="field-hint">{t('market.noResults')}</p> : (
                       <div className="market-grid">
                         {popularListings.map((l) => <ListingCard key={l.id} listing={l} currencyFmt={currencyFmt} onOpen={openListing} t={t} />)}
@@ -356,6 +386,13 @@ export default function MarketModal({ user, isGuest, items, currencyFmt, onConta
 
                   <div className="market-seller-box">
                     <div>
+                      <div className="market-seller-type">
+                        {selectedListing.isDealer ? (
+                          <span className="condition-pill tone-blue">{t('market.sellerTypeDealer')}</span>
+                        ) : (
+                          <span className="condition-pill tone-amber">{t('market.sellerTypePrivate')}</span>
+                        )}
+                      </div>
                       {selectedListing.isDealer ? (
                         <button type="button" className="link-btn" onClick={() => openDealer(selectedListing.sellerUsername)}>
                           {selectedListing.dealerVerified && '✅ '}{selectedListing.sellerName} · {t('market.viewDealerProfile')}
@@ -369,15 +406,26 @@ export default function MarketModal({ user, isGuest, items, currencyFmt, onConta
                     </button>
                   </div>
 
+                  {!selectedListing.isDealer && (
+                    <p className="field-hint market-legal-notice">⚖️ {t('market.privateSellerNotice')}</p>
+                  )}
+
                   {!isGuest && selectedListing.ownerId !== user.id && (
-                    contactSent ? (
-                      <p className="field-hint market-success">{t('market.contactSent')}</p>
-                    ) : (
-                      <form className="form" onSubmit={handleContact}>
-                        <textarea rows="3" value={contactMessage} onChange={(e) => setContactMessage(e.target.value)} placeholder={t('market.contactPlaceholder')} />
-                        <button type="submit" className="btn-primary">{t('market.contactSeller')}</button>
-                      </form>
-                    )
+                    <>
+                      {contactSent ? (
+                        <p className="field-hint market-success">{t('market.contactSent')}</p>
+                      ) : (
+                        <form className="form" onSubmit={handleContact}>
+                          <textarea rows="3" value={contactMessage} onChange={(e) => setContactMessage(e.target.value)} placeholder={t('market.contactPlaceholder')} />
+                          <p className="field-hint">{t('market.contactSafetyHint')}</p>
+                          <button type="submit" className="btn-primary">{t('market.contactSeller')}</button>
+                        </form>
+                      )}
+                      <div className="market-safety-actions">
+                        <button type="button" className="link-btn" onClick={() => setReportTarget({ type: 'market_listing', id: selectedListing.id, name: selectedListing.title })}>🚩 {t('market.reportListing')}</button>
+                        <button type="button" className="link-btn forum-danger-text" onClick={handleBlockSeller}>🚫 {t('market.blockSeller')}</button>
+                      </div>
+                    </>
                   )}
                 </div>
               </div>
@@ -405,6 +453,12 @@ export default function MarketModal({ user, isGuest, items, currencyFmt, onConta
                 {selectedDealer.dealer.paymentInfo && <div><strong>{t('market.paymentInfo')}</strong><p>{selectedDealer.dealer.paymentInfo}</p></div>}
               </div>
 
+              {!isGuest && (
+                <button type="button" className="link-btn" style={{ marginBottom: 20 }} onClick={() => setReportTarget({ type: 'market_seller', id: selectedDealer.dealer.id, name: selectedDealer.dealer.shopName })}>
+                  🚩 {t('market.reportDealer')}
+                </button>
+              )}
+
               <h2>{t('market.dealerInventory')}</h2>
               {selectedDealer.listings.length === 0 ? <p className="field-hint">{t('market.noResults')}</p> : (
                 <div className="market-grid">
@@ -419,6 +473,9 @@ export default function MarketModal({ user, isGuest, items, currencyFmt, onConta
               <div className="market-mine-tabs">
                 <button type="button" className={mineTab === 'overview' ? 'forum-sidebar-cat active' : 'forum-sidebar-cat'} onClick={() => setMineTab('overview')}>{t('market.mine.overview')}</button>
                 <button type="button" className={mineTab === 'listings' ? 'forum-sidebar-cat active' : 'forum-sidebar-cat'} onClick={() => setMineTab('listings')}>{t('market.mine.listings')}</button>
+                <button type="button" className={mineTab === 'requests' ? 'forum-sidebar-cat active' : 'forum-sidebar-cat'} onClick={() => setMineTab('requests')}>
+                  {t('market.mine.requests')}{contactRequests.filter((r) => r.status === 'pending').length > 0 && ` (${contactRequests.filter((r) => r.status === 'pending').length})`}
+                </button>
                 {isDealer && <button type="button" className={mineTab === 'profile' ? 'forum-sidebar-cat active' : 'forum-sidebar-cat'} onClick={openProfileForm}>{t('market.mine.profile')}</button>}
                 <button type="button" className={mineTab === 'tariff' ? 'forum-sidebar-cat active' : 'forum-sidebar-cat'} onClick={() => setMineTab('tariff')}>{t('market.mine.tariff')}</button>
               </div>
@@ -475,6 +532,33 @@ export default function MarketModal({ user, isGuest, items, currencyFmt, onConta
                   </>
                 )}
 
+                {mineTab === 'requests' && (
+                  contactRequests.length === 0 ? <p className="field-hint">{t('market.noRequests')}</p> : (
+                    <div className="wishlist-list">
+                      {contactRequests.map((r) => (
+                        <div key={r.id} className="wishlist-row">
+                          <div className="wishlist-row-body">
+                            <div className="wishlist-row-title">
+                              {r.buyerName} · {r.listingTitle}
+                              <span className={`condition-pill tone-${r.status === 'pending' ? 'amber' : r.status === 'accepted' ? 'mint' : 'red'}`} style={{ marginLeft: 8 }}>
+                                {t(`market.requestStatus.${r.status}`)}
+                              </span>
+                            </div>
+                            <div className="field-hint" style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{r.message}</div>
+                          </div>
+                          {r.status === 'pending' && (
+                            <div className="ie-actions">
+                              <button type="button" className="link-btn" onClick={() => respondToRequest(r, 'accept')}>✓ {t('market.acceptRequest')}</button>
+                              <button type="button" className="link-btn" onClick={() => respondToRequest(r, 'decline')}>{t('market.declineRequest')}</button>
+                              <button type="button" className="link-btn forum-danger-text" onClick={() => respondToRequest(r, 'block')}>🚫 {t('market.blockSeller')}</button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )
+                )}
+
                 {mineTab === 'profile' && isDealer && profileForm && (
                   <form className="form" onSubmit={saveProfile} style={{ maxWidth: 520 }}>
                     <div className="image-picker" onClick={handlePickLogo} style={{ maxWidth: 140 }}>
@@ -491,9 +575,25 @@ export default function MarketModal({ user, isGuest, items, currencyFmt, onConta
                     <label>{t('market.returnPolicy')}<textarea rows="2" value={profileForm.returnPolicy} onChange={(e) => setProfileForm((f) => ({ ...f, returnPolicy: e.target.value }))} /></label>
                     <label>{t('market.shippingInfo')}<textarea rows="2" value={profileForm.shippingInfo} onChange={(e) => setProfileForm((f) => ({ ...f, shippingInfo: e.target.value }))} /></label>
                     <label>{t('market.paymentInfo')}<textarea rows="2" value={profileForm.paymentInfo} onChange={(e) => setProfileForm((f) => ({ ...f, paymentInfo: e.target.value }))} /></label>
-                    {profileForm.verificationStatus && (
-                      <p className="field-hint">{t('market.verificationStatus')}: {t(`market.verification.${profileForm.verificationStatus}`)}</p>
-                    )}
+                    <label>
+                      {t('market.businessRegistrationNote')}
+                      <textarea rows="2" value={profileForm.businessRegistrationNote} onChange={(e) => setProfileForm((f) => ({ ...f, businessRegistrationNote: e.target.value }))} placeholder={t('market.businessRegistrationPlaceholder')} />
+                    </label>
+                    <div className="field-hint">{t('market.businessRegistrationHint')}</div>
+
+                    <fieldset className="form-fieldset">
+                      <legend>{t('market.verificationStatus')}</legend>
+                      {profileForm.verificationStatus === 'verified' && <p className="market-success">✅ {t('market.verification.verified')}</p>}
+                      {profileForm.verificationStatus === 'pending' && <p className="field-hint">⏳ {t('market.verification.pending')}</p>}
+                      {profileForm.verificationStatus === 'rejected' && (
+                        <>
+                          <p className="forum-danger-text">✕ {t('market.verification.rejected')}</p>
+                          {profileForm.rejectionReason && <p className="field-hint">{profileForm.rejectionReason}</p>}
+                        </>
+                      )}
+                      <p className="field-hint">{t('market.verificationExplainer')}</p>
+                    </fieldset>
+
                     <div className="modal-actions"><button type="submit" className="btn-primary">{t('form.save')}</button></div>
                   </form>
                 )}
@@ -568,6 +668,7 @@ export default function MarketModal({ user, isGuest, items, currencyFmt, onConta
                 <label>{t('market.shippingCostLabel')}<input type="number" min="0" step="0.01" value={listingForm.shippingCost} onChange={(e) => setListingForm((f) => ({ ...f, shippingCost: e.target.value }))} /></label>
                 <label>{t('market.locationPlaceholder')}<input type="text" value={listingForm.location} onChange={(e) => setListingForm((f) => ({ ...f, location: e.target.value }))} /></label>
               </div>
+              <div className="field-hint" style={{ marginTop: -8 }}>{t('market.locationHint')}</div>
 
               <label className="checkbox-row">
                 <input type="checkbox" checked={listingForm.priceOnRequest} onChange={(e) => setListingForm((f) => ({ ...f, priceOnRequest: e.target.checked }))} />
@@ -584,6 +685,14 @@ export default function MarketModal({ user, isGuest, items, currencyFmt, onConta
           )}
         </div>
       </div>
+
+      {reportTarget && (
+        <ReportModal
+          targetName={reportTarget.name}
+          onSubmit={submitReport}
+          onClose={() => setReportTarget(null)}
+        />
+      )}
     </div>
   );
 }
