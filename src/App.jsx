@@ -513,17 +513,25 @@ export default function App() {
     }
   };
 
-  const handleAdoptCatalogItem = async (entry) => {
-    await window.api.saveItem({
-      name: entry.name,
-      category: entry.category || categories[0] || 'Sonstiges',
-      condition: 'nearMint',
+  // Adopting a catalog item never saves it directly — it opens the normal
+  // item form pre-filled with the catalog's public data, so the user can
+  // adjust it for their own private collection use (condition, quantity,
+  // notes, story, private category…) before anything is written. None of
+  // this ever writes back to the shared catalog entry itself.
+  const handleAdoptCatalogItem = (entry) => {
+    const strippedCategory = String(entry.category || '').replace(/^\p{Extended_Pictographic}️?\s*/u, '').trim().toLowerCase();
+    const matchingCategory = categories.find((c) => c.replace(/^\p{Extended_Pictographic}️?\s*/u, '').trim().toLowerCase() === strippedCategory);
+    setEditingItem({
+      id: null,
+      name: entry.name || '',
+      category: matchingCategory || categories[0] || '',
+      condition: '',
       quantity: 1,
       value: '',
       purchasePrice: '',
       notes: '',
       imagePath: entry.imagePath || null,
-      showcase: user?.tariff === 'business',
+      showcase: false,
       story: { place: '', date: '', isGift: false, isFirstPiece: false, text: '' },
       customFields: {},
       catalogInfo: {
@@ -535,7 +543,7 @@ export default function App() {
       },
       catalogItemId: entry.id
     });
-    loadData();
+    setShowForm(true);
   };
 
   const handleSubmitToCatalog = async (payload) => {
@@ -1109,12 +1117,12 @@ export default function App() {
           businessMode={isBusiness}
           onSave={handleSave}
           onClose={() => { setShowForm(false); setEditingItem(null); }}
-          positionLabel={editingItem ? `${items.findIndex((candidate) => candidate.id === editingItem.id) + 1} / ${items.length}` : null}
-          onPrevious={editingItem && items.length > 1 ? () => {
+          positionLabel={editingItem?.id ? `${items.findIndex((candidate) => candidate.id === editingItem.id) + 1} / ${items.length}` : null}
+          onPrevious={editingItem?.id && items.length > 1 ? () => {
             const index = items.findIndex((candidate) => candidate.id === editingItem.id);
             setEditingItem(items[(index - 1 + items.length) % items.length]);
           } : null}
-          onNext={editingItem && items.length > 1 ? () => {
+          onNext={editingItem?.id && items.length > 1 ? () => {
             const index = items.findIndex((candidate) => candidate.id === editingItem.id);
             setEditingItem(items[(index + 1) % items.length]);
           } : null}
