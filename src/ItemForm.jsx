@@ -329,6 +329,8 @@ export default function ItemForm({ item, categories, categoryFields, onSave, onC
                 </label>
               </fieldset>
 
+              {/* CommunityMarkt-Angebot im Item-Formular vorerst ausgeblendet */}
+              {false && (
               <fieldset className="form-fieldset market-publish-fieldset">
                 <legend>🛍️ {t('form.marketTitle')}</legend>
                 <div className="market-publish-choice">
@@ -380,6 +382,7 @@ export default function ItemForm({ item, categories, categoryFields, onSave, onC
                   </>
                 )}
               </fieldset>
+              )}
 
             </div>
           </div>
