@@ -6,6 +6,8 @@ const { publicImageUrl, removeStoredImage } = require('../utils/imageStorage');
 const { notify } = require('../utils/notify');
 const { recalculate } = require('../utils/communityValue');
 const { awardXp, reverseXp, reverseCatalogItemXp, getProgress } = require('../utils/collectorXp');
+const { logCatalogHistory } = require('../utils/catalogHistory');
+const { decideChangeRequest, CHANGE_TYPE_XP } = require('../utils/changeRequests');
 
 const router = express.Router();
 router.use(requireAuth, requireAdmin);
@@ -14,13 +16,6 @@ const VALID_REVIEW_STATUSES = new Set(['pending', 'approved', 'rejected']);
 const VALID_ENTRY_STATUSES = new Set(['pending', 'approved', 'rejected', 'needs_changes', 'removed', 'reported']);
 const VALID_REPORT_STATUSES = new Set(['open', 'reviewed', 'dismissed']);
 const VALID_FEEDBACK_STATUSES = new Set(['open', 'reviewed', 'archived']);
-
-async function logCatalogHistory(pool, { catalogItemId, fromStatus, toStatus, reason, actorUserId }) {
-  await pool.query(
-    'INSERT INTO catalog_entry_history (id, catalog_item_id, from_status, to_status, reason, actor_user_id) VALUES (UUID(), ?, ?, ?, ?, ?)',
-    [catalogItemId, fromStatus, toStatus, reason || null, actorUserId || null]
-  );
-}
 
 router.get('/summary', async (_req, res, next) => {
   try {
@@ -153,18 +148,31 @@ router.patch('/catalog/:kind/:id', async (req, res, next) => {
       );
       await logCatalogHistory(pool, { catalogItemId: req.params.id, fromStatus: entry.status, toStatus: status, reason, actorUserId: req.user.id });
 
-      // XP only on the FIRST approval ever (xp_awarded_at guards this
-      // atomically) — a later resubmission-and-reapproval of the same item
-      // never pays out twice. "RemovedForViolation" claws it back.
+      // XP only on the FIRST approval ever. Routes through the linked
+      // change_request when this entry has one (its unique change_request_id
+      // key on contribution_xp_transactions is the real idempotency guard);
+      // xp_awarded_at is the fallback for entries created before the
+      // unified change-request model existed. "RemovedForViolation" claws
+      // it back either way.
       if (status === 'approved') {
-        const [claim] = await pool.query(
-          'UPDATE catalog_entries SET xp_awarded_at = NOW() WHERE id = ? AND xp_awarded_at IS NULL',
-          [req.params.id]
-        );
-        if (claim.affectedRows) {
-          await awardXp(pool, { userId: entry.submitted_by_user_id, sourceType: 'CatalogItemApproved', sourceId: req.params.id, approvedBy: req.user.id });
+        if (entry.change_request_id) {
+          await decideChangeRequest(pool, { changeRequestId: entry.change_request_id, moderatorId: req.user.id, decision: 'approved' });
+        } else {
+          const [claim] = await pool.query(
+            'UPDATE catalog_entries SET xp_awarded_at = NOW() WHERE id = ? AND xp_awarded_at IS NULL',
+            [req.params.id]
+          );
+          if (claim.affectedRows) {
+            await awardXp(pool, { userId: entry.submitted_by_user_id, sourceType: 'CatalogItemApproved', sourceId: req.params.id, approvedBy: req.user.id });
+          }
         }
-      } else if (status === 'removed' && entry.xp_awarded_at) {
+      } else if (['rejected', 'needs_changes', 'removed'].includes(status) && entry.change_request_id) {
+        await pool.query(
+          "UPDATE catalog_change_requests SET status = ?, moderator_id = ?, moderator_reason = ?, reviewed_at = NOW() WHERE id = ? AND status = 'pending'",
+          [status === 'removed' ? 'rejected' : status, req.user.id, reason || null, entry.change_request_id]
+        );
+      }
+      if (status === 'removed' && entry.xp_awarded_at) {
         await reverseCatalogItemXp(pool, { catalogItemId: req.params.id, reason: `Beitrag entfernt: ${reason}`, actorUserId: req.user.id });
       }
 
@@ -187,17 +195,63 @@ router.patch('/catalog/:kind/:id', async (req, res, next) => {
       }
       await pool.query('UPDATE catalog_photo_proposals SET status = ? WHERE id = ?', [status, req.params.id]);
       if (status === 'approved') {
-        const [claim] = await pool.query(
-          'UPDATE catalog_photo_proposals SET xp_awarded_at = NOW() WHERE id = ? AND xp_awarded_at IS NULL',
-          [req.params.id]
-        );
-        if (claim.affectedRows) {
-          await awardXp(pool, { userId: proposal.submitted_by_user_id, sourceType: 'ImageApproved', sourceId: req.params.id, approvedBy: req.user.id });
+        if (proposal.change_request_id) {
+          await decideChangeRequest(pool, { changeRequestId: proposal.change_request_id, moderatorId: req.user.id, decision: 'approved' });
+        } else {
+          const [claim] = await pool.query(
+            'UPDATE catalog_photo_proposals SET xp_awarded_at = NOW() WHERE id = ? AND xp_awarded_at IS NULL',
+            [req.params.id]
+          );
+          if (claim.affectedRows) {
+            await awardXp(pool, { userId: proposal.submitted_by_user_id, sourceType: 'ImageApproved', sourceId: req.params.id, approvedBy: req.user.id });
+          }
         }
+      } else if (proposal.change_request_id && ['rejected'].includes(status)) {
+        await pool.query(
+          "UPDATE catalog_change_requests SET status = 'rejected', moderator_id = ?, reviewed_at = NOW() WHERE id = ? AND status = 'pending'",
+          [req.user.id, proposal.change_request_id]
+        );
       }
     } else return res.status(404).json({ error: 'Unbekannte Freigabeart' });
     res.json({ ok: true });
   } catch (error) { next(error); }
+});
+
+// Correction proposals to already-approved entries — the moderation view
+// the user's own "Beitrags- und Prüfzentrum" proposal calls for: before/
+// after side by side (calculated_diff_json), the server-classified XP
+// category, and a way to override that category with a required reason.
+router.get('/change-requests', async (req, res, next) => {
+  try {
+    const pool = getMysqlPool();
+    const status = ['pending', 'approved', 'rejected', 'needs_changes'].includes(req.query.status) ? req.query.status : 'pending';
+    const [rows] = await pool.query(
+      `SELECT ccr.*, ce.name AS item_name, u.name AS submitter_name, u.username AS submitter_username
+       FROM catalog_change_requests ccr
+       LEFT JOIN catalog_entries ce ON ce.id = ccr.catalog_item_id
+       LEFT JOIN users u ON u.id = ccr.submitted_by
+       WHERE ccr.status = ? AND ccr.change_type IN ('minor_correction', 'major_correction', 'identifier')
+       ORDER BY ccr.submitted_at ASC LIMIT 200`,
+      [status]
+    );
+    res.json(rows);
+  } catch (error) { next(error); }
+});
+
+router.post('/change-requests/:id/decide', async (req, res, next) => {
+  try {
+    const decision = String(req.body?.decision || '');
+    if (!['approved', 'rejected', 'needs_changes'].includes(decision)) return res.status(400).json({ error: 'Ungültige Entscheidung' });
+    const reason = String(req.body?.reason || '').trim();
+    if (decision !== 'approved' && !reason) return res.status(400).json({ error: 'Für diese Entscheidung ist eine Begründung erforderlich.' });
+    const xpTypeOverride = req.body?.xpTypeOverride && Object.keys(CHANGE_TYPE_XP).includes(req.body.xpTypeOverride) ? req.body.xpTypeOverride : undefined;
+    const pool = getMysqlPool();
+    const result = await decideChangeRequest(pool, { changeRequestId: req.params.id, moderatorId: req.user.id, decision, reason, xpTypeOverride });
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ error: error.message });
+    next(error);
+  }
 });
 
 // Candidate duplicate groups: entries sharing an identical name (case-

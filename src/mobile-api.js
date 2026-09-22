@@ -89,6 +89,7 @@ export function createMobileApi() {
     getMySubmissions: () => result(() => request('/catalog/mine/submissions', { auth: true }), []),
     getMyRewards: () => result(() => request('/catalog/mine/rewards', { auth: true }), []),
     getMyXpHistory: () => result(() => request('/catalog/mine/xp-history', { auth: true }), []),
+    proposeCorrection: ({ catalogItemId, fields }) => okResult(async () => await request(`/catalog/${catalogItemId}/propose-change`, { method: 'POST', auth: true, body: fields })),
     activateReward: (rewardId) => okResult(async () => await request(`/catalog/mine/rewards/${rewardId}/activate`, { method: 'POST', auth: true })),
     getCommunityValues: (catalogItemId) => result(() => request(`/catalog/${catalogItemId}/community-values`, { auth: !!token() }), null),
     submitCommunityValueEstimate: ({ catalogItemId, conditionCode, value }) => okResult(async () => await request(`/catalog/${catalogItemId}/community-value-estimate`, { method: 'POST', auth: true, body: { conditionCode, value } })),

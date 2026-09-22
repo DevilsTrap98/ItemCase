@@ -53,13 +53,16 @@ async function recomputeProgress(pool, userId) {
   return { confirmedLifetimeXp, collectorLevel, slotEligibleXp, earnedCollectionSlots };
 }
 
-async function awardXp(pool, { userId, sourceType, sourceId, reason, approvedBy, xpAmount }) {
+async function awardXp(pool, { userId, sourceType, sourceId, reason, approvedBy, xpAmount, changeRequestId }) {
   if (!userId) return null; // legacy/anonymous submissions have no one to credit
   const amount = xpAmount ?? XP_VALUES[sourceType];
   if (!Number.isFinite(amount)) throw new Error(`Unknown XP source type: ${sourceType}`);
+  // changeRequestId (when given) is the real idempotency guard — a unique
+  // DB constraint, not just an app-level flag (see schema.sql). A duplicate
+  // insert throws ER_DUP_ENTRY, which callers treat as "already funded".
   await pool.query(
-    'INSERT INTO contribution_xp_transactions (id, user_id, source_type, source_id, xp_amount, reason, approved_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    [crypto.randomUUID(), userId, sourceType, sourceId || null, amount, reason || null, approvedBy || null]
+    'INSERT INTO contribution_xp_transactions (id, user_id, source_type, source_id, change_request_id, xp_amount, reason, approved_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    [crypto.randomUUID(), userId, sourceType, sourceId || null, changeRequestId || null, amount, reason || null, approvedBy || null]
   );
   return recomputeProgress(pool, userId);
 }

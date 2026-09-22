@@ -387,6 +387,43 @@ CREATE TABLE IF NOT EXISTS collector_progress (
   CONSTRAINT fk_cp_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Unified contribution model (per the user's own "einheitliches Beitrags-
+-- und Prüfzentrum" proposal): EVERY catalog contribution — a brand-new
+-- item, a photo, or a correction to an already-approved item — is first a
+-- change_request. Nothing about it grants XP; only a confirmed moderation
+-- decision does (see server/src/utils/changeRequests.js). change_type is
+-- never chosen by the submitter — the server classifies it from the actual
+-- diff, so nobody can declare a typo fix a "major correction" for more XP.
+CREATE TABLE IF NOT EXISTS catalog_change_requests (
+  id VARCHAR(36) PRIMARY KEY,
+  catalog_item_id VARCHAR(36) NULL, -- NULL for a brand-new item until it's created
+  submitted_by VARCHAR(36) NULL,
+  change_type ENUM('new_item', 'new_variant', 'new_image', 'minor_correction', 'major_correction', 'identifier', 'duplicate_report') NOT NULL,
+  status ENUM('pending', 'approved', 'rejected', 'needs_changes') NOT NULL DEFAULT 'pending',
+  original_data_json JSON NULL,
+  proposed_data_json JSON NOT NULL,
+  calculated_diff_json JSON NULL,
+  risk_score INT NOT NULL DEFAULT 0,
+  moderator_id VARCHAR(36) NULL,
+  moderator_reason TEXT NULL,
+  submitted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  reviewed_at DATETIME NULL,
+  CONSTRAINT fk_ccr_item FOREIGN KEY (catalog_item_id) REFERENCES catalog_entries(id) ON DELETE CASCADE,
+  CONSTRAINT fk_ccr_user FOREIGN KEY (submitted_by) REFERENCES users(id) ON DELETE SET NULL,
+  INDEX idx_ccr_item_status (catalog_item_id, status),
+  INDEX idx_ccr_user_item_status (submitted_by, catalog_item_id, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+ALTER TABLE catalog_entries ADD COLUMN change_request_id VARCHAR(36) NULL AFTER xp_awarded_at;
+ALTER TABLE catalog_photo_proposals ADD COLUMN change_request_id VARCHAR(36) NULL;
+
+-- A real database rule instead of an app-level flag: a change request can
+-- fund at most one XP transaction, full stop (a unique index tolerates any
+-- number of NULLs, so the older xp_awarded_at-flagged rows are unaffected).
+ALTER TABLE contribution_xp_transactions ADD COLUMN change_request_id VARCHAR(36) NULL AFTER source_id;
+ALTER TABLE contribution_xp_transactions ADD UNIQUE KEY uniq_change_request (change_request_id);
+
 -- Pro+ milestone rewards (spec sections 10-13, 22). Unlocked automatically
 -- when a level is first reached (see collectorXp.js:recomputeProgress);
 -- never auto-activated — the user redeems it explicitly, which is what

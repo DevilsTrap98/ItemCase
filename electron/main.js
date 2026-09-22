@@ -603,6 +603,14 @@ ipcMain.handle('catalog:myProgress', async () => {
   }
 });
 
+ipcMain.handle('catalog:proposeCorrection', async (_event, { catalogItemId, fields }) => {
+  try {
+    return { ok: true, ...(await apiFetch(`/catalog/${catalogItemId}/propose-change`, { method: 'POST', auth: true, body: fields })) };
+  } catch (e) {
+    return { ok: false, error: e.data?.error || e.message };
+  }
+});
+
 ipcMain.handle('catalog:myXpHistory', async () => {
   try {
     return await apiFetch('/catalog/mine/xp-history', { auth: true });
@@ -1967,12 +1975,13 @@ ipcMain.handle('forum:likePost', async (_event, postId) => {
 // ---- Admin dashboard ----
 ipcMain.handle('admin:load', async () => {
   try {
-    const [summary, inbox, catalog, forum, users, dealers, duplicates] = await Promise.all([
+    const [summary, inbox, catalog, forum, users, dealers, duplicates, changeRequests] = await Promise.all([
       apiFetch('/admin/summary', { auth: true }), apiFetch('/admin/inbox', { auth: true }),
       apiFetch('/admin/catalog', { auth: true }), apiFetch('/admin/forum', { auth: true }), apiFetch('/admin/users', { auth: true }),
-      apiFetch('/admin/dealers', { auth: true }), apiFetch('/admin/catalog/duplicates', { auth: true })
+      apiFetch('/admin/dealers', { auth: true }), apiFetch('/admin/catalog/duplicates', { auth: true }),
+      apiFetch('/admin/change-requests?status=pending', { auth: true })
     ]);
-    return { ok: true, summary, inbox, catalog, forum, users, dealers, duplicates };
+    return { ok: true, summary, inbox, catalog, forum, users, dealers, duplicates, changeRequests };
   } catch (e) { return { ok: false, error: e.data?.error || e.message }; }
 });
 
@@ -1986,7 +1995,8 @@ ipcMain.handle('admin:action', async (_event, { action, payload = {} }) => {
     userStatus: [`/admin/users/${payload.id}/status`, 'PATCH', { status: payload.status }],
     dealerVerification: [`/admin/dealers/${payload.ownerId}/verification`, 'PATCH', { status: payload.status, reason: payload.reason }],
     mergeCatalogEntries: [`/admin/catalog/entries/${payload.sourceId}/merge`, 'POST', { intoId: payload.intoId, reason: payload.reason }],
-    reverseXp: [`/admin/xp-transactions/${payload.transactionId}/reverse`, 'POST', { reason: payload.reason }]
+    reverseXp: [`/admin/xp-transactions/${payload.transactionId}/reverse`, 'POST', { reason: payload.reason }],
+    decideChangeRequest: [`/admin/change-requests/${payload.id}/decide`, 'POST', { decision: payload.decision, reason: payload.reason, xpTypeOverride: payload.xpTypeOverride }]
   };
   const route = routes[action];
   if (!route) return { ok: false, error: 'Unbekannte Admin-Aktion' };

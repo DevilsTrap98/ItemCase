@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 const TABS = [
   ['overview', '📊', 'Übersicht'], ['inbox', '📥', 'Inbox'], ['catalog', '✅', 'Freigaben'],
+  ['changeRequests', '📝', 'Korrekturen'],
   ['duplicates', '🧩', 'Duplikate'], ['reports', '🚩', 'Meldungen'], ['dealers', '🏪', 'Händler'], ['forum', '💬', 'Forum'], ['users', '👥', 'Nutzer']
 ];
 
@@ -30,6 +31,7 @@ export default function AdminDashboard({ currentUser, onClose, onCatalogChanged 
   const [users, setUsers] = useState([]);
   const [dealers, setDealers] = useState([]);
   const [duplicates, setDuplicates] = useState([]);
+  const [changeRequests, setChangeRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [lastUpdated, setLastUpdated] = useState(null);
@@ -49,6 +51,7 @@ export default function AdminDashboard({ currentUser, onClose, onCatalogChanged 
       setUsers(result.users || []);
       setDealers(result.dealers || []);
       setDuplicates(result.duplicates || []);
+      setChangeRequests(result.changeRequests || []);
       setLastUpdated(new Date());
     }
     setLoading(false);
@@ -101,6 +104,17 @@ export default function AdminDashboard({ currentUser, onClose, onCatalogChanged 
     await act('mergeCatalogEntries', { sourceId, intoId, reason });
   };
 
+  const decideChangeRequest = async (cr, decision) => {
+    let reason = '';
+    if (decision !== 'approved') {
+      reason = window.prompt(decision === 'needs_changes' ? 'Was soll noch geprüft/geändert werden?' : 'Grund für die Ablehnung:', '') || '';
+      if (!reason.trim()) return;
+    }
+    await act('decideChangeRequest', { id: cr.id, decision, reason });
+  };
+
+  const XP_TYPE_LABELS = { new_item: 'Neues Item (10 XP)', new_variant: 'Neue Variante (6 XP)', new_image: 'Neues Bild (4 XP)', major_correction: 'Wesentliche Korrektur (3 XP)', identifier: 'Kennung ergänzt (2 XP)', minor_correction: 'Kleine Korrektur (1 XP)', duplicate_report: 'Duplikat gemeldet (1 XP)' };
+
   const pending = useMemo(() => [
     ...catalog.entries.filter((x) => x.status === 'pending').map((x) => ({ ...x, kind: 'entries', kindLabel: 'Katalog-Item', label: x.name })),
     ...catalog.photos.filter((x) => x.status === 'pending').map((x) => ({ ...x, kind: 'photos', kindLabel: 'Foto', label: x.item_name })),
@@ -151,6 +165,38 @@ export default function AdminDashboard({ currentUser, onClose, onCatalogChanged 
 
           {tab === 'catalog' && <section className="admin-panel"><h2>Freigaben</h2>{pending.map((item) => <article className="admin-message admin-approval" role="button" tabIndex="0" key={`${item.kind}-${item.id}`} onClick={() => setSelectedApproval(item)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSelectedApproval(item); }}>{item.image_url && <img src={item.image_url} alt={`Vorschau von ${item.label}`} />}<div className="admin-approval-body"><div className="admin-message-head"><div><strong>{item.label}</strong><small>{item.kindLabel} · von {item.contributor || 'Unbekannt'} · {dateTime(item.submitted_at)}</small></div><StatusPill value={item.status} /></div>{item.kind === 'entries' && <p>{[item.brand, item.category, item.release_year].filter(Boolean).join(' · ') || 'Keine weiteren Angaben'}</p>}<div className="admin-actions"><button type="button" onClick={(e) => { e.stopPropagation(); setSelectedApproval(item); }}>Details ansehen</button><button type="button" className="approve" onClick={(e) => { e.stopPropagation(); reviewApproval(item, 'approved'); }}>✓ Genehmigen</button>{item.kind === 'entries' && <button type="button" onClick={(e) => { e.stopPropagation(); reviewApproval(item, 'needs_changes'); }}>✎ Änderungen anfordern</button>}<button type="button" className="reject" onClick={(e) => { e.stopPropagation(); reviewApproval(item, 'rejected'); }}>✕ Ablehnen</button></div></div></article>)}{!pending.length && <div className="admin-empty">Keine ausstehenden Vorschläge.</div>}</section>}
 
+          {tab === 'changeRequests' && (
+            <section className="admin-panel">
+              <h2>Korrekturvorschläge</h2>
+              <p className="field-hint" style={{ marginTop: 0 }}>Vorschlagsart wird serverseitig aus dem tatsächlichen Diff bestimmt, nicht vom Einreicher gewählt. Eine Abweichung von der vorgeschlagenen Kategorie braucht eine Begründung.</p>
+              {changeRequests.map((cr) => (
+                <div key={cr.id} className="admin-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <div><strong>{cr.item_name || '(Item gelöscht)'}</strong><small> · von {cr.submitter_name || 'Unbekannt'} (@{cr.submitter_username}) · {dateTime(cr.submitted_at)}</small></div>
+                    <span className="admin-status">{XP_TYPE_LABELS[cr.change_type] || cr.change_type}</span>
+                  </div>
+                  {cr.calculated_diff_json && (
+                    <div className="contribution-xp-row" style={{ flexDirection: 'column', alignItems: 'stretch', border: 'none', padding: '4px 0' }}>
+                      {Object.entries(cr.calculated_diff_json).map(([field, { before, after }]) => (
+                        <div key={field} style={{ display: 'flex', gap: 10, fontSize: 13 }}>
+                          <span style={{ minWidth: 140, opacity: 0.7 }}>{field}</span>
+                          <span style={{ textDecoration: 'line-through', opacity: 0.6 }}>{String(before ?? '–')}</span>
+                          <span>→</span>
+                          <strong>{String(after ?? '–')}</strong>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="admin-actions">
+                    <button type="button" className="approve" onClick={() => decideChangeRequest(cr, 'approved')}>✓ Übernehmen</button>
+                    <button type="button" onClick={() => decideChangeRequest(cr, 'needs_changes')}>✎ Änderungen anfordern</button>
+                    <button type="button" className="reject" onClick={() => decideChangeRequest(cr, 'rejected')}>✕ Ablehnen</button>
+                  </div>
+                </div>
+              ))}
+              {!changeRequests.length && <div className="admin-empty">Keine offenen Korrekturvorschläge.</div>}
+            </section>
+          )}
           {tab === 'duplicates' && (
             <section className="admin-panel">
               <h2>Mögliche Duplikate</h2>

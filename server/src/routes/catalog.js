@@ -7,6 +7,8 @@ const { storeDataUrl, removeStoredImage, publicImageUrl } = require('../utils/im
 const { recalculate, CONDITION_CODES } = require('../utils/communityValue');
 const { getProgress, effectiveFreeItemLimit, XP_PER_LEVEL, SLOT_XP_CAP } = require('../utils/collectorXp');
 const { getActiveProPlus, activateReward } = require('../utils/entitlements');
+const { logCatalogHistory } = require('../utils/catalogHistory');
+const { createDirectRequest, proposeCorrection, decideChangeRequest, CHANGE_TYPE_XP } = require('../utils/changeRequests');
 
 const router = express.Router();
 router.use(optionalAuth);
@@ -60,12 +62,6 @@ function mapEntry(row, req) {
   };
 }
 
-async function logCatalogHistory(pool, { catalogItemId, fromStatus, toStatus, reason, actorUserId }) {
-  await pool.query(
-    'INSERT INTO catalog_entry_history (id, catalog_item_id, from_status, to_status, reason, actor_user_id) VALUES (?, ?, ?, ?, ?, ?)',
-    [crypto.randomUUID(), catalogItemId, fromStatus, toStatus, reason || null, actorUserId || null]
-  );
-}
 
 router.get('/', async (req, res, next) => {
   try {
@@ -119,6 +115,14 @@ router.post('/', catalogSubmissionLimiter, async (req, res, next) => {
     }
 
     await logCatalogHistory(pool, { catalogItemId: id, fromStatus: 'new', toStatus: 'pending', actorUserId: req.user?.id });
+
+    // Every contribution is a change_request first — XP for approving this
+    // item will flow through it, never directly from this submission.
+    const changeRequestId = await createDirectRequest(pool, {
+      catalogItemId: id, submittedBy: req.user?.id, changeType: 'new_item', proposedData: { name: body.name, brand: body.brand, category: body.category }
+    });
+    await pool.query('UPDATE catalog_entries SET change_request_id = ? WHERE id = ?', [changeRequestId, id]);
+
     const [rows] = await pool.query('SELECT * FROM catalog_entries WHERE id = ?', [id]);
     res.status(201).json(mapEntry(rows[0], req));
   } catch (err) {
@@ -180,6 +184,24 @@ router.post('/mine/rewards/:id/activate', requireAuth, async (req, res, next) =>
   }
 });
 
+// Correction proposals the user submitted (as opposed to new-item/new-
+// image submissions, which show up in mine/submissions via catalog_entries).
+router.get('/mine/change-requests', requireAuth, async (req, res, next) => {
+  try {
+    const [rows] = await getMysqlPool().query(
+      `SELECT ccr.*, ce.name AS item_name FROM catalog_change_requests ccr
+       LEFT JOIN catalog_entries ce ON ce.id = ccr.catalog_item_id
+       WHERE ccr.submitted_by = ? AND ccr.change_type IN ('minor_correction', 'major_correction', 'identifier')
+       ORDER BY ccr.submitted_at DESC LIMIT 100`,
+      [req.user.id]
+    );
+    res.json(rows.map((r) => ({
+      id: r.id, itemName: r.item_name, changeType: r.change_type, status: r.status,
+      diff: r.calculated_diff_json, moderatorReason: r.moderator_reason, submittedAt: r.submitted_at, reviewedAt: r.reviewed_at
+    })));
+  } catch (err) { next(err); }
+});
+
 // A submitter's own view of their submissions, including ones the public
 // list never shows (pending/needs_changes/rejected/reported/removed) — the
 // only way "Einreicher über Entscheidungen informieren" (spec) is possible.
@@ -228,6 +250,11 @@ router.put('/:id', requireAuth, async (req, res, next) => {
     }
     if (imagePath !== entry.image_path) await removeStoredImage(entry.image_path);
     await logCatalogHistory(pool, { catalogItemId: entry.id, fromStatus: entry.status, toStatus: 'pending', reason: 'Erneut eingereicht nach Überarbeitung', actorUserId: req.user.id });
+    // The linked change_request must go back to 'pending' too, or the next
+    // approval can't award XP through it (decideChangeRequest requires pending).
+    if (entry.change_request_id) {
+      await pool.query("UPDATE catalog_change_requests SET status = 'pending', moderator_reason = NULL WHERE id = ?", [entry.change_request_id]);
+    }
 
     const [updated] = await pool.query('SELECT * FROM catalog_entries WHERE id = ?', [entry.id]);
     res.json(mapEntry(updated[0], req));
@@ -260,8 +287,33 @@ router.post('/:id/photo', catalogSubmissionLimiter, async (req, res, next) => {
       await removeStoredImage(imagePath);
       throw error;
     }
+    const changeRequestId = await createDirectRequest(pool, {
+      catalogItemId: req.params.id, submittedBy: req.user?.id, changeType: 'new_image', proposedData: { imagePath }
+    });
+    await pool.query('UPDATE catalog_photo_proposals SET change_request_id = ? WHERE id = ?', [changeRequestId, id]);
     res.status(201).json({ id });
   } catch (err) {
+    next(err);
+  }
+});
+
+// Propose a correction to an already-approved catalog entry — previously
+// impossible; only the original submitter could edit anything, and only
+// while their own entry was still pending/needs_changes. Anyone can now
+// suggest a fix to a live entry; it goes through the same change-request
+// review as everything else, never applied directly.
+router.post('/:id/propose-change', requireAuth, catalogSubmissionLimiter, async (req, res, next) => {
+  try {
+    const pool = getMysqlPool();
+    const proposedFields = {};
+    for (const field of ['name', 'brand', 'category', 'releaseYear', 'ean', 'isbn', 'manufacturerNumber']) {
+      if (req.body?.[field] !== undefined) proposedFields[field] = req.body[field];
+    }
+    if (!Object.keys(proposedFields).length) return res.status(400).json({ error: 'Keine Änderungen angegeben.' });
+    const changeRequestId = await proposeCorrection(pool, { catalogItemId: req.params.id, submittedBy: req.user.id, proposedFields });
+    res.status(201).json({ id: changeRequestId });
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
     next(err);
   }
 });

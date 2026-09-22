@@ -212,6 +212,50 @@ function MyContributions({ t }) {
   );
 }
 
+// Anyone can suggest a fix to a live catalog entry — the server classifies
+// and reviews it (see server/src/utils/changeRequests.js); nothing here is
+// applied directly. Only offers the small set of correctable fields, on
+// purpose — description/images/condition values go through their own flows.
+function ProposeCorrectionForm({ entry, t }) {
+  const [open, setOpen] = useState(false);
+  const [fields, setFields] = useState({ name: entry.name || '', brand: entry.brand || '', category: entry.category || '', releaseYear: entry.releaseYear || '', ean: entry.ean || '', isbn: entry.isbn || '', manufacturerNumber: entry.manufacturerNumber || '' });
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+
+  const submit = async () => {
+    setBusy(true);
+    setResult(null);
+    const res = await window.api.proposeCorrection({ catalogItemId: entry.id, fields });
+    setBusy(false);
+    if (!res?.ok) { setResult({ error: res?.error || 'Vorschlag fehlgeschlagen.' }); return; }
+    setResult({ ok: true });
+  };
+
+  if (!open) {
+    return <button type="button" className="btn-secondary" onClick={() => setOpen(true)}>{t('catalog.proposeCorrection')}</button>;
+  }
+  if (result?.ok) {
+    return <p className="field-hint">{t('catalog.correctionSubmitted')}</p>;
+  }
+
+  return (
+    <div className="showcase-settings-fields">
+      <p className="field-hint">{t('catalog.proposeCorrectionHint')}</p>
+      <input type="text" placeholder={t('catalog.submitName')} value={fields.name} onChange={(e) => setFields((f) => ({ ...f, name: e.target.value }))} />
+      <input type="text" placeholder={t('catalog.submitBrand')} value={fields.brand} onChange={(e) => setFields((f) => ({ ...f, brand: e.target.value }))} />
+      <input type="number" placeholder={t('catalog.submitReleaseYear')} value={fields.releaseYear} onChange={(e) => setFields((f) => ({ ...f, releaseYear: e.target.value }))} />
+      <input type="text" placeholder={t('catalog.submitEan')} value={fields.ean} onChange={(e) => setFields((f) => ({ ...f, ean: e.target.value }))} />
+      <input type="text" placeholder={t('catalog.submitIsbn')} value={fields.isbn} onChange={(e) => setFields((f) => ({ ...f, isbn: e.target.value }))} />
+      <input type="text" placeholder={t('catalog.submitManufacturerNumber')} value={fields.manufacturerNumber} onChange={(e) => setFields((f) => ({ ...f, manufacturerNumber: e.target.value }))} />
+      {result?.error && <p className="field-hint cv-error">{result.error}</p>}
+      <div className="cv-form-actions">
+        <button type="button" className="btn-primary" onClick={submit} disabled={busy}>{t('catalog.submitCorrection')}</button>
+        <button type="button" className="btn-secondary" onClick={() => setOpen(false)}>✕</button>
+      </div>
+    </div>
+  );
+}
+
 export default function CommunityCatalogModal({ catalog, catalogCategories, items, user, onAdopt, onSubmit, onProposePhoto, onProposeCategory, onClose }) {
   const { t } = useI18n();
   const isGuest = !user?.id || !!user?.guest;
@@ -634,6 +678,7 @@ export default function CommunityCatalogModal({ catalog, catalogCategories, item
                 {!CONDITION_ORDER.some((condition) => Number(detailEntry.conditionValues?.[condition]) > 0) && !detailEntry.marketValue && <div className="admin-empty">{t('catalog.noVariantValues')}</div>}
               </div>
               <CommunityValueBox catalogItemId={detailEntry.id} isGuest={!user?.id || !!user?.guest} itemName={detailEntry.name} />
+              {!isGuest && <ProposeCorrectionForm entry={detailEntry} t={t} />}
               <button type="button" className="btn-primary" disabled={adoptedIds.includes(detailEntry.id)} onClick={() => handleAdopt(detailEntry)}>{adoptedIds.includes(detailEntry.id) ? t('catalog.adopted') : t('catalog.adopt')}</button>
             </div>
           </div>
