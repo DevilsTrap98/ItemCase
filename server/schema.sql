@@ -387,6 +387,45 @@ CREATE TABLE IF NOT EXISTS collector_progress (
   CONSTRAINT fk_cp_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Pro+ milestone rewards (spec sections 10-13, 22). Unlocked automatically
+-- when a level is first reached (see collectorXp.js:recomputeProgress);
+-- never auto-activated — the user redeems it explicitly, which is what
+-- turns it into a time-boxed entitlements row below. UNIQUE(user_id,
+-- reward_level, reward_type) is the guard against granting the same
+-- milestone twice, even if XP is later revoked and re-earned.
+CREATE TABLE IF NOT EXISTS level_rewards (
+  id VARCHAR(36) PRIMARY KEY,
+  user_id VARCHAR(36) NOT NULL,
+  reward_level INT NOT NULL,
+  reward_type VARCHAR(32) NOT NULL DEFAULT 'ProPlus',
+  duration_days INT NOT NULL,
+  status ENUM('Locked', 'Available', 'Scheduled', 'Active', 'Redeemed', 'Expired', 'Revoked') NOT NULL DEFAULT 'Available',
+  unlocked_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  activated_at DATETIME NULL,
+  expires_at DATETIME NULL,
+  revoked_at DATETIME NULL,
+  revocation_reason TEXT NULL,
+  CONSTRAINT fk_lr_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  UNIQUE KEY uniq_user_level_type (user_id, reward_level, reward_type)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- A redeemed reward becomes a time-boxed entitlement — its own
+-- "berechtigungsquelle", deliberately separate from users.tariff so it
+-- never looks like or interferes with a real paid subscription (spec
+-- section 14: "nicht als kostenpflichtiges Abonnement behandelt").
+CREATE TABLE IF NOT EXISTS entitlements (
+  id VARCHAR(36) PRIMARY KEY,
+  user_id VARCHAR(36) NOT NULL,
+  plan VARCHAR(32) NOT NULL,
+  source VARCHAR(32) NOT NULL,
+  source_reference_id VARCHAR(36) NULL,
+  starts_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  ends_at DATETIME NOT NULL,
+  status ENUM('active', 'expired', 'revoked') NOT NULL DEFAULT 'active',
+  CONSTRAINT fk_ent_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX idx_ent_user_status (user_id, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE IF NOT EXISTS tariff_grants (
   id VARCHAR(36) PRIMARY KEY,
   user_id VARCHAR(36) NOT NULL,

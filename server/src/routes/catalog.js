@@ -6,6 +6,7 @@ const { optionalAuth, requireAuth } = require('../middleware/auth');
 const { storeDataUrl, removeStoredImage, publicImageUrl } = require('../utils/imageStorage');
 const { recalculate, CONDITION_CODES } = require('../utils/communityValue');
 const { getProgress, effectiveFreeItemLimit, XP_PER_LEVEL, SLOT_XP_CAP } = require('../utils/collectorXp');
+const { getActiveProPlus, activateReward } = require('../utils/entitlements');
 
 const router = express.Router();
 router.use(optionalAuth);
@@ -19,6 +20,20 @@ const valueEstimateLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req) => req.user?.id || ipKeyGenerator(req.ip),
   handler: (_req, res) => res.status(429).json({ error: 'Tageslimit für Wertschätzungen erreicht. Bitte versuche es morgen wieder.' })
+});
+
+// Basic abuse protection (spec section 19/§15 for values): a rate limit on
+// catalog submissions themselves, so a spam/bot account can't flood the
+// moderation queue. Deliberately not a full fraud-detection system — multi-
+// account clustering and device fingerprinting need infrastructure this
+// app doesn't have yet; flagged as a follow-up, not attempted here.
+const catalogSubmissionLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 15,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  keyGenerator: (req) => req.user?.id || ipKeyGenerator(req.ip),
+  handler: (_req, res) => res.status(429).json({ error: 'Zu viele Einreichungen. Bitte versuche es später erneut.' })
 });
 
 function mapEntry(row, req) {
@@ -62,7 +77,7 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-router.post('/', async (req, res, next) => {
+router.post('/', catalogSubmissionLimiter, async (req, res, next) => {
   try {
     const body = req.body || {};
     if (!body.name || !String(body.name).trim()) {
@@ -125,9 +140,44 @@ router.get('/mine/progress', requireAuth, async (req, res, next) => {
       xpIntoCurrentLevel: xp % XP_PER_LEVEL,
       xpPerLevel: XP_PER_LEVEL,
       slotXpCap: SLOT_XP_CAP,
-      effectiveFreeItemLimit: effectiveFreeItemLimit(progress.earned_collection_slots)
+      effectiveFreeItemLimit: effectiveFreeItemLimit(progress.earned_collection_slots),
+      proPlus: await (async () => {
+        const active = await getActiveProPlus(getMysqlPool(), req.user.id);
+        return active ? { active: true, endsAt: active.ends_at } : { active: false, endsAt: null };
+      })()
     });
   } catch (err) { next(err); }
+});
+
+// Spec section 24/25: the XP history feed shown under the progress bar.
+router.get('/mine/xp-history', requireAuth, async (req, res, next) => {
+  try {
+    const [rows] = await getMysqlPool().query(
+      'SELECT source_type, xp_amount, reason, created_at FROM contribution_xp_transactions WHERE user_id = ? ORDER BY created_at DESC LIMIT 100',
+      [req.user.id]
+    );
+    res.json(rows);
+  } catch (err) { next(err); }
+});
+
+// Level-Belohnungen (spec sections 10-13): unlocked automatically as XP
+// crosses a milestone (see collectorXp.js), but never auto-activated.
+router.get('/mine/rewards', requireAuth, async (req, res, next) => {
+  try {
+    const pool = getMysqlPool();
+    const [rows] = await pool.query('SELECT * FROM level_rewards WHERE user_id = ? ORDER BY reward_level ASC', [req.user.id]);
+    res.json(rows);
+  } catch (err) { next(err); }
+});
+
+router.post('/mine/rewards/:id/activate', requireAuth, async (req, res, next) => {
+  try {
+    const result = await activateReward(getMysqlPool(), { userId: req.user.id, rewardId: req.params.id });
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    next(err);
+  }
 });
 
 // A submitter's own view of their submissions, including ones the public
@@ -184,7 +234,7 @@ router.put('/:id', requireAuth, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.post('/:id/photo', async (req, res, next) => {
+router.post('/:id/photo', catalogSubmissionLimiter, async (req, res, next) => {
   try {
     const body = req.body || {};
     if (!body.rightsConfirmed) {

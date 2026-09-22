@@ -7,6 +7,7 @@ const { storeDataUrl, removeStoredImage, copyToNamespace, publicImageUrl } = req
 const { CONDITION_CODES } = require('../utils/communityValue');
 const { baseLimitFor } = require('../utils/tariffLimits');
 const { getProgress, effectiveFreeItemLimit } = require('../utils/collectorXp');
+const { getActiveProPlus } = require('../utils/entitlements');
 
 const OWNERSHIP_STATUSES = ['keep', 'duplicate', 'tradable', 'for_sale', 'looking_for'];
 
@@ -134,7 +135,13 @@ router.post('/items', async (req, res, next) => {
     if (!id) {
       const base = baseLimitFor(req.user.tariff);
       let limit = base;
-      if (req.user.tariff === 'free' && base !== Infinity) {
+      // An active Pro+ level reward is its own entitlement, never a change
+      // to users.tariff (spec: not treated as a paid subscription) — it
+      // just raises the effective limit for as long as it's active.
+      const proPlus = await getActiveProPlus(pool, req.user.id);
+      if (proPlus) {
+        limit = baseLimitFor('collectorPro');
+      } else if (req.user.tariff === 'free' && base !== Infinity) {
         const progress = await getProgress(pool, req.user.id);
         limit = effectiveFreeItemLimit(progress.earned_collection_slots);
       }

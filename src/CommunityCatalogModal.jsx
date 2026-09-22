@@ -85,22 +85,71 @@ function CatalogCard({ entry, onAdopt, adopted, onOpenPhotoForm, photoSubmitted,
 // contributions (see server/src/utils/collectorXp.js) — a different system
 // from the collection-completeness "Level" shown elsewhere via the trophy
 // icon, named distinctly here on purpose to avoid confusing the two.
+const LAST_SEEN_LEVEL_KEY = 'itemcase_last_seen_contrib_level';
+const XP_SOURCE_LABELS = {
+  CatalogItemApproved: 'catalog.xpSource.CatalogItemApproved',
+  VariantApproved: 'catalog.xpSource.VariantApproved',
+  ImageApproved: 'catalog.xpSource.ImageApproved',
+  CorrectionApproved: 'catalog.xpSource.CorrectionApproved',
+  IdentifierApproved: 'catalog.xpSource.IdentifierApproved',
+  DuplicateConfirmed: 'catalog.xpSource.DuplicateConfirmed',
+  RewardReversed: 'catalog.xpSource.RewardReversed',
+  ManualCorrection: 'catalog.xpSource.ManualCorrection'
+};
+const REWARD_DURATION_LABEL = { 25: '1 Woche', 50: '3 Wochen', 100: '4 Wochen' };
+
 function MyContributions({ t }) {
   const [progress, setProgress] = useState(null);
   const [submissions, setSubmissions] = useState([]);
+  const [rewards, setRewards] = useState([]);
+  const [xpHistory, setXpHistory] = useState([]);
+  const [leveledUp, setLeveledUp] = useState(false);
+  const [busyRewardId, setBusyRewardId] = useState(null);
+  const [rewardError, setRewardError] = useState('');
 
-  useEffect(() => {
-    window.api.getCollectorProgress?.().then((p) => p && setProgress(p));
+  const load = () => {
+    window.api.getCollectorProgress?.().then((p) => {
+      if (!p) return;
+      setProgress(p);
+      // Purely a per-viewer convenience (never authoritative): remembers
+      // the level last shown on this device so a level-up banner can
+      // appear once, even though XP is usually awarded while offline.
+      try {
+        const lastSeen = Number(localStorage.getItem(LAST_SEEN_LEVEL_KEY) || 0);
+        if (p.collectorLevel > lastSeen) setLeveledUp(true);
+        localStorage.setItem(LAST_SEEN_LEVEL_KEY, String(p.collectorLevel));
+      } catch (e) { /* ignore */ }
+    });
     window.api.getMySubmissions?.().then((s) => setSubmissions(s || []));
-  }, []);
+    window.api.getMyRewards?.().then((r) => setRewards(r || []));
+    window.api.getMyXpHistory?.().then((h) => setXpHistory(h || []));
+  };
+  useEffect(load, []);
 
   if (!progress) return null;
   const xpToNext = progress.xpPerLevel - progress.xpIntoCurrentLevel;
   const progressPct = Math.round((progress.xpIntoCurrentLevel / progress.xpPerLevel) * 100);
   const slotsCapped = progress.earnedCollectionSlots >= 100;
+  const availableRewards = rewards.filter((r) => r.status === 'Available');
+  const otherRewards = rewards.filter((r) => r.status !== 'Available');
+
+  const activate = async (rewardId) => {
+    setBusyRewardId(rewardId);
+    setRewardError('');
+    const res = await window.api.activateReward(rewardId);
+    setBusyRewardId(null);
+    if (!res?.ok) { setRewardError(res?.error || 'Aktivierung fehlgeschlagen.'); return; }
+    load();
+  };
 
   return (
     <div className="contribution-progress">
+      {leveledUp && (
+        <div className="contribution-levelup" onClick={() => setLeveledUp(false)}>
+          🎉 {t('catalog.levelUpBanner', { level: progress.collectorLevel })}
+        </div>
+      )}
+
       <div className="contribution-progress-head">
         <div className="contribution-level">{t('catalog.contribLevel', { level: progress.collectorLevel })}</div>
         <div className="field-hint">{t('catalog.contribXpToNext', { xp: xpToNext })}</div>
@@ -109,6 +158,35 @@ function MyContributions({ t }) {
       <div className="field-hint contribution-slots">
         {slotsCapped ? t('catalog.contribSlotsComplete') : t('catalog.contribSlots', { earned: progress.earnedCollectionSlots, limit: progress.effectiveFreeItemLimit })}
       </div>
+      {progress.proPlus?.active && (
+        <div className="field-hint contribution-proplus-active">
+          ⭐ {t('catalog.proPlusActiveUntil', { date: new Date(progress.proPlus.endsAt).toLocaleDateString('de-DE') })}
+        </div>
+      )}
+
+      {availableRewards.length > 0 && (
+        <>
+          <h3 className="contribution-submissions-title">{t('catalog.rewardsAvailableTitle')}</h3>
+          {rewardError && <p className="field-hint cv-error">{rewardError}</p>}
+          {availableRewards.map((r) => (
+            <div className="admin-row" key={r.id}>
+              <div><strong>{t('catalog.rewardLevel', { level: r.reward_level })}</strong><small> · {REWARD_DURATION_LABEL[r.reward_level] || `${r.duration_days} Tage`} ItemCase Pro+</small></div>
+              <button type="button" className="btn-primary" disabled={busyRewardId === r.id} onClick={() => activate(r.id)}>{t('catalog.activateReward')}</button>
+            </div>
+          ))}
+        </>
+      )}
+      {otherRewards.length > 0 && (
+        <>
+          <h3 className="contribution-submissions-title">{t('catalog.rewardsTitle')}</h3>
+          {otherRewards.map((r) => (
+            <div className="admin-row" key={r.id}>
+              <div><strong>{t('catalog.rewardLevel', { level: r.reward_level })}</strong></div>
+              <span className={`admin-status admin-status-${r.status}`}>{r.status}</span>
+            </div>
+          ))}
+        </>
+      )}
 
       <h3 className="contribution-submissions-title">{t('catalog.mySubmissionsTitle')}</h3>
       {!submissions.length && <p className="field-hint">{t('catalog.noSubmissionsYet')}</p>}
@@ -118,6 +196,18 @@ function MyContributions({ t }) {
           <span className={`admin-status admin-status-${s.status}`}>{t(`catalog.status.${s.status}`)}</span>
         </div>
       ))}
+
+      {xpHistory.length > 0 && (
+        <>
+          <h3 className="contribution-submissions-title">{t('catalog.xpHistoryTitle')}</h3>
+          {xpHistory.map((tx, i) => (
+            <div className="contribution-xp-row" key={i}>
+              <span className={tx.xp_amount < 0 ? 'contribution-xp-negative' : 'contribution-xp-positive'}>{tx.xp_amount > 0 ? `+${tx.xp_amount}` : tx.xp_amount} XP</span>
+              <span className="field-hint">{t(XP_SOURCE_LABELS[tx.source_type] || tx.source_type)}{tx.reason ? ` · ${tx.reason}` : ''}</span>
+            </div>
+          ))}
+        </>
+      )}
     </div>
   );
 }

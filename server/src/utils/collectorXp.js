@@ -1,11 +1,12 @@
-// XP-Kern (spec "ItemCase Gesamtanleitung für Sammlerlevel und Belohnungen").
-// Only Phase 1 here: the transaction ledger, idempotent awarding on
-// approval, reversals, and the level/slot calculation those need. The
-// progress UI, Pro+ milestone rewards and abuse detection are later phases
-// per the user's own staged plan — not implemented yet, not silently
-// dropped.
+// XP-Kern + Level/Slots (spec "ItemCase Gesamtanleitung für Sammlerlevel und
+// Belohnungen"). The transaction ledger, idempotent awarding on approval,
+// reversals, and the level/slot calculation. Pro+ milestone unlocking lives
+// in entitlements.js and is triggered here on every recompute; activation
+// itself (and the entitlement it creates) is a separate, explicit step —
+// see server/src/routes/catalog.js's reward endpoints.
 
 const crypto = require('crypto');
+const { unlockDueMilestones } = require('./entitlements');
 
 const XP_VALUES = {
   CatalogItemApproved: 10,
@@ -48,6 +49,7 @@ async function recomputeProgress(pool, userId) {
        slot_eligible_xp = VALUES(slot_eligible_xp), earned_collection_slots = VALUES(earned_collection_slots), updated_at = NOW()`,
     [userId, confirmedLifetimeXp, collectorLevel, slotEligibleXp, earnedCollectionSlots]
   );
+  await unlockDueMilestones(pool, userId, collectorLevel);
   return { confirmedLifetimeXp, collectorLevel, slotEligibleXp, earnedCollectionSlots };
 }
 

@@ -4540,6 +4540,11 @@ input:focus, select:focus, textarea:focus {
 .contribution-bar-fill { height: 100%; background: var(--accent, #6c8cff); }
 .contribution-slots { margin: 0; }
 .contribution-submissions-title { margin: 18px 0 8px 0; }
+.contribution-levelup { margin-bottom: 12px; padding: 10px 14px; border-radius: 10px; background: linear-gradient(90deg, #6c8cff, #8f6cff); color: #fff; font-weight: 600; cursor: pointer; }
+.contribution-proplus-active { margin-top: 6px; color: #f5a524; }
+.contribution-xp-row { display: flex; gap: 10px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.contribution-xp-positive { color: #2fae5c; font-weight: 600; min-width: 60px; }
+.contribution-xp-negative { color: #d64545; font-weight: 600; min-width: 60px; }
 
 .market-dealer-header { display: flex; gap: 20px; align-items: flex-start; margin: 18px 0 20px 0; }
 .market-dealer-header h1 { margin: 0 0 6px 0; font-size: 22px; }

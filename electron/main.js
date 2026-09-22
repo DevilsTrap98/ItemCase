@@ -603,6 +603,30 @@ ipcMain.handle('catalog:myProgress', async () => {
   }
 });
 
+ipcMain.handle('catalog:myXpHistory', async () => {
+  try {
+    return await apiFetch('/catalog/mine/xp-history', { auth: true });
+  } catch (e) {
+    return [];
+  }
+});
+
+ipcMain.handle('catalog:myRewards', async () => {
+  try {
+    return await apiFetch('/catalog/mine/rewards', { auth: true });
+  } catch (e) {
+    return [];
+  }
+});
+
+ipcMain.handle('catalog:activateReward', async (_event, rewardId) => {
+  try {
+    return { ok: true, ...(await apiFetch(`/catalog/mine/rewards/${rewardId}/activate`, { method: 'POST', auth: true })) };
+  } catch (e) {
+    return { ok: false, error: e.data?.error || e.message };
+  }
+});
+
 ipcMain.handle('catalog:mySubmissions', async () => {
   try {
     return await apiFetch('/catalog/mine/submissions', { auth: true });
