@@ -3,7 +3,7 @@ const crypto = require('crypto');
 const { getMysqlPool } = require('../config/db-mysql');
 const { requireAuth } = require('../middleware/auth');
 const { notify } = require('../utils/notify');
-const { storeDataUrl, removeStoredImage, publicImageUrl } = require('../utils/imageStorage');
+const { storeDataUrl, removeStoredImage, copyToNamespace, publicImageUrl } = require('../utils/imageStorage');
 const { CONDITION_CODES } = require('../utils/communityValue');
 
 const OWNERSHIP_STATUSES = ['keep', 'duplicate', 'tradable', 'for_sale', 'looking_for'];
@@ -25,6 +25,7 @@ function mapItem(row, req) {
     imagePath: publicImageUrl(row.image_path, req, { private: true }),
     caseDesign: row.case_design || '',
     showcase: !!row.showcase,
+    showcaseOrder: row.showcase_order || 0,
     story: {
       place: row.story_place || '',
       date: row.story_date || '',
@@ -139,16 +140,30 @@ router.post('/items', async (req, res, next) => {
       if (body.imageData !== undefined && body.imageData !== null && !/^https?:\/\//i.test(body.imageData)) {
         imagePath = await storeDataUrl(body.imageData, 'collections', req.user.id, id);
       } else if (body.imageData === null) imagePath = null;
+
+      // A showcase image is always its own public copy of the private
+      // original, never the private file itself served under a public URL
+      // (see server/src/utils/imageStorage.js: copyToNamespace). Re-copied
+      // whenever the item is (re)shown or its image changes; removed the
+      // moment showcase is turned off or the item has no image anymore.
+      let showcaseImagePath = previous.showcase_image_path;
+      const showcaseImageStale = imagePath !== previous.image_path;
+      if (!showcase || !imagePath) {
+        showcaseImagePath = null;
+      } else if (showcaseImageStale || !previous.showcase) {
+        showcaseImagePath = await copyToNamespace(imagePath, 'showcase', req.user.id, id);
+      }
+
       try {
         await pool.query(
         `UPDATE collection_items SET name=?, category=?, item_condition=?, quantity=?, purchase_price=?, value=?, notes=?,
-           image_path=?, case_design=?, showcase=?, story_place=?, story_date=?, story_is_gift=?, story_is_first_piece=?, story_text=?,
+           image_path=?, case_design=?, showcase=?, showcase_order=?, showcase_image_path=?, story_place=?, story_date=?, story_is_gift=?, story_is_first_piece=?, story_text=?,
            custom_fields=?, catalog_info=?, catalog_item_id=?, ownership_status=?, value_history=?, updated_at=?
          WHERE id = ? AND owner_id = ?`,
         [
           body.name, body.category || '', body.condition || '', Number(body.quantity) || 1,
           body.purchasePrice || null, body.value || null, body.notes || '',
-          imagePath, body.caseDesign || null, showcase,
+          imagePath, body.caseDesign || null, showcase, Number(body.showcaseOrder) || 0, showcaseImagePath,
           body.story?.place || '', body.story?.date || '', body.story?.isGift ? 1 : 0, body.story?.isFirstPiece ? 1 : 0, body.story?.text || '',
           JSON.stringify(body.customFields || {}), JSON.stringify(body.catalogInfo || {}), body.catalogItemId || null,
           ownershipStatus, JSON.stringify(history), now, id, req.user.id
@@ -156,27 +171,31 @@ router.post('/items', async (req, res, next) => {
         );
       } catch (error) {
         if (imagePath !== previous.image_path) await removeStoredImage(imagePath);
+        if (showcaseImagePath !== previous.showcase_image_path) await removeStoredImage(showcaseImagePath);
         throw error;
       }
       if (imagePath !== previous.image_path) await removeStoredImage(previous.image_path);
+      if (showcaseImagePath !== previous.showcase_image_path) await removeStoredImage(previous.showcase_image_path);
     } else {
       id = crypto.randomUUID();
       const imagePath = await storeDataUrl(body.imageData, 'collections', req.user.id, id);
+      const showcaseImagePath = showcase && imagePath ? await copyToNamespace(imagePath, 'showcase', req.user.id, id) : null;
       try {
         await pool.query(
         `INSERT INTO collection_items
-           (id, owner_id, name, category, item_condition, quantity, purchase_price, value, notes, image_path, case_design, showcase,
+           (id, owner_id, name, category, item_condition, quantity, purchase_price, value, notes, image_path, case_design, showcase, showcase_order, showcase_image_path,
             story_place, story_date, story_is_gift, story_is_first_piece, story_text, custom_fields, catalog_info, catalog_item_id, ownership_status, value_history)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           id, req.user.id, body.name, body.category || '', body.condition || '', Number(body.quantity) || 1,
-          body.purchasePrice || null, body.value || null, body.notes || '', imagePath, body.caseDesign || null, showcase,
+          body.purchasePrice || null, body.value || null, body.notes || '', imagePath, body.caseDesign || null, showcase, Number(body.showcaseOrder) || 0, showcaseImagePath,
           body.story?.place || '', body.story?.date || '', body.story?.isGift ? 1 : 0, body.story?.isFirstPiece ? 1 : 0, body.story?.text || '',
           JSON.stringify(body.customFields || {}), JSON.stringify(body.catalogInfo || {}), body.catalogItemId || null, ownershipStatus, JSON.stringify([])
         ]
         );
       } catch (error) {
         await removeStoredImage(imagePath);
+        await removeStoredImage(showcaseImagePath);
         throw error;
       }
     }
@@ -221,9 +240,9 @@ router.post('/items', async (req, res, next) => {
 router.delete('/items/:id', async (req, res, next) => {
   try {
     const pool = getMysqlPool();
-    const [rows] = await pool.query('SELECT image_path FROM collection_items WHERE id = ? AND owner_id = ?', [req.params.id, req.user.id]);
+    const [rows] = await pool.query('SELECT image_path, showcase_image_path FROM collection_items WHERE id = ? AND owner_id = ?', [req.params.id, req.user.id]);
     await pool.query('DELETE FROM collection_items WHERE id = ? AND owner_id = ?', [req.params.id, req.user.id]);
-    if (rows[0]) await removeStoredImage(rows[0].image_path);
+    if (rows[0]) { await removeStoredImage(rows[0].image_path); await removeStoredImage(rows[0].showcase_image_path); }
     res.json(await fullState(pool, req.user.id, req));
   } catch (err) {
     next(err);

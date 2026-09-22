@@ -630,6 +630,12 @@ export const translations = {
     'achievement.completeSet.desc': 'Eine Kategorie zu 100% erreicht',
 
     'showcase.empty': 'Noch keine Items im Showcase. Aktiviere "Im Showcase präsentieren" beim Bearbeiten eines Items.',
+    'showcase.settings.public': 'Showcase öffentlich freigeben',
+    'showcase.settings.title': 'Titel des Showcases',
+    'showcase.settings.description': 'Beschreibung',
+    'showcase.settings.copyLink': 'Link kopieren',
+    'showcase.settings.copied': 'Kopiert ✓',
+    'showcase.settings.privacyHint': 'Öffentlich sichtbar sind nur Name, Kategorie, Zustand, Bild und die von dir eingetragene Geschichte der freigegebenen Items. Kaufpreis, Notizen, genauer Lagerort und Collection Map werden nie angezeigt.',
     'showcase.title': 'Showcase',
 
     'tariff.free.name': 'Free',
@@ -1533,6 +1539,12 @@ export const translations = {
     'achievement.completeSet.desc': 'Reached 100% on a category',
 
     'showcase.empty': 'No items in the showcase yet. Enable "Feature in Showcase" while editing an item.',
+    'showcase.settings.public': 'Make showcase public',
+    'showcase.settings.title': 'Showcase title',
+    'showcase.settings.description': 'Description',
+    'showcase.settings.copyLink': 'Copy link',
+    'showcase.settings.copied': 'Copied ✓',
+    'showcase.settings.privacyHint': 'Only the name, category, condition, picture and the story you added are ever shown publicly for a featured item. Purchase price, notes, exact storage location and Collection Map are never shown.',
     'showcase.title': 'Showcase',
 
     'tariff.free.name': 'Free',

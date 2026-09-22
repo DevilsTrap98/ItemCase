@@ -12,7 +12,9 @@ const notificationsRoutes = require('./routes/notifications');
 const collectionRoutes = require('./routes/collection');
 const wishlistRoutes = require('./routes/wishlist');
 const marketRoutes = require('./routes/market');
+const showcaseRoutes = require('./routes/showcase');
 const catalogRoutes = require('./routes/catalog');
+const { renderShowcasePage } = require('./views/showcasePage');
 const reportsRoutes = require('./routes/reports');
 const feedbackRoutes = require('./routes/feedback');
 const adminRoutes = require('./routes/admin');
@@ -73,7 +75,17 @@ function createApp() {
   app.use('/api/collection', collectionRoutes);
   app.use('/api/wishlist', wishlistRoutes);
   app.use('/api/market', requireFeature('market'), marketRoutes);
+  app.use('/api/showcase', showcaseRoutes);
   app.use('/api/catalog', catalogRoutes);
+
+  // Human-facing page for the public share link (spec: "öffentlichen Link
+  // teilen") — a share link has to work in a plain browser for someone who
+  // doesn't have the app, not just as a JSON API a client fetches.
+  app.get('/showcase/:username', async (req, res, next) => {
+    try {
+      res.type('html').send(await renderShowcasePage(req, req.params.username));
+    } catch (err) { next(err); }
+  });
   app.use('/api/reports', submissionLimiter, reportsRoutes);
   app.use('/api/feedback', submissionLimiter, feedbackRoutes);
   app.use('/api/admin', adminRoutes);

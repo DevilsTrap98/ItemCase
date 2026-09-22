@@ -4526,6 +4526,13 @@ input:focus, select:focus, textarea:focus {
 .cv-collection-summary { margin: 14px 0; padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-card); }
 .cv-collection-summary .cv-median { font-size: 22px; }
 
+.showcase-settings { margin-bottom: 20px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-card); }
+.showcase-settings-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+.showcase-toggle { display: flex; align-items: center; gap: 8px; }
+.showcase-link { display: flex; align-items: center; gap: 8px; }
+.showcase-link code { font-size: 12px; color: var(--text-muted); }
+.showcase-settings-fields { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+
 .market-dealer-header { display: flex; gap: 20px; align-items: flex-start; margin: 18px 0 20px 0; }
 .market-dealer-header h1 { margin: 0 0 6px 0; font-size: 22px; }
 .market-dealer-details { display: flex; flex-direction: column; gap: 12px; margin-bottom: 26px; }

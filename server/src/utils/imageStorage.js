@@ -60,6 +60,26 @@ async function storeDataUrl(dataUrl, namespace, ownerId, imageId) {
   return relativePath;
 }
 
+// Copies an already-stored, already-validated image into a different
+// namespace — used when a private item's image is deliberately made public
+// (e.g. added to a Showcase), mirroring how CommunityMarkt copies an item's
+// image into its own 'market/' namespace rather than ever serving the
+// private original through a public URL.
+async function copyToNamespace(existingRelativePath, namespace, ownerId, imageId) {
+  if (!existingRelativePath) return null;
+  const source = path.resolve(uploadsRoot, ...String(existingRelativePath).split('/'));
+  if (!source.startsWith(`${uploadsRoot}${path.sep}`)) throw new Error('invalid source path');
+  const buffer = await fs.readFile(source);
+  const extension = path.extname(existingRelativePath) || '.jpg';
+  const relativeDir = path.posix.join(safeSegment(namespace), safeSegment(ownerId));
+  const fileName = `${safeSegment(imageId)}-${crypto.randomBytes(8).toString('hex')}${extension}`;
+  const relativePath = path.posix.join(relativeDir, fileName);
+  const directory = path.join(uploadsRoot, ...relativeDir.split('/'));
+  await fs.mkdir(directory, { recursive: true });
+  await fs.writeFile(path.join(uploadsRoot, ...relativePath.split('/')), buffer, { mode: 0o600 });
+  return relativePath;
+}
+
 async function removeStoredImage(relativePath) {
   if (!relativePath) return;
   const resolved = path.resolve(uploadsRoot, ...String(relativePath).split('/'));
@@ -102,4 +122,4 @@ function authorizePrivateImage(req, res, next) {
   next();
 }
 
-module.exports = { uploadsRoot, storeDataUrl, removeStoredImage, publicImageUrl, authorizePrivateImage };
+module.exports = { uploadsRoot, storeDataUrl, removeStoredImage, copyToNamespace, publicImageUrl, authorizePrivateImage };

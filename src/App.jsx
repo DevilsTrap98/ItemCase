@@ -18,6 +18,7 @@ import ChatWindow from './ChatWindow.jsx';
 import GroupsModal from './GroupsModal.jsx';
 import ForumHubModal from './ForumHubModal.jsx';
 import MarketModal from './MarketModal.jsx';
+import ShowcaseSettings from './ShowcaseSettings.jsx';
 import WishlistModal from './WishlistModal.jsx';
 import SmartImportModal from './SmartImportModal.jsx';
 import TitleBar from './TitleBar.jsx';
@@ -931,7 +932,9 @@ export default function App() {
         <div className="content-row">
         <main className="main" style={mainStyle}>
         {showShowcase ? (
-          showcaseItems.length === 0 ? (
+          <>
+          {!isGuest && <ShowcaseSettings />}
+          {showcaseItems.length === 0 ? (
             <div className="empty-state">
               <p>{t('showcase.empty')}</p>
             </div>
@@ -947,7 +950,8 @@ export default function App() {
                 />
               ))}
             </div>
-          )
+          )}
+          </>
         ) : (
         <>
         <div className="collection-header">

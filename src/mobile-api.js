@@ -90,6 +90,13 @@ export function createMobileApi() {
     confirmCommunityValueEstimate: ({ catalogItemId, conditionCode }) => okResult(async () => await request(`/catalog/${catalogItemId}/community-value-estimate/${conditionCode}/confirm`, { method: 'POST', auth: true })),
     withdrawCommunityValueEstimate: ({ catalogItemId, conditionCode }) => okResult(async () => await request(`/catalog/${catalogItemId}/community-value-estimate/${conditionCode}`, { method: 'DELETE', auth: true })),
     getCollectionValueSummary: () => result(() => request('/collection/community-value-summary', { auth: true }), null),
+    getMyShowcaseProfile: () => result(async () => {
+      const profile = await request('/showcase/profile/mine', { auth: true });
+      const origin = API_BASE_URL.replace(/\/api\/?$/, '');
+      return { ...profile, publicUrl: profile?.username ? `${origin}/showcase/${profile.username}` : null };
+    }, null),
+    saveShowcaseProfile: (body) => okResult(async () => await request('/showcase/profile', { method: 'PUT', auth: true, body })),
+    setShowcaseOrder: (itemIds) => okResult(async () => await request('/showcase/order', { method: 'PUT', auth: true, body: { itemIds } })),
     exportZip: async () => false,
     importZip: async () => ({ ok: false, reason: 'unsupported' }),
     exportCsv: async () => false,

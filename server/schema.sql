@@ -329,6 +329,25 @@ ALTER TABLE collection_items ADD COLUMN case_design VARCHAR(64) NULL AFTER image
 ALTER TABLE catalog_entries ADD COLUMN image_path VARCHAR(500) NULL AFTER manufacturer_number;
 ALTER TABLE forum_threads ADD COLUMN image_path VARCHAR(500) NULL AFTER category;
 
+-- Public Showcase (spec "ItemCase Anleitung für Version 1", section 5): a
+-- separately-published, deliberately-public presentation of hand-picked
+-- items. Never auto-derived from the private collection_items row — each
+-- showcased item gets its own public image copy (showcase_image_path) so a
+-- private image is never served through a public URL, and only an explicit
+-- allowlist of fields (name/category/condition/story) is ever exposed; see
+-- server/src/routes/showcase.js for the field-level filtering.
+CREATE TABLE IF NOT EXISTS showcase_profiles (
+  owner_id VARCHAR(36) PRIMARY KEY,
+  title VARCHAR(255) NOT NULL DEFAULT '',
+  description TEXT NULL,
+  is_public TINYINT(1) NOT NULL DEFAULT 0,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_showcase_owner FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+ALTER TABLE collection_items ADD COLUMN showcase_order INT NOT NULL DEFAULT 0 AFTER showcase;
+ALTER TABLE collection_items ADD COLUMN showcase_image_path VARCHAR(500) NULL AFTER showcase_order;
+
 -- Community-Schätzwert: value comes only from voluntary, anonymized user
 -- estimates per CatalogItem + condition — never from a personal purchase
 -- price and never from an external price API (see product spec "ItemCase

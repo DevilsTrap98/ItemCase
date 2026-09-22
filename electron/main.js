@@ -627,6 +627,32 @@ ipcMain.handle('catalog:withdrawCommunityValueEstimate', async (_event, { catalo
   }
 });
 
+ipcMain.handle('showcase:getMyProfile', async () => {
+  try {
+    const profile = await apiFetch('/showcase/profile/mine', { auth: true });
+    const origin = API_BASE_URL.replace(/\/api\/?$/, '');
+    return { ...profile, publicUrl: profile?.username ? `${origin}/showcase/${profile.username}` : null };
+  } catch (e) {
+    return null;
+  }
+});
+
+ipcMain.handle('showcase:saveProfile', async (_event, payload) => {
+  try {
+    return { ok: true, ...(await apiFetch('/showcase/profile', { method: 'PUT', auth: true, body: payload })) };
+  } catch (e) {
+    return { ok: false, error: e.data?.error || e.message };
+  }
+});
+
+ipcMain.handle('showcase:setOrder', async (_event, itemIds) => {
+  try {
+    return { ok: true, ...(await apiFetch('/showcase/order', { method: 'PUT', auth: true, body: { itemIds } })) };
+  } catch (e) {
+    return { ok: false, error: e.data?.error || e.message };
+  }
+});
+
 ipcMain.handle('collection:communityValueSummary', async () => {
   try {
     return await apiFetch('/collection/community-value-summary', { auth: true });
