@@ -5,6 +5,7 @@ const { requireAdmin } = require('../middleware/admin');
 const { publicImageUrl, removeStoredImage } = require('../utils/imageStorage');
 const { notify } = require('../utils/notify');
 const { recalculate } = require('../utils/communityValue');
+const { awardXp, reverseXp, reverseCatalogItemXp, getProgress } = require('../utils/collectorXp');
 
 const router = express.Router();
 router.use(requireAuth, requireAdmin);
@@ -136,6 +137,11 @@ router.patch('/catalog/:kind/:id', async (req, res, next) => {
       const [rows] = await pool.query('SELECT * FROM catalog_entries WHERE id = ?', [req.params.id]);
       if (!rows.length) return res.status(404).json({ error: 'Katalogeintrag nicht gefunden' });
       const entry = rows[0];
+      // "Moderatoren dürfen eigene Beiträge nicht selbst genehmigen" — a
+      // second pair of eyes is required, full stop, not just for XP purposes.
+      if (entry.submitted_by_user_id && entry.submitted_by_user_id === req.user.id) {
+        return res.status(403).json({ error: 'Du kannst deine eigene Einreichung nicht selbst moderieren.' });
+      }
       // 'reported' is a manual quarantine here (a moderator deliberately
       // pulling a live entry, e.g. a clear-cut violation or a security
       // concern) — remember what to restore it to if the concern turns out
@@ -146,6 +152,22 @@ router.patch('/catalog/:kind/:id', async (req, res, next) => {
         [status, reason || null, req.user.id, previousStatusBeforeReport, req.params.id]
       );
       await logCatalogHistory(pool, { catalogItemId: req.params.id, fromStatus: entry.status, toStatus: status, reason, actorUserId: req.user.id });
+
+      // XP only on the FIRST approval ever (xp_awarded_at guards this
+      // atomically) — a later resubmission-and-reapproval of the same item
+      // never pays out twice. "RemovedForViolation" claws it back.
+      if (status === 'approved') {
+        const [claim] = await pool.query(
+          'UPDATE catalog_entries SET xp_awarded_at = NOW() WHERE id = ? AND xp_awarded_at IS NULL',
+          [req.params.id]
+        );
+        if (claim.affectedRows) {
+          await awardXp(pool, { userId: entry.submitted_by_user_id, sourceType: 'CatalogItemApproved', sourceId: req.params.id, approvedBy: req.user.id });
+        }
+      } else if (status === 'removed' && entry.xp_awarded_at) {
+        await reverseCatalogItemXp(pool, { catalogItemId: req.params.id, reason: `Beitrag entfernt: ${reason}`, actorUserId: req.user.id });
+      }
+
       if (entry.submitted_by_user_id) {
         await notify(req.app.get('io'), entry.submitted_by_user_id, `catalog_entry_${status}`, { catalogItemId: req.params.id, name: entry.name, reason });
       }
@@ -154,12 +176,25 @@ router.patch('/catalog/:kind/:id', async (req, res, next) => {
     } else if (req.params.kind === 'photos') {
       const [rows] = await pool.query('SELECT * FROM catalog_photo_proposals WHERE id = ?', [req.params.id]);
       if (!rows.length) return res.status(404).json({ error: 'Vorschlag nicht gefunden' });
-      if (status === 'approved' && rows[0].image_path) {
-        const [entries] = await pool.query('SELECT image_path FROM catalog_entries WHERE id = ?', [rows[0].catalog_item_id]);
-        await pool.query('UPDATE catalog_entries SET image_path = ? WHERE id = ?', [rows[0].image_path, rows[0].catalog_item_id]);
-        if (entries[0]?.image_path !== rows[0].image_path) await removeStoredImage(entries[0]?.image_path);
+      const proposal = rows[0];
+      if (proposal.submitted_by_user_id && proposal.submitted_by_user_id === req.user.id) {
+        return res.status(403).json({ error: 'Du kannst deinen eigenen Vorschlag nicht selbst moderieren.' });
+      }
+      if (status === 'approved' && proposal.image_path) {
+        const [entries] = await pool.query('SELECT image_path FROM catalog_entries WHERE id = ?', [proposal.catalog_item_id]);
+        await pool.query('UPDATE catalog_entries SET image_path = ? WHERE id = ?', [proposal.image_path, proposal.catalog_item_id]);
+        if (entries[0]?.image_path !== proposal.image_path) await removeStoredImage(entries[0]?.image_path);
       }
       await pool.query('UPDATE catalog_photo_proposals SET status = ? WHERE id = ?', [status, req.params.id]);
+      if (status === 'approved') {
+        const [claim] = await pool.query(
+          'UPDATE catalog_photo_proposals SET xp_awarded_at = NOW() WHERE id = ? AND xp_awarded_at IS NULL',
+          [req.params.id]
+        );
+        if (claim.affectedRows) {
+          await awardXp(pool, { userId: proposal.submitted_by_user_id, sourceType: 'ImageApproved', sourceId: req.params.id, approvedBy: req.user.id });
+        }
+      }
     } else return res.status(404).json({ error: 'Unbekannte Freigabeart' });
     res.json({ ok: true });
   } catch (error) { next(error); }
@@ -323,6 +358,35 @@ router.patch('/users/:id/status', async (req, res, next) => {
     await getMysqlPool().query('UPDATE users SET account_status = ?, token_version = token_version + 1 WHERE id = ?', [status, req.params.id]);
     res.json({ ok: true });
   } catch (error) { next(error); }
+});
+
+// XP ledger — read-only visibility plus a manual reversal for confirmed
+// abuse (spec section 20). No manual XP *grant* endpoint here on purpose:
+// the only way to earn XP is through an actual approval, per "Administra-
+// toren pflegen keine Preise" style principle applied to XP too.
+router.get('/xp/:userId', async (req, res, next) => {
+  try {
+    const pool = getMysqlPool();
+    const [transactions] = await pool.query(
+      'SELECT * FROM contribution_xp_transactions WHERE user_id = ? ORDER BY created_at DESC LIMIT 200',
+      [req.params.userId]
+    );
+    const progress = await getProgress(pool, req.params.userId);
+    res.json({ progress, transactions });
+  } catch (error) { next(error); }
+});
+
+router.post('/xp-transactions/:id/reverse', async (req, res, next) => {
+  try {
+    const reason = String(req.body?.reason || '').trim();
+    if (!reason) return res.status(400).json({ error: 'Ein Grund ist erforderlich.' });
+    const pool = getMysqlPool();
+    await reverseXp(pool, { transactionId: req.params.id, reason, actorUserId: req.user.id });
+    res.json({ ok: true });
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ error: error.message });
+    next(error);
+  }
 });
 
 // Manual tariff grants: a temporary or hand-approved paid tariff, with a

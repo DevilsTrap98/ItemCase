@@ -352,6 +352,41 @@ ALTER TABLE catalog_entries ADD COLUMN merged_into_id VARCHAR(36) NULL AFTER pre
 -- "who granted what, why, and until when" is always answerable and an
 -- expired grant can revert the tariff automatically instead of silently
 -- staying premium forever.
+ALTER TABLE catalog_entries ADD COLUMN xp_awarded_at DATETIME NULL AFTER merged_into_id;
+ALTER TABLE catalog_photo_proposals ADD COLUMN xp_awarded_at DATETIME NULL;
+
+-- XP-Kern (spec "Sammlerlevel und Belohnungen"). Append-only ledger — a
+-- reversal is its own row (source_type='RewardReversed'), never an edit to
+-- an existing one. xp_awarded_at on catalog_entries/catalog_photo_proposals
+-- is the idempotency guard: XP for a given approval is only ever inserted
+-- once, even if the same item is later resubmitted and re-approved, or an
+-- admin action is retried.
+CREATE TABLE IF NOT EXISTS contribution_xp_transactions (
+  id VARCHAR(36) PRIMARY KEY,
+  user_id VARCHAR(36) NOT NULL,
+  source_type ENUM('CatalogItemApproved', 'VariantApproved', 'ImageApproved', 'CorrectionApproved', 'IdentifierApproved', 'DuplicateConfirmed', 'RewardReversed', 'ManualCorrection') NOT NULL,
+  source_id VARCHAR(36) NULL,
+  xp_amount INT NOT NULL,
+  reason TEXT NULL,
+  approved_by VARCHAR(36) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_cxt_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX idx_cxt_user (user_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Recomputed, disposable cache of the ledger above — never the source of
+-- truth, just a fast-to-read current standing. See
+-- server/src/utils/collectorXp.js:recomputeProgress.
+CREATE TABLE IF NOT EXISTS collector_progress (
+  user_id VARCHAR(36) PRIMARY KEY,
+  confirmed_lifetime_xp INT NOT NULL DEFAULT 0,
+  collector_level INT NOT NULL DEFAULT 0,
+  slot_eligible_xp INT NOT NULL DEFAULT 0,
+  earned_collection_slots INT NOT NULL DEFAULT 0,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_cp_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE IF NOT EXISTS tariff_grants (
   id VARCHAR(36) PRIMARY KEY,
   user_id VARCHAR(36) NOT NULL,
@@ -462,6 +497,7 @@ CREATE TABLE IF NOT EXISTS catalog_photo_proposals (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 ALTER TABLE catalog_photo_proposals ADD COLUMN image_path VARCHAR(500) NULL AFTER catalog_item_id;
+ALTER TABLE catalog_photo_proposals ADD COLUMN submitted_by_user_id VARCHAR(36) NULL AFTER contributor;
 
 CREATE TABLE IF NOT EXISTS catalog_categories (
   id INT AUTO_INCREMENT PRIMARY KEY,

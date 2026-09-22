@@ -1945,7 +1945,8 @@ ipcMain.handle('admin:action', async (_event, { action, payload = {} }) => {
     userRole: [`/admin/users/${payload.id}/role`, 'PATCH', { role: payload.role }],
     userStatus: [`/admin/users/${payload.id}/status`, 'PATCH', { status: payload.status }],
     dealerVerification: [`/admin/dealers/${payload.ownerId}/verification`, 'PATCH', { status: payload.status, reason: payload.reason }],
-    mergeCatalogEntries: [`/admin/catalog/entries/${payload.sourceId}/merge`, 'POST', { intoId: payload.intoId, reason: payload.reason }]
+    mergeCatalogEntries: [`/admin/catalog/entries/${payload.sourceId}/merge`, 'POST', { intoId: payload.intoId, reason: payload.reason }],
+    reverseXp: [`/admin/xp-transactions/${payload.transactionId}/reverse`, 'POST', { reason: payload.reason }]
   };
   const route = routes[action];
   if (!route) return { ok: false, error: 'Unbekannte Admin-Aktion' };

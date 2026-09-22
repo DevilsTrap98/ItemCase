@@ -5,6 +5,7 @@ const { getMysqlPool } = require('../config/db-mysql');
 const { optionalAuth, requireAuth } = require('../middleware/auth');
 const { storeDataUrl, removeStoredImage, publicImageUrl } = require('../utils/imageStorage');
 const { recalculate, CONDITION_CODES } = require('../utils/communityValue');
+const { getProgress } = require('../utils/collectorXp');
 
 const router = express.Router();
 router.use(optionalAuth);
@@ -110,6 +111,20 @@ router.post('/', async (req, res, next) => {
   }
 });
 
+// A user's own standing — no progress UI yet (that's a later phase), but
+// the number itself is already real and queryable, not fabricated client-side.
+router.get('/mine/progress', requireAuth, async (req, res, next) => {
+  try {
+    const progress = await getProgress(getMysqlPool(), req.user.id);
+    res.json({
+      confirmedLifetimeXp: progress.confirmed_lifetime_xp,
+      collectorLevel: progress.collector_level,
+      slotEligibleXp: progress.slot_eligible_xp,
+      earnedCollectionSlots: progress.earned_collection_slots
+    });
+  } catch (err) { next(err); }
+});
+
 // A submitter's own view of their submissions, including ones the public
 // list never shows (pending/needs_changes/rejected/reported/removed) — the
 // only way "Einreicher über Entscheidungen informieren" (spec) is possible.
@@ -182,9 +197,9 @@ router.post('/:id/photo', async (req, res, next) => {
     try {
       await pool.query(
       `INSERT INTO catalog_photo_proposals
-        (id, catalog_item_id, image_path, contributor, rights_confirmed, license_version, status)
-       VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
-      [id, req.params.id, imagePath, body.contributor || req.user?.name || '', body.rightsConfirmed ? 1 : 0, body.licenseVersion || '1.0']
+        (id, catalog_item_id, image_path, contributor, submitted_by_user_id, rights_confirmed, license_version, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')`,
+      [id, req.params.id, imagePath, body.contributor || req.user?.name || '', req.user?.id || null, body.rightsConfirmed ? 1 : 0, body.licenseVersion || '1.0']
       );
     } catch (error) {
       await removeStoredImage(imagePath);
