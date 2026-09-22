@@ -1,5 +1,5 @@
 const express = require('express');
-const { getMysqlPool } = require('../config/db-mysql');
+const { getMysqlPool, withTransaction } = require('../config/db-mysql');
 const { requireAuth } = require('../middleware/auth');
 const { requireAdmin } = require('../middleware/admin');
 const { publicImageUrl, removeStoredImage } = require('../utils/imageStorage');
@@ -158,13 +158,15 @@ router.patch('/catalog/:kind/:id', async (req, res, next) => {
         if (entry.change_request_id) {
           await decideChangeRequest(pool, { changeRequestId: entry.change_request_id, moderatorId: req.user.id, decision: 'approved' });
         } else {
-          const [claim] = await pool.query(
-            'UPDATE catalog_entries SET xp_awarded_at = NOW() WHERE id = ? AND xp_awarded_at IS NULL',
-            [req.params.id]
-          );
-          if (claim.affectedRows) {
-            await awardXp(pool, { userId: entry.submitted_by_user_id, sourceType: 'CatalogItemApproved', sourceId: req.params.id, approvedBy: req.user.id });
-          }
+          await withTransaction(pool, async (conn) => {
+            const [claim] = await conn.query(
+              'UPDATE catalog_entries SET xp_awarded_at = NOW() WHERE id = ? AND xp_awarded_at IS NULL',
+              [req.params.id]
+            );
+            if (claim.affectedRows) {
+              await awardXp(conn, { userId: entry.submitted_by_user_id, sourceType: 'CatalogItemApproved', sourceId: req.params.id, approvedBy: req.user.id });
+            }
+          });
         }
       } else if (['rejected', 'needs_changes', 'removed'].includes(status) && entry.change_request_id) {
         await pool.query(
@@ -198,13 +200,15 @@ router.patch('/catalog/:kind/:id', async (req, res, next) => {
         if (proposal.change_request_id) {
           await decideChangeRequest(pool, { changeRequestId: proposal.change_request_id, moderatorId: req.user.id, decision: 'approved' });
         } else {
-          const [claim] = await pool.query(
-            'UPDATE catalog_photo_proposals SET xp_awarded_at = NOW() WHERE id = ? AND xp_awarded_at IS NULL',
-            [req.params.id]
-          );
-          if (claim.affectedRows) {
-            await awardXp(pool, { userId: proposal.submitted_by_user_id, sourceType: 'ImageApproved', sourceId: req.params.id, approvedBy: req.user.id });
-          }
+          await withTransaction(pool, async (conn) => {
+            const [claim] = await conn.query(
+              'UPDATE catalog_photo_proposals SET xp_awarded_at = NOW() WHERE id = ? AND xp_awarded_at IS NULL',
+              [req.params.id]
+            );
+            if (claim.affectedRows) {
+              await awardXp(conn, { userId: proposal.submitted_by_user_id, sourceType: 'ImageApproved', sourceId: req.params.id, approvedBy: req.user.id });
+            }
+          });
         }
       } else if (proposal.change_request_id && ['rejected'].includes(status)) {
         await pool.query(

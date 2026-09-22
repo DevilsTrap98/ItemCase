@@ -2,12 +2,13 @@
 // item, new photo, or a correction to an already-approved item) is first a
 // catalog_change_requests row. XP is only ever created here, from a
 // confirmed moderation decision on a request — never directly from a user
-// action. change_type is classified server-side from the actual diff, per
-// field, never chosen by the submitter.
+// action. change_type is classified server-side from the actual diff,
+// never chosen by the submitter.
 
 const crypto = require('crypto');
 const { awardXp } = require('./collectorXp');
 const { logCatalogHistory } = require('./catalogHistory');
+const { withTransaction } = require('../config/db-mysql');
 
 const CHANGE_TYPE_XP = {
   new_item: 10,
@@ -22,6 +23,12 @@ const CHANGE_TYPE_XP = {
 // Fields a correction proposal is allowed to touch on an existing entry.
 const CORRECTABLE_FIELDS = ['name', 'brand', 'category', 'releaseYear', 'ean', 'isbn', 'manufacturerNumber'];
 const IDENTIFIER_FIELDS = ['ean', 'isbn', 'manufacturerNumber'];
+// Fields where ANY change is treated as significant regardless of how
+// small the text edit looks — a one-character difference can mean an
+// entirely different year, product, or claim of authenticity (spec
+// feedback: "1998 → 1999", "Original → Fälschung"). Text-distance
+// heuristics only ever apply to fields NOT in this list.
+const SEMANTIC_FIELDS = ['name', 'category', 'releaseYear'];
 const CORRECTION_COOLDOWN_HOURS = 24;
 
 function fieldToColumn(field) {
@@ -42,28 +49,35 @@ function computeDiff(before, proposed) {
   return diff;
 }
 
-// The server decides the category — never the submitter — so nobody can
-// declare a one-word typo fix a "major correction" for more XP.
+// The server decides the category — never the submitter. Order matters,
+// per the spec feedback: special fields first, then a field's inherent
+// meaning, then how many fields changed, and only as a last resort — for
+// genuine spelling/typo cleanup — a text-distance comparison.
 function classifyChangeType(diff) {
   const changedFields = Object.keys(diff);
   if (!changedFields.length) return null;
 
+  // 1) Special fields: identifiers are their own category regardless of
+  // how many of them changed or how different the values look.
   const onlyIdentifiers = changedFields.every((f) => IDENTIFIER_FIELDS.includes(f));
   if (onlyIdentifiers) return 'identifier';
 
-  if (changedFields.length === 1) {
-    const { before, after } = diff[changedFields[0]];
-    const beforeStr = String(before ?? '');
-    const afterStr = String(after ?? '');
-    // A single field, newly filled in from empty, or a short edit relative
-    // to its length, reads as a minor correction; anything larger — a
-    // rename, a different value entirely — is major.
-    if (!beforeStr) return 'minor_correction';
-    const distance = levenshtein(beforeStr, afterStr);
-    if (distance <= Math.max(3, Math.ceil(beforeStr.length * 0.3))) return 'minor_correction';
-    return 'major_correction';
-  }
-  return 'major_correction';
+  // 2) Field meaning: touching a semantically load-bearing field (name,
+  // category, release year) is always major — the field's identity, not
+  // the size of the text edit, is what matters here.
+  if (changedFields.some((f) => SEMANTIC_FIELDS.includes(f))) return 'major_correction';
+
+  // 3) Field count: multiple non-semantic fields changed together.
+  if (changedFields.length > 1) return 'major_correction';
+
+  // 4) Only now, for a single non-semantic, non-identifier field (in
+  // practice: brand), does text distance decide typo-fix vs. real change.
+  const { before, after } = diff[changedFields[0]];
+  const beforeStr = String(before ?? '');
+  const afterStr = String(after ?? '');
+  if (!beforeStr) return 'minor_correction';
+  const distance = levenshtein(beforeStr, afterStr);
+  return distance <= Math.max(3, Math.ceil(beforeStr.length * 0.3)) ? 'minor_correction' : 'major_correction';
 }
 
 function levenshtein(a, b) {
@@ -89,10 +103,25 @@ async function createDirectRequest(pool, { catalogItemId, submittedBy, changeTyp
   return id;
 }
 
+async function hasRecentPaidCorrection(conn, { catalogItemId, submittedBy }) {
+  const [[row]] = await conn.query(
+    `SELECT ccr.reviewed_at FROM catalog_change_requests ccr
+     JOIN contribution_xp_transactions tx ON tx.change_request_id = ccr.id AND tx.xp_amount > 0
+     WHERE ccr.catalog_item_id = ? AND ccr.submitted_by = ? AND ccr.status = 'approved'
+       AND ccr.change_type IN ('minor_correction', 'major_correction')
+       AND ccr.reviewed_at >= DATE_SUB(NOW(), INTERVAL ? HOUR)
+     ORDER BY ccr.reviewed_at DESC LIMIT 1`,
+    [catalogItemId, submittedBy, CORRECTION_COOLDOWN_HOURS]
+  );
+  return !!row;
+}
+
 // Corrections to an existing, already-approved item. Classifies the type
-// from the diff, bundles into any still-open request from the same user on
-// the same item (spec: "künstliches Aufteilen verhindern"), and enforces a
-// cooldown after a recently-approved correction on the same item.
+// from the diff and bundles into any still-open request from the same user
+// on the same item (spec: "künstliches Aufteilen verhindern"). The cooldown
+// itself is NOT enforced here — a submission is never blocked, only its XP
+// eligibility is decided at approval time (see decideChangeRequest), so an
+// urgent or safety-relevant fix can always get in front of a moderator.
 async function proposeCorrection(pool, { catalogItemId, submittedBy, proposedFields }) {
   const [[entry]] = await pool.query('SELECT * FROM catalog_entries WHERE id = ?', [catalogItemId]);
   if (!entry) throw Object.assign(new Error('Katalogeintrag nicht gefunden'), { status: 404 });
@@ -110,24 +139,10 @@ async function proposeCorrection(pool, { catalogItemId, submittedBy, proposedFie
   }
   const changeType = classifyChangeType(diff);
 
-  // Cooldown: no further minor/major correction from this user on this
-  // item within 24h of their last approved one — stops "one field per day
-  // for extra XP" gaming without blocking a genuinely new, distinct fix.
-  const [[recentApproved]] = await pool.query(
-    `SELECT reviewed_at FROM catalog_change_requests
-     WHERE catalog_item_id = ? AND submitted_by = ? AND status = 'approved'
-       AND change_type IN ('minor_correction', 'major_correction')
-       AND reviewed_at >= DATE_SUB(NOW(), INTERVAL ? HOUR)
-     ORDER BY reviewed_at DESC LIMIT 1`,
-    [catalogItemId, submittedBy, CORRECTION_COOLDOWN_HOURS]
-  );
-  if (recentApproved) {
-    throw Object.assign(new Error('Du hast an diesem Eintrag kürzlich bereits eine Korrektur vorgenommen. Bitte warte, bevor du eine weitere Korrektur vorschlägst.'), { status: 429 });
-  }
-
   // Bundle into any still-open request from the same user on the same item
-  // instead of creating a second one — this is what actually prevents
-  // splitting one edit into several XP-earning submissions.
+  // instead of creating a second one — an OPEN (not-yet-decided) request is
+  // never itself a source of duplicate XP, so this is safe regardless of
+  // the cooldown, which only applies at approval time.
   const [[openRequest]] = await pool.query(
     `SELECT * FROM catalog_change_requests
      WHERE catalog_item_id = ? AND submitted_by = ? AND status = 'pending'
@@ -158,71 +173,113 @@ async function proposeCorrection(pool, { catalogItemId, submittedBy, proposedFie
   return id;
 }
 
-// Applies a decision. On approve: writes the proposed fields onto the
-// catalog entry (corrections only — new_item/new_image have their own
-// existing apply logic in admin.js) and awards XP exactly once via the
-// change_request_id unique key. xpTypeOverride lets a moderator recategorize
-// the contribution, but requires a reason (spec: "muss eine Abweichung
-// begründen").
-async function decideChangeRequest(pool, { changeRequestId, moderatorId, decision, reason, xpTypeOverride }) {
-  const [[request]] = await pool.query('SELECT * FROM catalog_change_requests WHERE id = ?', [changeRequestId]);
-  if (!request) throw Object.assign(new Error('Änderungsvorschlag nicht gefunden'), { status: 404 });
-  if (request.status !== 'pending') throw Object.assign(new Error('Dieser Vorschlag wurde bereits entschieden.'), { status: 400 });
-  if (request.submitted_by && request.submitted_by === moderatorId) {
-    throw Object.assign(new Error('Du kannst deinen eigenen Vorschlag nicht selbst moderieren.'), { status: 403 });
+// Resubmission after 'needs_changes': updates the SAME row and puts it
+// back to 'pending' — it must never become a second, independent XP
+// source. Only the original submitter, and only from needs_changes.
+async function resubmitChangeRequest(pool, { changeRequestId, submittedBy, proposedFields }) {
+  const [[request]] = await pool.query('SELECT * FROM catalog_change_requests WHERE id = ? AND submitted_by = ?', [changeRequestId, submittedBy]);
+  if (!request) throw Object.assign(new Error('Vorschlag nicht gefunden'), { status: 404 });
+  if (request.status !== 'needs_changes') {
+    throw Object.assign(new Error('Dieser Vorschlag kann in seinem aktuellen Status nicht bearbeitet werden.'), { status: 400 });
   }
-  if (xpTypeOverride && xpTypeOverride !== request.change_type && !reason) {
-    throw Object.assign(new Error('Eine Abweichung von der vorgeschlagenen Kategorie erfordert eine Begründung.'), { status: 400 });
+  const merged = { ...request.proposed_data_json, ...proposedFields };
+  let diff = request.calculated_diff_json;
+  let changeType = request.change_type;
+  if (request.catalog_item_id) {
+    const [[entry]] = await pool.query('SELECT * FROM catalog_entries WHERE id = ?', [request.catalog_item_id]);
+    const before = entry ? {
+      name: entry.name, brand: entry.brand, category: entry.category, releaseYear: entry.release_year,
+      ean: entry.ean, isbn: entry.isbn, manufacturerNumber: entry.manufacturer_number
+    } : null;
+    diff = computeDiff(before, merged);
+    changeType = classifyChangeType(diff) || request.change_type;
   }
-
-  const finalType = xpTypeOverride || request.change_type;
   await pool.query(
-    'UPDATE catalog_change_requests SET status = ?, moderator_id = ?, moderator_reason = ?, change_type = ?, reviewed_at = NOW() WHERE id = ?',
-    [decision, moderatorId, reason || null, finalType, changeRequestId]
+    `UPDATE catalog_change_requests SET proposed_data_json = ?, calculated_diff_json = ?, change_type = ?,
+       status = 'pending', moderator_reason = NULL, updated_at = NOW() WHERE id = ?`,
+    [JSON.stringify(merged), JSON.stringify(diff), changeType, changeRequestId]
   );
+  return changeRequestId;
+}
 
-  if (decision !== 'approved') return { applied: false };
-
-  // Only a correction-type request writes proposed fields directly here —
-  // new_item/new_image apply their data through their own existing flows
-  // in admin.js, which call this only for the XP side (proposed_data_json
-  // is informational there).
-  if (['minor_correction', 'major_correction', 'identifier'].includes(request.change_type) && request.catalog_item_id) {
-    const proposed = request.proposed_data_json;
-    const diff = request.calculated_diff_json || computeDiff(null, proposed);
-    const setClauses = [];
-    const params = [];
-    for (const field of Object.keys(diff)) {
-      setClauses.push(`${fieldToColumn(field)} = ?`);
-      params.push(proposed[field] ?? null);
+// Applies a decision atomically: the change_request's own status/audit
+// fields, the catalog_entries field update, the history log entry, and the
+// XP award all commit together or not at all (spec feedback: these must
+// never be allowed to diverge). Once decided, calculated_diff_json,
+// change_type and moderator_reason are frozen — a second decide on the
+// same request is refused, not overwritten.
+async function decideChangeRequest(pool, { changeRequestId, moderatorId, decision, reason, xpTypeOverride }) {
+  return withTransaction(pool, async (conn) => {
+    // Row-level lock: a concurrent decide on the same request blocks here
+    // until this transaction commits or rolls back, then cleanly sees the
+    // already-decided status instead of racing on it.
+    const [[request]] = await conn.query('SELECT * FROM catalog_change_requests WHERE id = ? FOR UPDATE', [changeRequestId]);
+    if (!request) throw Object.assign(new Error('Änderungsvorschlag nicht gefunden'), { status: 404 });
+    if (request.status !== 'pending') throw Object.assign(new Error('Dieser Vorschlag wurde bereits entschieden.'), { status: 400 });
+    if (request.submitted_by && request.submitted_by === moderatorId) {
+      throw Object.assign(new Error('Du kannst deinen eigenen Vorschlag nicht selbst moderieren.'), { status: 403 });
     }
-    if (setClauses.length) {
-      params.push(request.catalog_item_id);
-      await pool.query(`UPDATE catalog_entries SET ${setClauses.join(', ')} WHERE id = ?`, params);
-      await logCatalogHistory(pool, {
-        catalogItemId: request.catalog_item_id, fromStatus: 'approved', toStatus: 'approved',
-        reason: `Korrektur übernommen (${finalType}): ${Object.keys(diff).join(', ')}`, actorUserId: moderatorId
-      });
+    if (xpTypeOverride && xpTypeOverride !== request.change_type && !reason) {
+      throw Object.assign(new Error('Eine Abweichung von der vorgeschlagenen Kategorie erfordert eine Begründung.'), { status: 400 });
     }
-  }
 
-  if (request.submitted_by) {
-    const xpAmount = CHANGE_TYPE_XP[finalType];
-    try {
-      await awardXp(pool, {
-        userId: request.submitted_by, sourceType: 'ManualCorrection', sourceId: changeRequestId,
-        xpAmount, reason: `${finalType} (Vorschlag ${changeRequestId})`, approvedBy: moderatorId,
-        changeRequestId
-      });
-    } catch (e) {
-      if (e.code !== 'ER_DUP_ENTRY') throw e; // already funded — the unique key did its job
+    const finalType = xpTypeOverride || request.change_type;
+    await conn.query(
+      'UPDATE catalog_change_requests SET status = ?, moderator_id = ?, moderator_reason = ?, change_type = ?, reviewed_at = NOW() WHERE id = ?',
+      [decision, moderatorId, reason || null, finalType, changeRequestId]
+    );
+
+    if (decision !== 'approved') return { applied: false };
+
+    // Only a correction-type request writes proposed fields directly here —
+    // new_item/new_image apply their data through their own existing flows
+    // in admin.js.
+    if (['minor_correction', 'major_correction', 'identifier'].includes(request.change_type) && request.catalog_item_id) {
+      const proposed = request.proposed_data_json;
+      const diff = request.calculated_diff_json || computeDiff(null, proposed);
+      const setClauses = [];
+      const params = [];
+      for (const field of Object.keys(diff)) {
+        setClauses.push(`${fieldToColumn(field)} = ?`);
+        params.push(proposed[field] ?? null);
+      }
+      if (setClauses.length) {
+        params.push(request.catalog_item_id);
+        await conn.query(`UPDATE catalog_entries SET ${setClauses.join(', ')} WHERE id = ?`, params);
+        await logCatalogHistory(conn, {
+          catalogItemId: request.catalog_item_id, fromStatus: 'approved', toStatus: 'approved',
+          reason: `Korrektur übernommen (${finalType}): ${Object.keys(diff).join(', ')}`, actorUserId: moderatorId
+        });
+      }
     }
-  }
 
-  return { applied: true, changeType: finalType };
+    if (request.submitted_by) {
+      // Cooldown decides XP eligibility at approval time, not submission
+      // time — a fix is never refused, but a second paid correction on the
+      // same item within 24h of the last one is booked at 0 XP instead of
+      // being rejected outright (spec feedback: don't block urgent/safety
+      // fixes, just don't double-pay for them).
+      const onCooldown = ['minor_correction', 'major_correction'].includes(finalType)
+        && await hasRecentPaidCorrection(conn, { catalogItemId: request.catalog_item_id, submittedBy: request.submitted_by });
+      const xpAmount = onCooldown ? 0 : CHANGE_TYPE_XP[finalType];
+      const xpReason = onCooldown
+        ? `0 XP – Cooldown (${finalType}, Vorschlag ${changeRequestId})`
+        : `${finalType} (Vorschlag ${changeRequestId})`;
+      try {
+        await awardXp(conn, {
+          userId: request.submitted_by, sourceType: 'ManualCorrection', sourceId: changeRequestId,
+          xpAmount, reason: xpReason, approvedBy: moderatorId, changeRequestId
+        });
+      } catch (e) {
+        if (e.code !== 'ER_DUP_ENTRY') throw e; // already funded — the unique key did its job
+      }
+    }
+
+    return { applied: true, changeType: finalType };
+  });
 }
 
 module.exports = {
   CHANGE_TYPE_XP, CORRECTABLE_FIELDS, computeDiff, classifyChangeType,
-  createDirectRequest, proposeCorrection, decideChangeRequest
+  createDirectRequest, proposeCorrection, resubmitChangeRequest, decideChangeRequest
 };

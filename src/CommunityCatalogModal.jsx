@@ -103,6 +103,9 @@ function MyContributions({ t }) {
   const [submissions, setSubmissions] = useState([]);
   const [rewards, setRewards] = useState([]);
   const [xpHistory, setXpHistory] = useState([]);
+  const [changeRequests, setChangeRequests] = useState([]);
+  const [resubmitId, setResubmitId] = useState(null);
+  const [resubmitFields, setResubmitFields] = useState({});
   const [leveledUp, setLeveledUp] = useState(false);
   const [busyRewardId, setBusyRewardId] = useState(null);
   const [rewardError, setRewardError] = useState('');
@@ -123,6 +126,7 @@ function MyContributions({ t }) {
     window.api.getMySubmissions?.().then((s) => setSubmissions(s || []));
     window.api.getMyRewards?.().then((r) => setRewards(r || []));
     window.api.getMyXpHistory?.().then((h) => setXpHistory(h || []));
+    window.api.getMyChangeRequests?.().then((c) => setChangeRequests(c || []));
   };
   useEffect(load, []);
 
@@ -140,6 +144,11 @@ function MyContributions({ t }) {
     setBusyRewardId(null);
     if (!res?.ok) { setRewardError(res?.error || 'Aktivierung fehlgeschlagen.'); return; }
     load();
+  };
+
+  const resubmitCorrection = async (cr) => {
+    const res = await window.api.resubmitCorrection({ changeRequestId: cr.id, fields: resubmitFields });
+    if (res?.ok) { setResubmitId(null); setResubmitFields({}); load(); }
   };
 
   return (
@@ -196,6 +205,35 @@ function MyContributions({ t }) {
           <span className={`admin-status admin-status-${s.status}`}>{t(`catalog.status.${s.status}`)}</span>
         </div>
       ))}
+
+      {changeRequests.length > 0 && (
+        <>
+          <h3 className="contribution-submissions-title">{t('catalog.myCorrectionsTitle')}</h3>
+          {changeRequests.map((cr) => (
+            <div key={cr.id}>
+              <div className="admin-row">
+                <div><strong>{cr.itemName || '–'}</strong>{cr.moderatorReason && <small> · {cr.moderatorReason}</small>}</div>
+                <span className={`admin-status admin-status-${cr.status}`}>{t(`catalog.status.${cr.status}`) || cr.status}</span>
+              </div>
+              {cr.status === 'needs_changes' && (
+                resubmitId === cr.id ? (
+                  <div className="showcase-settings-fields" style={{ marginBottom: 10 }}>
+                    {Object.keys(cr.diff || {}).map((field) => (
+                      <input key={field} type="text" placeholder={field} defaultValue={cr.diff[field].after ?? ''} onChange={(e) => setResubmitFields((f) => ({ ...f, [field]: e.target.value }))} />
+                    ))}
+                    <div className="cv-form-actions">
+                      <button type="button" className="btn-primary" onClick={() => resubmitCorrection(cr)}>{t('catalog.submitCorrection')}</button>
+                      <button type="button" className="btn-secondary" onClick={() => setResubmitId(null)}>✕</button>
+                    </div>
+                  </div>
+                ) : (
+                  <button type="button" className="btn-secondary" onClick={() => { setResubmitId(cr.id); setResubmitFields({}); }}>{t('catalog.resubmitCorrection')}</button>
+                )
+              )}
+            </div>
+          ))}
+        </>
+      )}
 
       {xpHistory.length > 0 && (
         <>

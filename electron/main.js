@@ -611,6 +611,22 @@ ipcMain.handle('catalog:proposeCorrection', async (_event, { catalogItemId, fiel
   }
 });
 
+ipcMain.handle('catalog:resubmitCorrection', async (_event, { changeRequestId, fields }) => {
+  try {
+    return { ok: true, ...(await apiFetch(`/catalog/change-requests/${changeRequestId}`, { method: 'PUT', auth: true, body: fields })) };
+  } catch (e) {
+    return { ok: false, error: e.data?.error || e.message };
+  }
+});
+
+ipcMain.handle('catalog:myChangeRequests', async () => {
+  try {
+    return await apiFetch('/catalog/mine/change-requests', { auth: true });
+  } catch (e) {
+    return [];
+  }
+});
+
 ipcMain.handle('catalog:myXpHistory', async () => {
   try {
     return await apiFetch('/catalog/mine/xp-history', { auth: true });

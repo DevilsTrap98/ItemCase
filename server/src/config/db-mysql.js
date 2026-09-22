@@ -65,4 +65,25 @@ async function closeMysqlPool() {
   }
 }
 
-module.exports = { getMysqlPool, closeMysqlPool };
+// A catalog change's field update, its moderation status, the history log
+// entry and the XP award must all land together or not at all — otherwise
+// a crash between steps could apply a correction with no XP booked, or the
+// reverse. `fn` receives a connection with the same `.query()` shape as the
+// pool facade, so existing helpers (logCatalogHistory, awardXp, ...) work
+// unchanged whether given the pool or a transactional connection.
+async function withTransaction(pool, fn) {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const result = await fn(conn);
+    await conn.commit();
+    return result;
+  } catch (error) {
+    await conn.rollback().catch(() => {});
+    throw error;
+  } finally {
+    conn.release();
+  }
+}
+
+module.exports = { getMysqlPool, closeMysqlPool, withTransaction };

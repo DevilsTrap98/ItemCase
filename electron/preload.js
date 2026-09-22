@@ -34,6 +34,8 @@ contextBridge.exposeInMainWorld('api', {
   getMyRewards: () => ipcRenderer.invoke('catalog:myRewards'),
   getMyXpHistory: () => ipcRenderer.invoke('catalog:myXpHistory'),
   proposeCorrection: (payload) => ipcRenderer.invoke('catalog:proposeCorrection', payload),
+  resubmitCorrection: (payload) => ipcRenderer.invoke('catalog:resubmitCorrection', payload),
+  getMyChangeRequests: () => ipcRenderer.invoke('catalog:myChangeRequests'),
   activateReward: (rewardId) => ipcRenderer.invoke('catalog:activateReward', rewardId),
   getCommunityValues: (catalogItemId) => ipcRenderer.invoke('catalog:communityValues', catalogItemId),
   submitCommunityValueEstimate: (payload) => ipcRenderer.invoke('catalog:submitCommunityValueEstimate', payload),

@@ -8,7 +8,7 @@ const { recalculate, CONDITION_CODES } = require('../utils/communityValue');
 const { getProgress, effectiveFreeItemLimit, XP_PER_LEVEL, SLOT_XP_CAP } = require('../utils/collectorXp');
 const { getActiveProPlus, activateReward } = require('../utils/entitlements');
 const { logCatalogHistory } = require('../utils/catalogHistory');
-const { createDirectRequest, proposeCorrection, decideChangeRequest, CHANGE_TYPE_XP } = require('../utils/changeRequests');
+const { createDirectRequest, proposeCorrection, resubmitChangeRequest, decideChangeRequest, CHANGE_TYPE_XP } = require('../utils/changeRequests');
 
 const router = express.Router();
 router.use(optionalAuth);
@@ -312,6 +312,23 @@ router.post('/:id/propose-change', requireAuth, catalogSubmissionLimiter, async 
     if (!Object.keys(proposedFields).length) return res.status(400).json({ error: 'Keine Änderungen angegeben.' });
     const changeRequestId = await proposeCorrection(pool, { catalogItemId: req.params.id, submittedBy: req.user.id, proposedFields });
     res.status(201).json({ id: changeRequestId });
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    next(err);
+  }
+});
+
+// Resubmit a correction after 'needs_changes' — updates the same request
+// (never a new, independently-payable one).
+router.put('/change-requests/:id', requireAuth, async (req, res, next) => {
+  try {
+    const pool = getMysqlPool();
+    const proposedFields = {};
+    for (const field of ['name', 'brand', 'category', 'releaseYear', 'ean', 'isbn', 'manufacturerNumber']) {
+      if (req.body?.[field] !== undefined) proposedFields[field] = req.body[field];
+    }
+    const id = await resubmitChangeRequest(pool, { changeRequestId: req.params.id, submittedBy: req.user.id, proposedFields });
+    res.json({ id });
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     next(err);

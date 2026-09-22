@@ -90,6 +90,8 @@ export function createMobileApi() {
     getMyRewards: () => result(() => request('/catalog/mine/rewards', { auth: true }), []),
     getMyXpHistory: () => result(() => request('/catalog/mine/xp-history', { auth: true }), []),
     proposeCorrection: ({ catalogItemId, fields }) => okResult(async () => await request(`/catalog/${catalogItemId}/propose-change`, { method: 'POST', auth: true, body: fields })),
+    resubmitCorrection: ({ changeRequestId, fields }) => okResult(async () => await request(`/catalog/change-requests/${changeRequestId}`, { method: 'PUT', auth: true, body: fields })),
+    getMyChangeRequests: () => result(() => request('/catalog/mine/change-requests', { auth: true }), []),
     activateReward: (rewardId) => okResult(async () => await request(`/catalog/mine/rewards/${rewardId}/activate`, { method: 'POST', auth: true })),
     getCommunityValues: (catalogItemId) => result(() => request(`/catalog/${catalogItemId}/community-values`, { auth: !!token() }), null),
     submitCommunityValueEstimate: ({ catalogItemId, conditionCode, value }) => okResult(async () => await request(`/catalog/${catalogItemId}/community-value-estimate`, { method: 'POST', auth: true, body: { conditionCode, value } })),
