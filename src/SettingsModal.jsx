@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useI18n } from './i18n.jsx';
 import { DESIGN_THEME_COLOR_MAP, ALL_BACKGROUND_OPTIONS, BACKGROUND_PREVIEWS, COLOR_THEME_HEX } from './theme-defaults.js';
-import { TARIFF_IDS, TARIFFS, getTariff, tariffPriceLabel } from './tariff-defaults.js';
+import { VISIBLE_TARIFF_IDS, TARIFFS, getTariff, tariffPriceLabel } from './tariff-defaults.js';
 import useImagePath from './useImagePath.js';
 
 const colorThemeIds = ['indigo', 'emerald', 'rose', 'amber', 'sky', 'violet'];
@@ -35,6 +35,8 @@ function DataAndAccountSection({ t }) {
   const [showDeleteForm, setShowDeleteForm] = useState(false);
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [captcha, setCaptcha] = useState(null);
+  const [captchaAnswer, setCaptchaAnswer] = useState('');
   const [deleteError, setDeleteError] = useState('');
   const [deleteBusy, setDeleteBusy] = useState(false);
 
@@ -46,6 +48,17 @@ function DataAndAccountSection({ t }) {
     setExportResult(res?.ok ? 'ok' : (res?.canceled ? null : 'error'));
   };
 
+  const refreshCaptcha = async () => {
+    setCaptchaAnswer('');
+    const result = await window.api.getCaptcha();
+    if (result.ok) setCaptcha({ id: result.id, image: result.image });
+  };
+
+  const openDeleteForm = () => {
+    setShowDeleteForm(true);
+    refreshCaptcha();
+  };
+
   const handleDelete = async (e) => {
     e.preventDefault();
     setDeleteError('');
@@ -54,9 +67,13 @@ function DataAndAccountSection({ t }) {
       return;
     }
     setDeleteBusy(true);
-    const res = await window.api.deleteAccount(deletePassword);
+    const res = await window.api.deleteAccount({ password: deletePassword, captchaId: captcha?.id, captchaAnswer });
     setDeleteBusy(false);
-    if (!res?.ok) { setDeleteError(res?.error || t('auth.errorGeneric')); return; }
+    if (!res?.ok) {
+      setDeleteError(res?.error || t('auth.errorGeneric'));
+      refreshCaptcha(); // a captcha is single-use even on a wrong answer
+      return;
+    }
     // Successful deletion clears the session; the app's own auth-state
     // watcher (session-expired path) takes it from here back to the login screen.
   };
@@ -73,7 +90,7 @@ function DataAndAccountSection({ t }) {
 
       <h3 className="settings-danger-title">{t('settings.dangerZone')}</h3>
       {!showDeleteForm ? (
-        <button type="button" className="settings-nav-item danger" onClick={() => setShowDeleteForm(true)}>{t('settings.deleteAccount')}</button>
+        <button type="button" className="settings-nav-item danger" onClick={openDeleteForm}>{t('settings.deleteAccount')}</button>
       ) : (
         <form className="form" onSubmit={handleDelete}>
           <p className="field-hint">{t('settings.deleteAccountHint')}</p>
@@ -85,6 +102,22 @@ function DataAndAccountSection({ t }) {
             {t('settings.deleteConfirmLabel')}
             <input type="text" value={deleteConfirmText} onChange={(e) => setDeleteConfirmText(e.target.value)} placeholder={t('settings.deleteConfirmWord')} required />
           </label>
+          <div className="auth-captcha">
+            <span>{t('auth.captcha')}</span>
+            <div className="auth-captcha-challenge">
+              {captcha?.image ? <img src={captcha.image} alt={t('auth.captchaAlt')} /> : <div className="auth-captcha-loading">…</div>}
+              <button type="button" className="btn-secondary" onClick={refreshCaptcha} aria-label={t('auth.captchaRefresh')}>↻</button>
+            </div>
+            <input
+              type="text"
+              inputMode="numeric"
+              autoComplete="off"
+              value={captchaAnswer}
+              onChange={(e) => setCaptchaAnswer(e.target.value.replace(/[^0-9]/g, '').slice(0, 3))}
+              placeholder={t('auth.captchaPlaceholder')}
+              required
+            />
+          </div>
           <div className="modal-actions">
             {deleteError && <span className="auth-error">{deleteError}</span>}
             <button type="button" className="btn-secondary" onClick={() => setShowDeleteForm(false)}>{t('catalog.close')}</button>
@@ -445,7 +478,7 @@ export default function SettingsModal({ user, itemCount, onSave, onLogout, onClo
                 </p>
 
                 <div className="tariff-grid">
-                  {TARIFF_IDS.map((id) => {
+                  {VISIBLE_TARIFF_IDS.map((id) => {
                     const tariffInfo = TARIFFS[id];
                     const isActive = (user.tariff || 'free') === id;
                     return (

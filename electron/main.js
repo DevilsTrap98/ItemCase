@@ -1476,9 +1476,9 @@ ipcMain.handle('auth:exportData', async () => {
   } catch (e) { return { ok: false, error: e.data?.error || e.message }; }
 });
 
-ipcMain.handle('auth:deleteAccount', async (_event, password) => {
+ipcMain.handle('auth:deleteAccount', async (_event, { password, captchaId, captchaAnswer }) => {
   try {
-    await apiFetch('/auth/account', { method: 'DELETE', auth: true, body: { password } });
+    await apiFetch('/auth/account', { method: 'DELETE', auth: true, body: { password, captchaId, captchaAnswer } });
     clearAuthToken();
     disconnectRealtime();
     return { ok: true };

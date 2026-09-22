@@ -1,4 +1,8 @@
 export const TARIFF_IDS = ['free', 'collectorPlus', 'collectorPro', 'business'];
+// 'business' (Händlermodus) is feature-flagged off for V1 — not offered as
+// a selectable plan for now, though the tariff itself still exists for
+// anyone already on it / set by an admin.
+export const VISIBLE_TARIFF_IDS = TARIFF_IDS.filter((id) => id !== 'business');
 
 export const TARIFFS = {
   // 100 base + up to 100 earned via the Community-Katalog contribution

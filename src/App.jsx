@@ -920,25 +920,25 @@ export default function App() {
                     <div className="settings-user-email">{user.email}</div>
                   </div>
                   <button onClick={() => { setShowSettings(true); setShowUserMenu(false); }}>
-                    ⚙️ {t('userMenu.settings')}
+                    <span className="user-menu-icon">⚙️</span> {t('userMenu.settings')}
                   </button>
                   <button onClick={() => { setShowUpgrade(true); setShowUserMenu(false); }}>
-                    ⭐ {t('userMenu.upgrade')}
+                    <span className="user-menu-icon">⭐</span> {t('userMenu.upgrade')}
                   </button>
                   <button onClick={() => { setShowFeedback(true); setShowUserMenu(false); }}>
-                    💬 {t('userMenu.feedback')}
+                    <span className="user-menu-icon">💬</span> {t('userMenu.feedback')}
                   </button>
                   <div className="user-menu-divider" />
                   <button onClick={() => { setShowImportExport(true); setShowUserMenu(false); }}>
-                    📦 {t('userMenu.importExport')}
+                    <span className="user-menu-icon">📦</span> {t('userMenu.importExport')}
                   </button>
                   <div className="user-menu-divider" />
                   <button onClick={() => { setShowLegal(true); setShowUserMenu(false); }}>
-                    📜 {t('userMenu.legal')}
+                    <span className="user-menu-icon">📜</span> {t('userMenu.legal')}
                   </button>
                   <div className="user-menu-divider" />
                   <button className="danger" onClick={handleLogout}>
-                    ⏻ {t('userMenu.logout')}
+                    <span className="user-menu-icon">⏻</span> {t('userMenu.logout')}
                   </button>
                 </div>
               </>
@@ -994,14 +994,14 @@ export default function App() {
                 <>
                   <div className="user-menu-backdrop" onClick={() => setShowSortMenu(false)} />
                   <div className="user-menu">
-                    <button className={sortBy === 'name' ? 'active' : ''} onClick={() => { setSortBy('name'); setShowSortMenu(false); }}>{t('collection.sortName')}</button>
-                    <button className={sortBy === 'value' ? 'active' : ''} onClick={() => { setSortBy('value'); setShowSortMenu(false); }}>{t('collection.sortValue')}</button>
-                    <button className={sortBy === 'newest' ? 'active' : ''} onClick={() => { setSortBy('newest'); setShowSortMenu(false); }}>{t('collection.sortNewest')}</button>
+                    <button className={sortBy === 'name' ? 'active' : ''} onClick={() => { setSortBy('name'); setShowSortMenu(false); }}><span className="user-menu-icon" /> {t('collection.sortName')}</button>
+                    <button className={sortBy === 'value' ? 'active' : ''} onClick={() => { setSortBy('value'); setShowSortMenu(false); }}><span className="user-menu-icon" /> {t('collection.sortValue')}</button>
+                    <button className={sortBy === 'newest' ? 'active' : ''} onClick={() => { setSortBy('newest'); setShowSortMenu(false); }}><span className="user-menu-icon" /> {t('collection.sortNewest')}</button>
                     <div className="user-menu-divider" />
-                    <button className={statusFilter === 'all' ? 'active' : ''} onClick={() => { setStatusFilter('all'); setShowSortMenu(false); }}>{t('collection.statusAll')}</button>
-                    <button className={statusFilter === 'duplicate' ? 'active' : ''} onClick={() => { setStatusFilter('duplicate'); setShowSortMenu(false); }}>👯 {t('ownershipStatus.duplicate')}</button>
-                    <button className={statusFilter === 'tradable' ? 'active' : ''} onClick={() => { setStatusFilter('tradable'); setShowSortMenu(false); }}>🔄 {t('ownershipStatus.tradable')}</button>
-                    <button className={statusFilter === 'for_sale' ? 'active' : ''} onClick={() => { setStatusFilter('for_sale'); setShowSortMenu(false); }}>💰 {t('ownershipStatus.for_sale')}</button>
+                    <button className={statusFilter === 'all' ? 'active' : ''} onClick={() => { setStatusFilter('all'); setShowSortMenu(false); }}><span className="user-menu-icon" /> {t('collection.statusAll')}</button>
+                    <button className={statusFilter === 'duplicate' ? 'active' : ''} onClick={() => { setStatusFilter('duplicate'); setShowSortMenu(false); }}><span className="user-menu-icon">👯</span> {t('ownershipStatus.duplicate')}</button>
+                    <button className={statusFilter === 'tradable' ? 'active' : ''} onClick={() => { setStatusFilter('tradable'); setShowSortMenu(false); }}><span className="user-menu-icon">🔄</span> {t('ownershipStatus.tradable')}</button>
+                    <button className={statusFilter === 'for_sale' ? 'active' : ''} onClick={() => { setStatusFilter('for_sale'); setShowSortMenu(false); }}><span className="user-menu-icon">💰</span> {t('ownershipStatus.for_sale')}</button>
                   </div>
                 </>
               )}
@@ -1162,11 +1162,7 @@ export default function App() {
       {showImportExport && (
         <ImportExportModal
           onExportZip={() => { window.api.exportZip(); setShowImportExport(false); }}
-          onImportZip={() => { handleImport(); setShowImportExport(false); }}
-          onExportCsv={() => { window.api.exportCsv(); setShowImportExport(false); }}
-          onImportCsv={() => { handleImportCsv(); setShowImportExport(false); }}
           onSmartImport={() => { setShowSmartImport(true); setShowImportExport(false); }}
-          categories={categories}
           onClose={() => setShowImportExport(false)}
         />
       )}

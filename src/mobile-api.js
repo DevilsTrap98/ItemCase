@@ -134,8 +134,8 @@ export function createMobileApi() {
       URL.revokeObjectURL(url);
       return {};
     }),
-    deleteAccount: (password) => okResult(async () => {
-      await request('/auth/account', { method: 'DELETE', auth: true, body: { password } });
+    deleteAccount: ({ password, captchaId, captchaAnswer }) => okResult(async () => {
+      await request('/auth/account', { method: 'DELETE', auth: true, body: { password, captchaId, captchaAnswer } });
       localStorage.removeItem(TOKEN_KEY); sessionStorage.removeItem(TOKEN_KEY);
       return {};
     }),

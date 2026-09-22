@@ -425,6 +425,10 @@ router.get('/export', requireAuth, async (req, res, next) => {
 router.delete('/account', requireAuth, loginLimiter, async (req, res, next) => {
   try {
     const password = String(req.body?.password || '');
+    const { captchaId, captchaAnswer } = req.body || {};
+    if (!verifyCaptcha(captchaId, captchaAnswer)) {
+      return res.status(400).json({ error: 'Die Bestätigung ist falsch oder abgelaufen. Bitte versuche es erneut.' });
+    }
     const pool = getMysqlPool();
     const [rows] = await pool.query('SELECT password_hash FROM users WHERE id = ?', [req.user.id]);
     if (!rows.length || !(await bcrypt.compare(password, rows[0].password_hash))) {

@@ -2007,6 +2007,19 @@ input:focus, select:focus, textarea:focus {
   border-radius: 7px;
   cursor: pointer;
   font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Emoji glyphs render at different widths, so the label text after them
+   didn't line up — a fixed-width icon column flushes every label to the
+   same left edge instead. */
+.user-menu-icon {
+  display: inline-flex;
+  justify-content: center;
+  width: 18px;
+  flex-shrink: 0;
 }
 
 .user-menu button:hover {
