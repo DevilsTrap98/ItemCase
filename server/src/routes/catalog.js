@@ -5,7 +5,7 @@ const { getMysqlPool } = require('../config/db-mysql');
 const { optionalAuth, requireAuth } = require('../middleware/auth');
 const { storeDataUrl, removeStoredImage, publicImageUrl } = require('../utils/imageStorage');
 const { recalculate, CONDITION_CODES } = require('../utils/communityValue');
-const { getProgress } = require('../utils/collectorXp');
+const { getProgress, effectiveFreeItemLimit, XP_PER_LEVEL, SLOT_XP_CAP } = require('../utils/collectorXp');
 
 const router = express.Router();
 router.use(optionalAuth);
@@ -116,11 +116,16 @@ router.post('/', async (req, res, next) => {
 router.get('/mine/progress', requireAuth, async (req, res, next) => {
   try {
     const progress = await getProgress(getMysqlPool(), req.user.id);
+    const xp = progress.confirmed_lifetime_xp;
     res.json({
-      confirmedLifetimeXp: progress.confirmed_lifetime_xp,
+      confirmedLifetimeXp: xp,
       collectorLevel: progress.collector_level,
       slotEligibleXp: progress.slot_eligible_xp,
-      earnedCollectionSlots: progress.earned_collection_slots
+      earnedCollectionSlots: progress.earned_collection_slots,
+      xpIntoCurrentLevel: xp % XP_PER_LEVEL,
+      xpPerLevel: XP_PER_LEVEL,
+      slotXpCap: SLOT_XP_CAP,
+      effectiveFreeItemLimit: effectiveFreeItemLimit(progress.earned_collection_slots)
     });
   } catch (err) { next(err); }
 });

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useI18n } from './i18n.jsx';
 import useImagePath from './useImagePath.js';
 import CatalogPhotoModal from './CatalogPhotoModal.jsx';
@@ -81,8 +81,50 @@ function CatalogCard({ entry, onAdopt, adopted, onOpenPhotoForm, photoSubmitted,
   );
 }
 
+// Beitragslevel: earned strictly from approved Community-Katalog
+// contributions (see server/src/utils/collectorXp.js) — a different system
+// from the collection-completeness "Level" shown elsewhere via the trophy
+// icon, named distinctly here on purpose to avoid confusing the two.
+function MyContributions({ t }) {
+  const [progress, setProgress] = useState(null);
+  const [submissions, setSubmissions] = useState([]);
+
+  useEffect(() => {
+    window.api.getCollectorProgress?.().then((p) => p && setProgress(p));
+    window.api.getMySubmissions?.().then((s) => setSubmissions(s || []));
+  }, []);
+
+  if (!progress) return null;
+  const xpToNext = progress.xpPerLevel - progress.xpIntoCurrentLevel;
+  const progressPct = Math.round((progress.xpIntoCurrentLevel / progress.xpPerLevel) * 100);
+  const slotsCapped = progress.earnedCollectionSlots >= 100;
+
+  return (
+    <div className="contribution-progress">
+      <div className="contribution-progress-head">
+        <div className="contribution-level">{t('catalog.contribLevel', { level: progress.collectorLevel })}</div>
+        <div className="field-hint">{t('catalog.contribXpToNext', { xp: xpToNext })}</div>
+      </div>
+      <div className="contribution-bar"><div className="contribution-bar-fill" style={{ width: `${progressPct}%` }} /></div>
+      <div className="field-hint contribution-slots">
+        {slotsCapped ? t('catalog.contribSlotsComplete') : t('catalog.contribSlots', { earned: progress.earnedCollectionSlots, limit: progress.effectiveFreeItemLimit })}
+      </div>
+
+      <h3 className="contribution-submissions-title">{t('catalog.mySubmissionsTitle')}</h3>
+      {!submissions.length && <p className="field-hint">{t('catalog.noSubmissionsYet')}</p>}
+      {submissions.map((s) => (
+        <div className="admin-row" key={s.id}>
+          <div><strong>{s.name}</strong>{s.moderationReason && <small> · {s.moderationReason}</small>}{s.mergedIntoId && <small> · {t('catalog.mergedNotice')}</small>}</div>
+          <span className={`admin-status admin-status-${s.status}`}>{t(`catalog.status.${s.status}`)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function CommunityCatalogModal({ catalog, catalogCategories, items, user, onAdopt, onSubmit, onProposePhoto, onProposeCategory, onClose }) {
   const { t } = useI18n();
+  const isGuest = !user?.id || !!user?.guest;
   const [tab, setTab] = useState('browse');
   const [search, setSearch] = useState('');
   const [activeCat, setActiveCat] = useState(ALL_CAT);
@@ -241,9 +283,15 @@ export default function CommunityCatalogModal({ catalog, catalogCategories, item
           >
             {t('catalog.tabSubmit')}
           </button>
+          {!isGuest && (
+            <button type="button" className={tab === 'mine' ? 'catalog-tab active' : 'catalog-tab'} onClick={() => setTab('mine')}>
+              {t('catalog.tabMine')}
+            </button>
+          )}
         </div>
 
         <div className="catalog-modal-body">
+          {tab === 'mine' && !isGuest && <MyContributions t={t} />}
           {tab === 'browse' && (
             <>
               <div className="catalog-filter-bar">

@@ -34,7 +34,7 @@ import useImagePath from './useImagePath.js';
 import UiIcon from './UiIcon.jsx';
 import { BACKGROUND_PATTERNS, DESIGN_THEME_BACKGROUND_MAP, CASE_DESIGNS } from './theme-defaults.js';
 import { SUGGESTED_CATEGORIES } from './category-defaults.js';
-import { getTariff } from './tariff-defaults.js';
+import { effectiveTariff } from './tariff-defaults.js';
 
 const ALL_CATEGORY = '__all__';
 
@@ -115,6 +115,16 @@ export default function App() {
     window.api.getFeatureFlags?.().then((flags) => { if (!cancelled && flags) setFeatures(flags); });
     return () => { cancelled = true; };
   }, []);
+
+  // Sammlerlevel/Beitragslevel: earned via approved Community-Katalog
+  // contributions (server/src/utils/collectorXp.js) — separate from the
+  // older collection-completeness "Level" (collectorLevel.js, the trophy
+  // icon). Drives the effective Free-tier item limit below.
+  const [collectorProgress, setCollectorProgress] = useState(null);
+  useEffect(() => {
+    if (!user?.id || user?.guest) { setCollectorProgress(null); return; }
+    window.api.getCollectorProgress?.().then((p) => p && setCollectorProgress(p));
+  }, [user?.id]);
 
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -653,7 +663,7 @@ export default function App() {
     return { totalItems, totalValue, uniqueItems: items.length };
   }, [items]);
 
-  const tariff = getTariff(user?.tariff);
+  const tariff = effectiveTariff(user?.tariff, collectorProgress?.earnedCollectionSlots || 0);
   const isBusiness = tariff.id === 'business';
   const isOverItemLimit = items.length > tariff.itemLimit;
 

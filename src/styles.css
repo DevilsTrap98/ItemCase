@@ -4533,6 +4533,14 @@ input:focus, select:focus, textarea:focus {
 .showcase-link code { font-size: 12px; color: var(--text-muted); }
 .showcase-settings-fields { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
 
+.contribution-progress { padding: 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-card); margin-bottom: 16px; }
+.contribution-progress-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.contribution-level { font-size: 18px; font-weight: 700; }
+.contribution-bar { height: 8px; border-radius: 4px; background: var(--border); overflow: hidden; margin: 10px 0 6px 0; }
+.contribution-bar-fill { height: 100%; background: var(--accent, #6c8cff); }
+.contribution-slots { margin: 0; }
+.contribution-submissions-title { margin: 18px 0 8px 0; }
+
 .market-dealer-header { display: flex; gap: 20px; align-items: flex-start; margin: 18px 0 20px 0; }
 .market-dealer-header h1 { margin: 0 0 6px 0; font-size: 22px; }
 .market-dealer-details { display: flex; flex-direction: column; gap: 12px; margin-bottom: 26px; }

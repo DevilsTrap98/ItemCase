@@ -29,6 +29,8 @@ contextBridge.exposeInMainWorld('api', {
   getImagePath: (fileName) => ipcRenderer.invoke('image:getPath', fileName),
   sendFeedback: (payload) => ipcRenderer.invoke('feedback:send', payload),
   reportCatalogEntry: (payload) => ipcRenderer.invoke('catalog:report', payload),
+  getCollectorProgress: () => ipcRenderer.invoke('catalog:myProgress'),
+  getMySubmissions: () => ipcRenderer.invoke('catalog:mySubmissions'),
   getCommunityValues: (catalogItemId) => ipcRenderer.invoke('catalog:communityValues', catalogItemId),
   submitCommunityValueEstimate: (payload) => ipcRenderer.invoke('catalog:submitCommunityValueEstimate', payload),
   confirmCommunityValueEstimate: (payload) => ipcRenderer.invoke('catalog:confirmCommunityValueEstimate', payload),

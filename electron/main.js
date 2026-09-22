@@ -595,6 +595,22 @@ ipcMain.handle('catalog:proposeCategory', async (_event, name) => {
   return db.catalogCategories;
 });
 
+ipcMain.handle('catalog:myProgress', async () => {
+  try {
+    return await apiFetch('/catalog/mine/progress', { auth: true });
+  } catch (e) {
+    return null;
+  }
+});
+
+ipcMain.handle('catalog:mySubmissions', async () => {
+  try {
+    return await apiFetch('/catalog/mine/submissions', { auth: true });
+  } catch (e) {
+    return [];
+  }
+});
+
 ipcMain.handle('catalog:communityValues', async (_event, catalogItemId) => {
   try {
     return await apiFetch(`/catalog/${catalogItemId}/community-values`, { auth: !!loadAuthToken() });

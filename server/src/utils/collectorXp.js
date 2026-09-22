@@ -97,10 +97,17 @@ async function reverseCatalogItemXp(pool, { catalogItemId, reason, actorUserId }
   }
 }
 
+// Always returns the same snake_case DB-row shape — recomputeProgress()
+// returns a differently-shaped (camelCase) object for its own callers, so
+// this re-reads the row after ensuring it exists rather than returning
+// that object directly (a shape mismatch here previously made a brand-new
+// user's very first limit check silently compute NaN instead of 100).
 async function getProgress(pool, userId) {
   const [[row]] = await pool.query('SELECT * FROM collector_progress WHERE user_id = ?', [userId]);
   if (row) return row;
-  return recomputeProgress(pool, userId);
+  await recomputeProgress(pool, userId);
+  const [[created]] = await pool.query('SELECT * FROM collector_progress WHERE user_id = ?', [userId]);
+  return created;
 }
 
 function effectiveFreeItemLimit(earnedCollectionSlots) {

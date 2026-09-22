@@ -85,6 +85,8 @@ export function createMobileApi() {
     getImagePath: async (value) => value,
     sendFeedback: (body) => result(() => request('/feedback', { method: 'POST', auth: true, body: { ...body, appVersion: '1.0.0', platform: 'android' } }), true),
     reportCatalogEntry: (body) => result(() => request('/reports', { method: 'POST', auth: true, body }), true),
+    getCollectorProgress: () => result(() => request('/catalog/mine/progress', { auth: true }), null),
+    getMySubmissions: () => result(() => request('/catalog/mine/submissions', { auth: true }), []),
     getCommunityValues: (catalogItemId) => result(() => request(`/catalog/${catalogItemId}/community-values`, { auth: !!token() }), null),
     submitCommunityValueEstimate: ({ catalogItemId, conditionCode, value }) => okResult(async () => await request(`/catalog/${catalogItemId}/community-value-estimate`, { method: 'POST', auth: true, body: { conditionCode, value } })),
     confirmCommunityValueEstimate: ({ catalogItemId, conditionCode }) => okResult(async () => await request(`/catalog/${catalogItemId}/community-value-estimate/${conditionCode}/confirm`, { method: 'POST', auth: true })),

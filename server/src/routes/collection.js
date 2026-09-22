@@ -5,6 +5,8 @@ const { requireAuth } = require('../middleware/auth');
 const { notify } = require('../utils/notify');
 const { storeDataUrl, removeStoredImage, copyToNamespace, publicImageUrl } = require('../utils/imageStorage');
 const { CONDITION_CODES } = require('../utils/communityValue');
+const { baseLimitFor } = require('../utils/tariffLimits');
+const { getProgress, effectiveFreeItemLimit } = require('../utils/collectorXp');
 
 const OWNERSHIP_STATUSES = ['keep', 'duplicate', 'tradable', 'for_sale', 'looking_for'];
 
@@ -122,6 +124,27 @@ router.post('/items', async (req, res, next) => {
     const ownershipStatus = OWNERSHIP_STATUSES.includes(body.ownershipStatus) ? body.ownershipStatus : 'keep';
     const showcase = body.showcase ? 1 : 0;
     let previousStatus = null;
+
+    // Server-side enforcement of the plan limit — previously only the
+    // client's "new item" button was disabled, so anyone calling this
+    // endpoint directly could add items past their plan's limit. Only a
+    // brand-new item (no id yet) is blocked; editing an existing one is
+    // always allowed even while over the limit (spec: items are never
+    // deleted or locked, just capped from growing further).
+    if (!id) {
+      const base = baseLimitFor(req.user.tariff);
+      let limit = base;
+      if (req.user.tariff === 'free' && base !== Infinity) {
+        const progress = await getProgress(pool, req.user.id);
+        limit = effectiveFreeItemLimit(progress.earned_collection_slots);
+      }
+      if (limit !== Infinity) {
+        const [[{ count }]] = await pool.query('SELECT COUNT(*) AS count FROM collection_items WHERE owner_id = ?', [req.user.id]);
+        if (Number(count) >= limit) {
+          return res.status(403).json({ error: `Sammlungslimit erreicht (${limit} Items). Verdiene weitere Plätze über den Community-Katalog oder wähle einen größeren Tarif.`, limit, current: Number(count) });
+        }
+      }
+    }
 
     if (id) {
       const [existingRows] = await pool.query('SELECT * FROM collection_items WHERE id = ? AND owner_id = ?', [id, req.user.id]);
