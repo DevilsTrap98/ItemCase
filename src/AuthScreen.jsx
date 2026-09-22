@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useI18n } from './i18n.jsx';
 import logoFull from './assets/logo-full.png';
 
@@ -11,8 +11,24 @@ export default function AuthScreen({ onLogin }) {
   const [loginIdentifier, setLoginIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [passwordConfirm, setPasswordConfirm] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [captcha, setCaptcha] = useState(null);
+  const [captchaAnswer, setCaptchaAnswer] = useState('');
+  const [verificationEmail, setVerificationEmail] = useState('');
+  const [verificationStatus, setVerificationStatus] = useState('');
+
+  const refreshCaptcha = async () => {
+    setCaptchaAnswer('');
+    const result = await window.api.getCaptcha();
+    if (result.ok) setCaptcha({ id: result.id, image: result.image });
+    else setError(result.error || t('auth.captchaLoadError'));
+  };
+
+  useEffect(() => {
+    if (mode === 'register') refreshCaptcha();
+  }, [mode]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -41,15 +57,22 @@ export default function AuthScreen({ onLogin }) {
         setSubmitting(false);
         return;
       }
-      const result = await window.api.register({ name: name.trim(), username: username.trim().toLowerCase(), email: email.trim(), password });
+      if (!captcha?.id || !captchaAnswer.trim()) {
+        setError(t('auth.captchaRequired'));
+        setSubmitting(false);
+        return;
+      }
+      const result = await window.api.register({ name: name.trim(), username: username.trim().toLowerCase(), email: email.trim(), password, captchaId: captcha.id, captchaAnswer: captchaAnswer.trim() });
       setSubmitting(false);
       if (!result.ok) {
         setError(result.error || t('auth.errorGeneric'));
+        refreshCaptcha();
         return;
       }
-      onLogin(result.user);
+      setVerificationEmail(result.email || email.trim());
+      setMode('verify');
     } else {
-      const result = await window.api.login({ identifier: loginIdentifier.trim(), password });
+      const result = await window.api.login({ identifier: loginIdentifier.trim(), password, rememberMe });
       setSubmitting(false);
       if (!result.ok) {
         setError(result.error || t('auth.errorGeneric'));
@@ -57,6 +80,14 @@ export default function AuthScreen({ onLogin }) {
       }
       onLogin(result.user);
     }
+  };
+
+  const resendVerification = async () => {
+    setSubmitting(true);
+    setVerificationStatus('');
+    const result = await window.api.resendVerification(verificationEmail);
+    setSubmitting(false);
+    setVerificationStatus(result.ok ? t('auth.verifyResent') : (result.error || t('auth.errorGeneric')));
   };
 
   return (
@@ -70,7 +101,7 @@ export default function AuthScreen({ onLogin }) {
         <img src={logoFull} alt={t('app.brand')} className="auth-logo-img" />
         <p className="auth-subtitle">{t('auth.subtitle')}</p>
 
-        <div className="auth-tabs">
+        {mode !== 'verify' && <div className="auth-tabs">
           <button
             className={mode === 'login' ? 'auth-tab active' : 'auth-tab'}
             onClick={() => { setMode('login'); setError(''); }}
@@ -85,7 +116,17 @@ export default function AuthScreen({ onLogin }) {
           >
             {t('auth.register')}
           </button>
-        </div>
+        </div>}
+
+        {mode === 'verify' ? (
+          <div className="auth-form auth-verification">
+            <h2>{t('auth.verifyTitle')}</h2>
+            <p>{t('auth.verifyText', { email: verificationEmail })}</p>
+            {verificationStatus && <div className="auth-error">{verificationStatus}</div>}
+            <button type="button" className="btn-secondary auth-submit" disabled={submitting} onClick={resendVerification}>{t('auth.verifyResend')}</button>
+            <button type="button" className="btn-primary auth-submit" onClick={() => { setLoginIdentifier(verificationEmail); setMode('login'); setError(''); }}>{t('auth.verifyToLogin')}</button>
+          </div>
+        ) : <>
 
         <form className="auth-form" onSubmit={handleSubmit}>
           {mode === 'register' && (
@@ -96,6 +137,7 @@ export default function AuthScreen({ onLogin }) {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder={t('auth.namePlaceholder')}
+                maxLength={80}
                 autoFocus
               />
             </label>
@@ -109,6 +151,8 @@ export default function AuthScreen({ onLogin }) {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder={t('auth.usernamePlaceholder')}
+                minLength={3}
+                maxLength={32}
               />
             </label>
           )}
@@ -121,6 +165,7 @@ export default function AuthScreen({ onLogin }) {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="max@example.com"
+                maxLength={254}
               />
             </label>
           ) : (
@@ -143,6 +188,8 @@ export default function AuthScreen({ onLogin }) {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
+              minLength={mode === 'register' ? 10 : undefined}
+              maxLength={72}
             />
           </label>
 
@@ -154,13 +201,38 @@ export default function AuthScreen({ onLogin }) {
                 value={passwordConfirm}
                 onChange={(e) => setPasswordConfirm(e.target.value)}
                 placeholder="••••••••"
+                minLength={10}
+                maxLength={72}
               />
             </label>
           )}
 
           {mode === 'login' && (
-            <div className="auth-forgot">
+            <div className="auth-login-options">
+              <label className="auth-remember">
+                <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} />
+                <span>{t('auth.rememberMe')}</span>
+              </label>
               <a href="#" onClick={(e) => e.preventDefault()}>{t('auth.forgot')}</a>
+            </div>
+          )}
+
+          {mode === 'register' && (
+            <div className="auth-captcha">
+              <span>{t('auth.captcha')}</span>
+              <div className="auth-captcha-challenge">
+                {captcha?.image ? <img src={captcha.image} alt={t('auth.captchaAlt')} /> : <div className="auth-captcha-loading">…</div>}
+                <button type="button" className="btn-secondary" onClick={refreshCaptcha} aria-label={t('auth.captchaRefresh')}>↻</button>
+              </div>
+              <input
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                value={captchaAnswer}
+                onChange={(e) => setCaptchaAnswer(e.target.value.replace(/[^0-9]/g, '').slice(0, 3))}
+                placeholder={t('auth.captchaPlaceholder')}
+              />
+              <small>{t('auth.captchaPrivacy')}</small>
             </div>
           )}
 
@@ -188,6 +260,7 @@ export default function AuthScreen({ onLogin }) {
         >
           {t('auth.guest')}
         </button>
+        </>}
       </div>
     </div>
   );

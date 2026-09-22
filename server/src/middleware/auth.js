@@ -1,13 +1,19 @@
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
+const { getMysqlPool } = require('../config/db-mysql');
 
 function getSecret() {
   const secret = process.env.JWT_SECRET;
-  if (!secret) throw new Error('Missing required env var JWT_SECRET');
+  if (!secret || Buffer.byteLength(secret, 'utf8') < 32) throw new Error('JWT_SECRET must contain at least 32 bytes');
   return secret;
 }
 
-function signToken(user) {
-  return jwt.sign({ id: user.id, email: user.email, name: user.name, username: user.username }, getSecret(), { expiresIn: '90d' });
+function signToken(user, { rememberMe = false } = {}) {
+  return jwt.sign(
+    { id: user.id, email: user.email, name: user.name, username: user.username, tariff: user.tariff || 'free', tokenVersion: Number(user.tokenVersion ?? user.token_version ?? 0) },
+    getSecret(),
+    { expiresIn: rememberMe ? '30d' : '12h', algorithm: 'HS256', issuer: 'itemcase-api', audience: 'itemcase-desktop', jwtid: crypto.randomUUID() }
+  );
 }
 
 function readToken(req) {
@@ -15,25 +21,43 @@ function readToken(req) {
   const [scheme, token] = header.split(' ');
   if (scheme !== 'Bearer' || !token) return null;
   try {
-    return jwt.verify(token, getSecret());
+    return jwt.verify(token, getSecret(), { algorithms: ['HS256'], issuer: 'itemcase-api', audience: 'itemcase-desktop' });
   } catch (e) {
     return null;
   }
 }
 
 // Rejects the request if there's no valid token.
-function requireAuth(req, res, next) {
+async function requireAuth(req, res, next) {
   const payload = readToken(req);
   if (!payload) return res.status(401).json({ error: 'Authentication required' });
-  req.user = payload;
-  next();
+  try {
+    const pool = getMysqlPool();
+    const [rows] = await pool.query('SELECT token_version, role, tariff, account_status FROM users WHERE id = ?', [payload.id]);
+    if (rows.length === 0 || Number(rows[0].token_version) !== Number(payload.tokenVersion || 0)) {
+      return res.status(401).json({ error: 'Sitzung ist abgelaufen' });
+    }
+    if (rows[0].account_status === 'suspended') return res.status(403).json({ error: 'Dieses Konto wurde gesperrt.' });
+    req.user = { ...payload, role: rows[0].role, tariff: rows[0].tariff || 'free' };
+    next();
+  } catch (error) {
+    next(error);
+  }
 }
 
 // Attaches req.user when a valid token is present, but never rejects —
 // used by routes that accept both guest and logged-in submissions.
-function optionalAuth(req, _res, next) {
-  req.user = readToken(req);
-  next();
+async function optionalAuth(req, _res, next) {
+  const payload = readToken(req);
+  if (!payload) { req.user = null; return next(); }
+  try {
+    const pool = getMysqlPool();
+    const [rows] = await pool.query('SELECT token_version, role, tariff, account_status FROM users WHERE id = ?', [payload.id]);
+    req.user = rows.length && rows[0].account_status === 'active' && Number(rows[0].token_version) === Number(payload.tokenVersion || 0) ? { ...payload, role: rows[0].role, tariff: rows[0].tariff || 'free' } : null;
+    next();
+  } catch (error) {
+    next(error);
+  }
 }
 
 module.exports = { signToken, requireAuth, optionalAuth };

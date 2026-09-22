@@ -1,6 +1,6 @@
 import React from 'react';
 import { useI18n } from './i18n.jsx';
-import { TARIFF_IDS, TARIFFS } from './tariff-defaults.js';
+import { TARIFF_IDS, TARIFFS, tariffPriceLabel } from './tariff-defaults.js';
 
 const FEATURE_ROWS = ['items', 'collectionMap', 'marketValue', 'level', 'showcase', 'export', 'friends', 'groups', 'chat', 'ads'];
 
@@ -48,14 +48,13 @@ export default function UpgradeModal({ user, itemCount, onSelectTariff, onClose 
                 {id === 'collectorPlus' && <div className="upgrade-plan-badge">{t('upgrade.popular')}</div>}
                 <div className="upgrade-plan-name">{t(`tariff.${id}.name`)}</div>
                 <div className="upgrade-plan-price">
-                  {info.priceMonth === 0 ? t('tariff.free.price') : `${info.priceMonth.toFixed(2)} €`}
-                  {info.priceMonth > 0 && <span className="upgrade-plan-period">/{t('tariff.perMonth')}</span>}
+                  {tariffPriceLabel(info, t)}
                 </div>
                 {info.priceYear > 0 && (
                   <div className="field-hint">{info.priceYear.toFixed(2)} €/{t('tariff.perYear')}</div>
                 )}
                 <div className="upgrade-plan-limit">
-                  {info.itemLimit === Infinity ? t('tariff.unlimited') : t('tariff.itemLimitLabel', { limit: info.itemLimit })}
+                  {id === 'business' ? t('tariff.business.publicInventory') : (info.itemLimit === Infinity ? t('tariff.unlimited') : t('tariff.itemLimitLabel', { limit: info.itemLimit }))}
                 </div>
                 <button
                   type="button"
@@ -78,6 +77,7 @@ export default function UpgradeModal({ user, itemCount, onSelectTariff, onClose 
                 <th>{t('tariff.free.name')}</th>
                 <th>{t('tariff.collectorPlus.name')}</th>
                 <th>{t('tariff.collectorPro.name')}</th>
+                <th>{t('tariff.business.name')}</th>
               </tr>
             </thead>
             <tbody>
@@ -87,6 +87,7 @@ export default function UpgradeModal({ user, itemCount, onSelectTariff, onClose 
                   <td>{t(`upgrade.row.${row}.free`)}</td>
                   <td>{t(`upgrade.row.${row}.plus`)}</td>
                   <td>{t(`upgrade.row.${row}.pro`)}</td>
+                  <td>{t(row === 'items' ? 'upgrade.row.items.business' : `upgrade.row.${row}.pro`)}</td>
                 </tr>
               ))}
             </tbody>
@@ -103,6 +104,7 @@ export default function UpgradeModal({ user, itemCount, onSelectTariff, onClose 
                 <th>{t('tariff.free.name')}</th>
                 <th>{t('tariff.collectorPlus.name')}</th>
                 <th>{t('tariff.collectorPro.name')}</th>
+                <th>{t('tariff.business.name')}</th>
               </tr>
             </thead>
             <tbody>
@@ -111,6 +113,7 @@ export default function UpgradeModal({ user, itemCount, onSelectTariff, onClose 
                   <td>{t(`upgrade.social.${row}`)}</td>
                   <td>{renderCell(t(`upgrade.social.${row}.free`))}</td>
                   <td>{renderCell(t(`upgrade.social.${row}.plus`))}</td>
+                  <td>{renderCell(t(`upgrade.social.${row}.pro`))}</td>
                   <td>{renderCell(t(`upgrade.social.${row}.pro`))}</td>
                 </tr>
               ))}

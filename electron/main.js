@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, safeStorage } = require('electron');
 app.setName('ItemCase');
 const path = require('path');
 const fs = require('fs');
@@ -10,14 +10,29 @@ const PDFDocument = require('pdfkit');
 const { io } = require('socket.io-client');
 
 const isDev = process.env.NODE_ENV === 'development';
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+let mainWindow = null;
+
+if (!hasSingleInstanceLock) app.quit();
+
+app.on('second-instance', () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+});
 
 const userDataDir = app.getPath('userData');
 const imagesDir = path.join(userDataDir, 'images');
 const feedbackFile = path.join(userDataDir, 'feedback-outbox.json');
 const reportsFile = path.join(userDataDir, 'reports-outbox.json');
 const authFile = path.join(userDataDir, 'auth.json');
+let sessionToken = null;
 
-const API_BASE_URL = process.env.ITEMCASE_API_URL || 'http://localhost:5100/api';
+// Development uses the server on this machine. Packaged clients connect to
+// the ItemCase host in the local WLAN unless explicitly overridden.
+const DEFAULT_API_ORIGIN = isDev ? 'http://localhost:5100' : 'http://192.168.2.39:5100';
+const API_BASE_URL = process.env.ITEMCASE_API_URL || `${DEFAULT_API_ORIGIN}/api`;
 
 const MIME_TYPES = {
   '.png': 'image/png',
@@ -29,7 +44,8 @@ const MIME_TYPES = {
 
 function fileToDataUrl(fileName) {
   if (!fileName) return null;
-  const fullPath = path.join(imagesDir, fileName);
+  if (fileName.startsWith('data:') || /^https?:\/\//i.test(fileName)) return fileName;
+  const fullPath = path.isAbsolute(fileName) ? fileName : path.join(imagesDir, fileName);
   if (!fs.existsSync(fullPath)) return null;
   try {
     const mime = MIME_TYPES[path.extname(fullPath).toLowerCase()] || 'application/octet-stream';
@@ -41,53 +57,71 @@ function fileToDataUrl(fileName) {
 }
 
 function loadAuthToken() {
+  if (sessionToken) return sessionToken;
   try {
-    return JSON.parse(fs.readFileSync(authFile, 'utf-8')).token || null;
+    const saved = JSON.parse(fs.readFileSync(authFile, 'utf-8'));
+    if (saved.encrypted && safeStorage.isEncryptionAvailable()) {
+      sessionToken = safeStorage.decryptString(Buffer.from(saved.encrypted, 'base64'));
+    } else {
+      // One-time migration from older plaintext storage.
+      sessionToken = saved.token || null;
+      if (sessionToken) saveAuthToken(sessionToken, true);
+    }
+    return sessionToken;
   } catch (e) {
     return null;
   }
 }
 
-function saveAuthToken(token) {
-  fs.writeFileSync(authFile, JSON.stringify({ token }, null, 2));
+function saveAuthToken(token, persistent = false) {
+  sessionToken = token;
+  if (persistent) {
+    if (!safeStorage.isEncryptionAvailable()) throw new Error('Sichere Token-Speicherung ist auf diesem Gerät nicht verfügbar.');
+    const encrypted = safeStorage.encryptString(token).toString('base64');
+    fs.writeFileSync(authFile, JSON.stringify({ encrypted }), { mode: 0o600 });
+  }
+  else try { fs.unlinkSync(authFile); } catch (e) {}
+}
+
+async function imageInputToDataUrl(fileName) {
+  if (!fileName || fileName.startsWith('data:')) return fileName || null;
+  if (/^https?:\/\//i.test(fileName)) {
+    const response = await fetch(fileName);
+    if (!response.ok) throw new Error(`Bild konnte nicht geladen werden (${response.status}).`);
+    const mime = String(response.headers.get('content-type') || '').split(';')[0];
+    if (!Object.values(MIME_TYPES).includes(mime)) throw new Error('Nicht unterstütztes Bildformat.');
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.length > 6 * 1024 * 1024) throw new Error('Das Bild ist zu groß.');
+    return `data:${mime};base64,${buffer.toString('base64')}`;
+  }
+  return fileToDataUrl(fileName);
 }
 
 function clearAuthToken() {
+  sessionToken = null;
   try { fs.unlinkSync(authFile); } catch (e) {}
 }
 
-function decodeJwtPayload(token) {
-  try {
-    return JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString('utf-8'));
-  } catch (e) {
-    return null;
-  }
-}
-
-// Every local cache file is scoped to whoever is currently logged in (or
-// 'guest') — without this, switching accounts on the same machine would
-// show the previous account's private collection, since there used to be
-// only one shared collection.json regardless of who was signed in.
-function currentIdentity() {
-  const token = loadAuthToken();
-  if (!token) return 'guest';
-  return decodeJwtPayload(token)?.id || 'guest';
-}
-
-// Thin wrapper around the ItemCase backend (server/) — the community
-// catalog, reports, feedback and friends all live there now rather than
-// only in the local collection.json (see server/src/app.js for routes).
+// Thin wrapper around the ItemCase backend (server/).
 async function apiFetch(urlPath, { method = 'GET', body, auth = false } = {}) {
   const headers = { 'Content-Type': 'application/json' };
   if (auth) {
     const token = loadAuthToken();
     if (token) headers.Authorization = `Bearer ${token}`;
   }
-  const res = await fetch(`${API_BASE_URL}${urlPath}`, {
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined
-  });
+  let res;
+  try {
+    res = await fetch(`${API_BASE_URL}${urlPath}`, {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined
+    });
+  } catch (cause) {
+    const error = new Error('Der ItemCase-Server ist nicht erreichbar. Bitte prüfe die Serververbindung und versuche es erneut.');
+    error.code = 'API_UNREACHABLE';
+    error.cause = cause;
+    throw error;
+  }
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
   if (!res.ok) {
@@ -99,23 +133,18 @@ async function apiFetch(urlPath, { method = 'GET', body, auth = false } = {}) {
   return data;
 }
 
-// Calls a /collection endpoint, refreshes the local read-through cache
-// with the response (see readDb/writeDb), and returns the merged db shape
-// the renderer expects. Used by every logged-in items/categories mutation.
+// Calls a /collection endpoint and returns the shape the renderer expects.
 async function remoteCollectionCall(urlPath, options) {
   const remote = await apiFetch(`/collection${urlPath}`, { auth: true, ...options });
-  const db = readDb();
+  const db = defaultDb();
   Object.assign(db, remote);
-  writeDb(db);
   return db;
 }
 
 // Real-time push (new messages, notifications, typing) — the socket layer
 // is server/src/realtime.js. One connection per app instance, shared by
 // every renderer window; events are re-broadcast to all of them.
-const REALTIME_URL = process.env.ITEMCASE_API_URL
-  ? process.env.ITEMCASE_API_URL.replace(/\/api\/?$/, '')
-  : 'http://localhost:5100';
+const REALTIME_URL = API_BASE_URL.replace(/\/api\/?$/, '');
 
 let socket = null;
 
@@ -197,17 +226,10 @@ function demoCatalogEntries() {
 
 function ensureDirs() {
   if (!fs.existsSync(userDataDir)) fs.mkdirSync(userDataDir, { recursive: true });
-  if (!fs.existsSync(imagesDir)) fs.mkdirSync(imagesDir, { recursive: true });
 }
 
-// Logged-in users: this is a read-through cache of the server-backed
-// collection (server/src/routes/collection.js), refreshed on every
-// items:getAll and after every mutation — not the source of truth, just an
-// offline/last-known-good fallback. Guests: this file IS the only copy.
-function dbFileFor(identity) {
-  return path.join(userDataDir, `collection-${identity}.json`);
-}
-
+// This default object is transient. Signed-in users' private collection
+// state always comes from the database-backed API.
 function defaultDb() {
   return {
     items: [],
@@ -223,34 +245,10 @@ function defaultDb() {
 }
 
 function readDb() {
-  ensureDirs();
-  const file = dbFileFor(currentIdentity());
-  if (!fs.existsSync(file)) {
-    const fresh = defaultDb();
-    fs.writeFileSync(file, JSON.stringify(fresh, null, 2));
-    return fresh;
-  }
-  try {
-    const db = JSON.parse(fs.readFileSync(file, 'utf-8'));
-    if (!db.items) db.items = [];
-    if (!db.categories) db.categories = defaultDb().categories;
-    if (!db.categoryImages) db.categoryImages = {};
-    if (!db.categoryFields) db.categoryFields = {};
-    if (!db.categoryTargets) db.categoryTargets = {};
-    if (!db.categoryCaseDesigns) db.categoryCaseDesigns = {};
-    if (!db.communityCatalog) db.communityCatalog = demoCatalogEntries();
-    if (!db.catalogPhotoProposals) db.catalogPhotoProposals = [];
-    if (!db.catalogCategories) db.catalogCategories = [];
-    return db;
-  } catch (e) {
-    return defaultDb();
-  }
+  return defaultDb();
 }
 
-function writeDb(data) {
-  ensureDirs();
-  fs.writeFileSync(dbFileFor(currentIdentity()), JSON.stringify(data, null, 2));
-}
+function writeDb() {}
 
 const isWindows = process.platform === 'win32';
 const TITLEBAR_HEIGHT = 36;
@@ -261,7 +259,7 @@ function createWindow() {
     height: 800,
     minWidth: 900,
     minHeight: 600,
-    show: false,
+    show: true,
     title: 'ItemCase',
     backgroundColor: '#1b1d22',
     icon: path.join(__dirname, '..', 'build', process.platform === 'win32' ? 'icon.ico' : 'icon.png'),
@@ -272,16 +270,31 @@ function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true
     },
     autoHideMenuBar: true
+  });
+  mainWindow = win;
+  win.maximize();
+
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  win.webContents.on('will-navigate', (event, url) => {
+    const allowed = isDev ? url.startsWith('http://localhost:5173') : url.startsWith('file:');
+    if (!allowed) event.preventDefault();
   });
 
   // Maximized (not OS fullscreen) — fills the screen but keeps the taskbar
   // and normal window chrome visible, unlike true fullscreen/kiosk mode.
-  win.once('ready-to-show', () => {
-    win.maximize();
-    win.show();
+  // `ready-to-show` is not guaranteed on every Windows/GPU combination.
+  // The window is created visibly above; this event only focuses it once
+  // the renderer has painted its first frame.
+  win.once('ready-to-show', () => win.focus());
+  win.on('closed', () => { if (mainWindow === win) mainWindow = null; });
+  win.webContents.on('did-fail-load', (_event, code, description) => {
+    console.error('[itemcase] renderer failed to load', code, description);
+    if (!win.isDestroyed()) { win.show(); win.focus(); }
   });
 
   if (isDev) {
@@ -292,6 +305,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  if (!hasSingleInstanceLock) return;
   ensureDirs();
   createWindow();
   connectRealtime();
@@ -308,41 +322,7 @@ app.on('window-all-closed', () => {
 // ---- IPC Handlers ----
 
 function mapRemoteCatalogEntry(entry) {
-  return { ...entry, imagePath: entry.imageData || null };
-}
-
-// One-time migration for accounts that never had a server-backed
-// collection before this version: pushes whatever was sitting in a local
-// cache file (this identity's own, or the pre-multi-user shared
-// collection.json) up to the server. Only ever runs when the server-side
-// collection is still empty, so it can't run twice or duplicate data.
-async function migrateLegacyLocalCollection() {
-  const candidates = [dbFileFor(currentIdentity()), path.join(userDataDir, 'collection.json')];
-  for (const file of candidates) {
-    if (!fs.existsSync(file)) continue;
-    let legacy;
-    try {
-      legacy = JSON.parse(fs.readFileSync(file, 'utf-8'));
-    } catch (e) {
-      continue;
-    }
-    if (!Array.isArray(legacy.items) || legacy.items.length === 0) continue;
-
-    console.log(`[migrate] found ${legacy.items.length} local item(s) in ${file}, pushing to server`);
-    for (const cat of legacy.categories || []) {
-      try { await apiFetch('/collection/categories', { method: 'POST', auth: true, body: { category: cat } }); } catch (e) {}
-    }
-    for (const item of legacy.items) {
-      const imageData = item.imagePath && !item.imagePath.startsWith('data:') ? fileToDataUrl(item.imagePath) : (item.imagePath || null);
-      try {
-        await apiFetch('/collection/items', { method: 'POST', auth: true, body: { ...item, id: undefined, imageData } });
-      } catch (e) {
-        console.error('[migrate] failed to push item', item.name, e.message);
-      }
-    }
-    return true;
-  }
-  return false;
+  return { ...entry, imagePath: entry.imageUrl || null };
 }
 
 ipcMain.handle('items:getAll', async () => {
@@ -350,21 +330,18 @@ ipcMain.handle('items:getAll', async () => {
 
   if (loadAuthToken()) {
     try {
-      let remote = await apiFetch('/collection', { auth: true });
-      if (remote.items.length === 0 && await migrateLegacyLocalCollection()) {
-        remote = await apiFetch('/collection', { auth: true });
-      }
+      const remote = await apiFetch('/collection', { auth: true });
       db.items = remote.items;
       db.categories = remote.categories;
       db.categoryImages = remote.categoryImages;
       db.categoryFields = remote.categoryFields;
       db.categoryTargets = remote.categoryTargets;
       db.categoryCaseDesigns = remote.categoryCaseDesigns;
-      writeDb(db);
     } catch (e) {
-      // Offline or server unreachable — fall back to the last cached copy
-      // rather than showing an empty collection.
-      console.error('[itemcase-api] failed to load collection, using cache', e.message);
+      console.error('[itemcase-api] failed to load collection', e.message);
+      // Never turn a failed database request into a valid-looking empty
+      // collection. The renderer keeps its last known state and retries.
+      throw e;
     }
   }
 
@@ -387,7 +364,9 @@ ipcMain.handle('items:save', async (_event, item) => {
   if (loadAuthToken()) {
     // imagePath is either a freshly picked local file (needs converting)
     // or already a data URL from a previous save/load — pass through as-is.
-    const imageData = item.imagePath && !item.imagePath.startsWith('data:') ? fileToDataUrl(item.imagePath) : (item.imagePath || null);
+    const imageData = /^https?:\/\//i.test(item.imagePath || '')
+      ? (item.id ? undefined : await imageInputToDataUrl(item.imagePath))
+      : (item.imagePath && !item.imagePath.startsWith('data:') ? fileToDataUrl(item.imagePath) : (item.imagePath || null));
     const remote = await apiFetch('/collection/items', { method: 'POST', auth: true, body: { ...item, imageData } });
     const db = readDb();
     Object.assign(db, remote);
@@ -537,7 +516,7 @@ ipcMain.handle('categories:delete', async (_event, category) => {
 ipcMain.handle('catalog:submit', async (_event, payload) => {
   const db = readDb();
   const now = new Date().toISOString();
-  const imageData = payload.imagePath ? fileToDataUrl(payload.imagePath) : null;
+  const imageData = payload.imagePath ? await imageInputToDataUrl(payload.imagePath) : null;
 
   try {
     await apiFetch('/catalog', {
@@ -560,6 +539,7 @@ ipcMain.handle('catalog:submit', async (_event, payload) => {
       manufacturerNumber: payload.manufacturerNumber || '',
       imagePath: payload.imagePath || null,
       marketValue: payload.marketValue || '',
+      conditionValues: payload.conditionValues || {},
       status: 'pending',
       contributor: payload.contributor || '',
       rightsConfirmed: !!payload.rightsConfirmed,
@@ -573,7 +553,7 @@ ipcMain.handle('catalog:submit', async (_event, payload) => {
 
 ipcMain.handle('catalog:proposePhoto', async (_event, payload) => {
   const db = readDb();
-  const imageData = payload.imagePath ? fileToDataUrl(payload.imagePath) : null;
+  const imageData = payload.imagePath ? await imageInputToDataUrl(payload.imagePath) : null;
 
   try {
     await apiFetch(`/catalog/${payload.catalogItemId}/photo`, {
@@ -710,24 +690,18 @@ ipcMain.handle('image:pick', async () => {
   if (result.canceled || result.filePaths.length === 0) return null;
 
   const srcPath = result.filePaths[0];
-  const destName = `${crypto.randomUUID()}.webp`;
-  const destPath = path.join(imagesDir, destName);
   try {
     // Normalize every uploaded image to the same shape the future catalog server will
     // store: resized, EXIF/GPS stripped (sharp drops metadata unless withMetadata() is
     // called), and re-encoded as WebP.
-    await sharp(srcPath)
+    const buffer = await sharp(srcPath)
       .resize(1400, 1400, { fit: 'inside', withoutEnlargement: true })
       .webp({ quality: 80 })
-      .toFile(destPath);
+      .toBuffer();
+    return `data:image/webp;base64,${buffer.toString('base64')}`;
   } catch (e) {
-    // Fall back to a plain copy if the file can't be processed (e.g. unsupported format).
-    const ext = path.extname(srcPath);
-    const fallbackName = `${crypto.randomUUID()}${ext}`;
-    fs.copyFileSync(srcPath, path.join(imagesDir, fallbackName));
-    return fallbackName;
+    return fileToDataUrl(srcPath);
   }
-  return destName;
 });
 
 ipcMain.handle('image:getPath', (_event, fileName) => fileToDataUrl(fileName));
@@ -772,17 +746,8 @@ ipcMain.handle('catalog:report', async (_event, { targetType, targetId, targetNa
 // Refreshes the local cache from the server for logged-in users before an
 // export, so exportZip/exportCsv never ship stale cached data.
 async function freshDb() {
-  const db = readDb();
-  if (loadAuthToken()) {
-    try {
-      const remote = await apiFetch('/collection', { auth: true });
-      Object.assign(db, remote);
-      writeDb(db);
-    } catch (e) {
-      console.error('[itemcase-api] failed to refresh collection before export', e.message);
-    }
-  }
-  return db;
+  if (!loadAuthToken()) return readDb();
+  return apiFetch('/collection', { auth: true });
 }
 
 ipcMain.handle('data:exportZip', async () => {
@@ -846,16 +811,14 @@ ipcMain.handle('data:importZip', async () => {
   }
   if (!imported || !Array.isArray(imported.items)) return { ok: false, reason: 'invalid' };
 
-  // Bilder aus dem Archiv unter neuen Dateinamen ablegen, um Kollisionen
-  // mit bereits vorhandenen Bildern zu vermeiden. Mapping alter -> neuer Name.
+  // Import images in memory as data URLs; collection data is never written
+  // into ItemCase's local application-data directory.
   const imageNameMap = {};
   zip.getEntries().forEach((entry) => {
     if (entry.isDirectory || !entry.entryName.startsWith('images/')) return;
     const originalName = path.basename(entry.entryName);
-    const ext = path.extname(originalName);
-    const newName = `${crypto.randomUUID()}${ext}`;
-    fs.writeFileSync(path.join(imagesDir, newName), entry.getData());
-    imageNameMap[originalName] = newName;
+    const mime = MIME_TYPES[path.extname(originalName).toLowerCase()] || 'application/octet-stream';
+    imageNameMap[originalName] = `data:${mime};base64,${entry.getData().toString('base64')}`;
   });
 
   const importedItems = imported.items.map((item) => ({
@@ -938,7 +901,7 @@ ipcMain.handle('data:importZip', async () => {
 
 const CSV_FIXED_COLUMNS = [
   'name', 'category', 'condition', 'quantity', 'purchasePrice', 'value', 'notes',
-  'storyPlace', 'storyDate', 'storyGift', 'storyFirstPiece', 'storyText', 'showcase'
+  'storyPlace', 'storyDate', 'storyGift', 'storyFirstPiece', 'storyText', 'showcase', 'caseDesign'
 ];
 
 function csvEscape(value) {
@@ -1017,7 +980,7 @@ ipcMain.handle('data:exportCsv', async () => {
       item.name || '', item.category || '', item.condition || '', item.quantity ?? 1,
       item.purchasePrice ?? '', item.value ?? '', item.notes || '',
       item.story?.place || '', item.story?.date || '', item.story?.isGift ? 'true' : 'false', item.story?.isFirstPiece ? 'true' : 'false', item.story?.text || '',
-      item.showcase ? 'true' : 'false',
+      item.showcase ? 'true' : 'false', item.caseDesign || '',
       ...customKeyList.map((k) => item.customFields?.[k] ?? '')
     ];
     lines.push(row.map(csvEscape).join(','));
@@ -1239,6 +1202,7 @@ ipcMain.handle('data:importCsv', async () => {
       value: csvToNumber(get('value')),
       notes: get('notes'),
       imagePath: null,
+      caseDesign: get('caseDesign'),
       showcase: csvToBool(get('showcase')),
       story: {
         place: get('storyPlace'), date: get('storyDate'),
@@ -1278,10 +1242,35 @@ ipcMain.handle('data:importCsv', async () => {
 
 // ---- Auth & Friends (server/src/routes/auth.js, friends.js) ----
 
-ipcMain.handle('auth:register', async (_event, { name, email, username, password }) => {
+ipcMain.handle('auth:getCaptcha', async () => {
   try {
-    const data = await apiFetch('/auth/register', { method: 'POST', body: { name, email, username, password } });
-    saveAuthToken(data.token);
+    return { ok: true, ...(await apiFetch('/auth/captcha')) };
+  } catch (e) {
+    return { ok: false, error: e.data?.error || e.message };
+  }
+});
+
+ipcMain.handle('auth:register', async (_event, { name, email, username, password, captchaId, captchaAnswer }) => {
+  try {
+    const data = await apiFetch('/auth/register', { method: 'POST', body: { name, email, username, password, captchaId, captchaAnswer } });
+    return { ok: true, ...data };
+  } catch (e) {
+    return { ok: false, error: e.data?.error || e.message, code: e.data?.code };
+  }
+});
+
+ipcMain.handle('auth:resendVerification', async (_event, email) => {
+  try {
+    return { ok: true, ...(await apiFetch('/auth/resend-verification', { method: 'POST', body: { email } })) };
+  } catch (e) {
+    return { ok: false, error: e.data?.error || e.message };
+  }
+});
+
+ipcMain.handle('auth:login', async (_event, { identifier, password, rememberMe = false }) => {
+  try {
+    const data = await apiFetch('/auth/login', { method: 'POST', body: { identifier, password, rememberMe } });
+    saveAuthToken(data.token, rememberMe);
     connectRealtime();
     return { ok: true, user: data.user };
   } catch (e) {
@@ -1289,15 +1278,27 @@ ipcMain.handle('auth:register', async (_event, { name, email, username, password
   }
 });
 
-ipcMain.handle('auth:login', async (_event, { identifier, password }) => {
+ipcMain.handle('auth:changePassword', async (_event, { currentPassword, newPassword }) => {
   try {
-    const data = await apiFetch('/auth/login', { method: 'POST', body: { identifier, password } });
-    saveAuthToken(data.token);
+    const data = await apiFetch('/auth/change-password', { method: 'POST', auth: true, body: { currentPassword, newPassword } });
+    // Password changes revoke every previous token and continue only this session.
+    saveAuthToken(data.token, fs.existsSync(authFile));
+    disconnectRealtime();
+    connectRealtime();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.data?.error || e.message, code: e.data?.code };
+  }
+});
+
+ipcMain.handle('auth:setTariff', async (_event, tariff) => {
+  try {
+    const data = await apiFetch('/auth/tariff', { method: 'PATCH', auth: true, body: { tariff } });
+    saveAuthToken(data.token, fs.existsSync(authFile));
+    disconnectRealtime();
     connectRealtime();
     return { ok: true, user: data.user };
-  } catch (e) {
-    return { ok: false, error: e.data?.error || e.message };
-  }
+  } catch (e) { return { ok: false, error: e.data?.error || e.message }; }
 });
 
 ipcMain.handle('auth:logout', () => {
@@ -1328,9 +1329,9 @@ ipcMain.handle('friends:list', async () => {
   }
 });
 
-ipcMain.handle('friends:sendRequest', async (_event, toUsername) => {
+ipcMain.handle('friends:sendRequest', async (_event, identifier) => {
   try {
-    await apiFetch('/friends/requests', { method: 'POST', auth: true, body: { toUsername } });
+    await apiFetch('/friends/requests', { method: 'POST', auth: true, body: { identifier } });
     return { ok: true };
   } catch (e) {
     return { ok: false, notFound: e.status === 404, error: e.data?.error || e.message };
@@ -1578,6 +1579,136 @@ ipcMain.handle('wishlist:remove', async (_event, id) => {
   }
 });
 
+// ---- CommunityMarkt (server/src/routes/market.js) — separate, opt-in
+// public marketplace. Browsing/detail/dealer-profile calls don't require a
+// token; they're kept behind the auth-bearing apiFetch when logged in
+// anyway so is_favorite/isMine can be resolved, but work anonymously too. ----
+
+// Mirrors items:save's imagePath handling: an http(s) path is already a
+// stored image URL from a previous save (leave untouched when editing, or
+// re-fetch it for a first save so the market API gets its own copy), a
+// data: URL passes straight through, anything else is a freshly picked
+// local file path that still needs converting.
+async function marketImageData(imagePath, isExisting) {
+  if (imagePath === undefined) return undefined;
+  if (imagePath === null) return null;
+  if (/^https?:\/\//i.test(imagePath)) return isExisting ? undefined : imageInputToDataUrl(imagePath);
+  return imagePath.startsWith('data:') ? imagePath : fileToDataUrl(imagePath);
+}
+
+ipcMain.handle('market:browse', async (_event, filters = {}) => {
+  try {
+    const query = new URLSearchParams(Object.entries(filters).filter(([, v]) => v !== undefined && v !== null && v !== '')).toString();
+    return await apiFetch(`/market${query ? `?${query}` : ''}`, { auth: !!loadAuthToken() });
+  } catch (e) {
+    return [];
+  }
+});
+
+ipcMain.handle('market:featuredDealers', async () => {
+  try {
+    return await apiFetch('/market/dealers/featured');
+  } catch (e) {
+    return [];
+  }
+});
+
+ipcMain.handle('market:getListing', async (_event, id) => {
+  try {
+    return { ok: true, listing: await apiFetch(`/market/listings/${id}`, { auth: !!loadAuthToken() }) };
+  } catch (e) {
+    return { ok: false, error: e.data?.error || e.message };
+  }
+});
+
+ipcMain.handle('market:getDealer', async (_event, username) => {
+  try {
+    return { ok: true, ...(await apiFetch(`/market/dealers/${encodeURIComponent(username)}`)) };
+  } catch (e) {
+    return { ok: false, error: e.data?.error || e.message };
+  }
+});
+
+ipcMain.handle('market:favorite', async (_event, { id, favorite }) => {
+  try {
+    await apiFetch(`/market/listings/${id}/favorite`, { method: favorite ? 'POST' : 'DELETE', auth: true });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.data?.error || e.message };
+  }
+});
+
+ipcMain.handle('market:contactSeller', async (_event, { id, message }) => {
+  try {
+    const data = await apiFetch(`/market/listings/${id}/contact`, { method: 'POST', auth: true, body: { message } });
+    return { ok: true, conversationId: data.conversationId };
+  } catch (e) {
+    return { ok: false, error: e.data?.error || e.message };
+  }
+});
+
+ipcMain.handle('market:mineListings', async () => {
+  try {
+    return await apiFetch('/market/mine/listings', { auth: true });
+  } catch (e) {
+    return [];
+  }
+});
+
+ipcMain.handle('market:mineStats', async () => {
+  try {
+    return await apiFetch('/market/mine/stats', { auth: true });
+  } catch (e) {
+    return null;
+  }
+});
+
+ipcMain.handle('market:saveListing', async (_event, payload) => {
+  try {
+    const imageData = await marketImageData(payload.imagePath, !!payload.id);
+    const listing = await apiFetch('/market/listings', { method: 'POST', auth: true, body: { ...payload, imagePath: undefined, imageData } });
+    return { ok: true, listing };
+  } catch (e) {
+    return { ok: false, error: e.data?.error || e.message };
+  }
+});
+
+ipcMain.handle('market:setListingStatus', async (_event, { id, status }) => {
+  try {
+    await apiFetch(`/market/listings/${id}/status`, { method: 'PATCH', auth: true, body: { status } });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.data?.error || e.message };
+  }
+});
+
+ipcMain.handle('market:deleteListing', async (_event, id) => {
+  try {
+    await apiFetch(`/market/listings/${id}`, { method: 'DELETE', auth: true });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.data?.error || e.message };
+  }
+});
+
+ipcMain.handle('market:getProfile', async () => {
+  try {
+    return await apiFetch('/market/profile', { auth: true });
+  } catch (e) {
+    return null;
+  }
+});
+
+ipcMain.handle('market:saveProfile', async (_event, payload) => {
+  try {
+    const logoData = await marketImageData(payload.logoPath, true);
+    const profile = await apiFetch('/market/profile', { method: 'PUT', auth: true, body: { ...payload, logoPath: undefined, logoData } });
+    return { ok: true, profile };
+  } catch (e) {
+    return { ok: false, error: e.data?.error || e.message };
+  }
+});
+
 // ---- Forum (server/src/routes/forum.js) — standalone community feed ----
 
 ipcMain.handle('forum:listThreads', async (_event, category) => {
@@ -1678,4 +1809,32 @@ ipcMain.handle('forum:likePost', async (_event, postId) => {
   } catch (e) {
     return null;
   }
+});
+
+// ---- Admin dashboard ----
+ipcMain.handle('admin:load', async () => {
+  try {
+    const [summary, inbox, catalog, forum, users] = await Promise.all([
+      apiFetch('/admin/summary', { auth: true }), apiFetch('/admin/inbox', { auth: true }),
+      apiFetch('/admin/catalog', { auth: true }), apiFetch('/admin/forum', { auth: true }), apiFetch('/admin/users', { auth: true })
+    ]);
+    return { ok: true, summary, inbox, catalog, forum, users };
+  } catch (e) { return { ok: false, error: e.data?.error || e.message }; }
+});
+
+ipcMain.handle('admin:action', async (_event, { action, payload = {} }) => {
+  const routes = {
+    feedbackStatus: [`/admin/feedback/${payload.id}`, 'PATCH', { status: payload.status }],
+    reportStatus: [`/admin/reports/${payload.id}`, 'PATCH', { status: payload.status }],
+    catalogStatus: [`/admin/catalog/${payload.kind}/${payload.id}`, 'PATCH', { status: payload.status }],
+    deleteThread: [`/admin/forum/threads/${payload.id}`, 'DELETE'],
+    userRole: [`/admin/users/${payload.id}/role`, 'PATCH', { role: payload.role }],
+    userStatus: [`/admin/users/${payload.id}/status`, 'PATCH', { status: payload.status }]
+  };
+  const route = routes[action];
+  if (!route) return { ok: false, error: 'Unbekannte Admin-Aktion' };
+  try {
+    await apiFetch(route[0], { method: route[1], auth: true, body: route[2] });
+    return { ok: true };
+  } catch (e) { return { ok: false, error: e.data?.error || e.message }; }
 });

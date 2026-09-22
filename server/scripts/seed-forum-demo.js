@@ -1,5 +1,6 @@
 require('dotenv').config();
 const crypto = require('crypto');
+const { storeDataUrl } = require('../src/utils/imageStorage');
 const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
@@ -88,10 +89,11 @@ async function main() {
     const threadId = crypto.randomUUID();
     const postId = crypto.randomUUID();
     const imageData = post.image ? imageDataUrl(post.image) : null;
+    const imagePath = await storeDataUrl(imageData, 'forum', authorId, threadId);
 
     await pool.query(
-      'INSERT INTO forum_threads (id, author_id, title, category, image_data) VALUES (?, ?, ?, ?, ?)',
-      [threadId, authorId, post.title, post.category, imageData]
+      'INSERT INTO forum_threads (id, author_id, title, category, image_path) VALUES (?, ?, ?, ?, ?)',
+      [threadId, authorId, post.title, post.category, imagePath]
     );
     await pool.query(
       'INSERT INTO forum_posts (id, thread_id, author_id, body) VALUES (?, ?, ?, ?)',

@@ -11,26 +11,46 @@ const conversationsRoutes = require('./routes/conversations');
 const notificationsRoutes = require('./routes/notifications');
 const collectionRoutes = require('./routes/collection');
 const wishlistRoutes = require('./routes/wishlist');
+const marketRoutes = require('./routes/market');
 const catalogRoutes = require('./routes/catalog');
 const reportsRoutes = require('./routes/reports');
 const feedbackRoutes = require('./routes/feedback');
+const adminRoutes = require('./routes/admin');
 const { errorHandler } = require('./middleware/errorHandler');
+const { globalLimiter, submissionLimiter } = require('./middleware/rateLimits');
+const { uploadsRoot, authorizePrivateImage } = require('./utils/imageStorage');
 
 // Express app definition only — no listen(), no DB connect — so it can be
 // imported and driven directly in tests later without starting a real
 // server (same split as MatchIQ's server/src/app.js).
 function createApp() {
-  const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN ?? '*';
-  const allowedOrigins = CLIENT_ORIGIN.split(',').map((origin) => origin.trim());
-  const corsOrigin = allowedOrigins.includes('*') ? true : allowedOrigins;
+  const allowedOrigins = String(process.env.CLIENT_ORIGIN || '')
+    .split(',').map((origin) => origin.trim()).filter(Boolean);
+  const corsOrigin = (origin, callback) => {
+    // Native Electron/CLI calls do not carry a browser Origin header.
+    if (!origin || allowedOrigins.includes('*') || allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error('Origin not allowed'));
+  };
 
   const app = express();
-  app.set('trust proxy', 1);
-  app.use(helmet());
-  app.use(cors({ origin: corsOrigin }));
-  // Higher limit than a typical JSON API: catalog/photo submissions carry
-  // base64 image data URLs (see schema.sql image_data columns).
+  app.set('trust proxy', process.env.TRUST_PROXY === '1' ? 1 : false);
+  app.disable('x-powered-by');
+  app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+  app.use(cors({ origin: corsOrigin, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], maxAge: 86400 }));
+  // Uploads arrive once as data URLs and are immediately decoded into files.
+  // They are never persisted as base64 in MySQL.
   app.use(express.json({ limit: '8mb' }));
+  app.use(globalLimiter);
+
+  app.use('/uploads', authorizePrivateImage, express.static(uploadsRoot, {
+    fallthrough: false,
+    immutable: true,
+    maxAge: '30d',
+    setHeaders(res) {
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+    }
+  }));
 
   app.get('/api/health', (_req, res) => res.json({ ok: true }));
   app.use('/api/auth', authRoutes);
@@ -42,9 +62,11 @@ function createApp() {
   app.use('/api/notifications', notificationsRoutes);
   app.use('/api/collection', collectionRoutes);
   app.use('/api/wishlist', wishlistRoutes);
+  app.use('/api/market', marketRoutes);
   app.use('/api/catalog', catalogRoutes);
-  app.use('/api/reports', reportsRoutes);
-  app.use('/api/feedback', feedbackRoutes);
+  app.use('/api/reports', submissionLimiter, reportsRoutes);
+  app.use('/api/feedback', submissionLimiter, feedbackRoutes);
+  app.use('/api/admin', adminRoutes);
 
   app.use(errorHandler);
   return app;

@@ -22,12 +22,6 @@ export default function CollectorLevel({ items, categories, categoryTargets, onC
     const categoryCount = categories.length;
     const itemsWithImages = items.filter((i) => i.imagePath).length;
     const totalValue = items.reduce((sum, i) => sum + (Number(i.value) || 0) * (Number(i.quantity) || 1), 0);
-    const totalProfit = items.reduce((sum, i) => {
-      const purchase = Number(i.purchasePrice) || 0;
-      const value = Number(i.value) || 0;
-      const qty = Number(i.quantity) || 1;
-      return sum + (value - purchase) * qty;
-    }, 0);
 
     const setProgress = categories
       .filter((cat) => categoryTargets[cat] > 0)
@@ -42,7 +36,7 @@ export default function CollectorLevel({ items, categories, categoryTargets, onC
 
     const hasCompleteSet = setProgress.some((s) => s.pct >= 100);
 
-    return { totalItems, uniqueItems, categoryCount, itemsWithImages, totalValue, totalProfit, setProgress, hasCompleteSet };
+    return { totalItems, uniqueItems, categoryCount, itemsWithImages, totalValue, setProgress, hasCompleteSet };
   }, [items, categories, categoryTargets]);
 
   const xp = stats.totalItems * 10 + stats.categoryCount * 15 + stats.itemsWithImages * 5;
@@ -50,7 +44,6 @@ export default function CollectorLevel({ items, categories, categoryTargets, onC
   const levelProgressPct = Math.min(100, ((xp - currentFloor) / (nextCeil - currentFloor)) * 100);
 
   const currencyFmt = (n) => n.toLocaleString(lang === 'en' ? 'en-US' : 'de-DE', { style: 'currency', currency: 'EUR' });
-  const approxCurrencyFmt = (n) => `~${Math.round(n).toLocaleString(lang === 'en' ? 'en-US' : 'de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}`;
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -80,13 +73,6 @@ export default function CollectorLevel({ items, categories, categoryTargets, onC
             <div className="level-stat">
               <span className="stat-value">{currencyFmt(stats.totalValue)}</span>
               <span className="stat-label">{t('sidebar.totalValue')}</span>
-            </div>
-            <div className="level-stat">
-              <span className={stats.totalProfit >= 0 ? 'stat-value positive' : 'stat-value negative'}>
-                {stats.totalProfit >= 0 ? '+' : ''}{approxCurrencyFmt(stats.totalProfit)}
-              </span>
-              <span className="stat-label">{t('level.totalProfit')}</span>
-              <span className="stat-hint">{t('level.totalProfitEstimate')}</span>
             </div>
           </div>
 

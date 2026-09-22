@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useI18n } from './i18n.jsx';
+import UiIcon from './UiIcon.jsx';
 
 function describe(n, t) {
   switch (n.type) {
@@ -27,7 +28,7 @@ export default function NotificationBell({ notifications, onMarkRead, onMarkAllR
         onClick={() => setOpen((v) => !v)}
         title={t('notifications.title')}
       >
-        🔔
+        <UiIcon name="bell" />
         {unreadCount > 0 && <span className="notification-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>}
       </button>
 

@@ -49,12 +49,24 @@ router.get('/', async (req, res, next) => {
 
 router.post('/requests', async (req, res, next) => {
   try {
-    const toUsername = String(req.body?.toUsername || '').trim().toLowerCase();
-    if (!toUsername) return res.status(400).json({ error: 'toUsername is required' });
+    const identifier = String(req.body?.identifier ?? req.body?.toUsername ?? '').trim().replace(/^@/, '').toLowerCase();
+    if (!identifier || identifier.length > 254) return res.status(400).json({ error: 'Bitte Nutzername, E-Mail oder Anzeigename eingeben.' });
 
     const pool = getMysqlPool();
-    const [targetRows] = await pool.query('SELECT id, name, email, username FROM users WHERE username = ?', [toUsername]);
-    if (targetRows.length === 0) return res.status(404).json({ error: 'no user with that username' });
+    let [targetRows] = await pool.query(
+      'SELECT id, name, email, username FROM users WHERE LOWER(username) = ? OR LOWER(email) = ? LIMIT 2',
+      [identifier, identifier]
+    );
+    if (targetRows.length === 0) {
+      [targetRows] = await pool.query(
+        'SELECT id, name, email, username FROM users WHERE LOWER(name) = ? LIMIT 2',
+        [identifier]
+      );
+      if (targetRows.length > 1) {
+        return res.status(409).json({ error: 'Mehrere Nutzer haben diesen Anzeigenamen. Bitte nutze den Nutzernamen oder die E-Mail.' });
+      }
+    }
+    if (targetRows.length === 0) return res.status(404).json({ error: 'Kein passender Nutzer gefunden.' });
 
     const target = targetRows[0];
     if (target.id === req.user.id) return res.status(400).json({ error: 'cannot friend yourself' });

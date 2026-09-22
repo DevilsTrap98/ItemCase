@@ -3,15 +3,15 @@ const crypto = require('crypto');
 const { getMysqlPool } = require('../config/db-mysql');
 const { requireAuth } = require('../middleware/auth');
 const { notify } = require('../utils/notify');
+const { storeDataUrl, removeStoredImage, publicImageUrl } = require('../utils/imageStorage');
 
 const OWNERSHIP_STATUSES = ['keep', 'duplicate', 'tradable', 'for_sale', 'looking_for'];
 
 const router = express.Router();
-router.use(requireAuth);
 
 const DEFAULT_CATEGORIES = ['🎬 Filme & Serien', '🎮 Videospiele', '🃏 Trading Cards', '📚 Comics & Manga', '📦 Sonstige Sammlerstücke'];
 
-function mapItem(row) {
+function mapItem(row, req) {
   return {
     id: row.id,
     name: row.name,
@@ -21,7 +21,8 @@ function mapItem(row) {
     purchasePrice: row.purchase_price,
     value: row.value,
     notes: row.notes || '',
-    imagePath: row.image_data || null,
+    imagePath: publicImageUrl(row.image_path, req, { private: true }),
+    caseDesign: row.case_design || '',
     showcase: !!row.showcase,
     story: {
       place: row.story_place || '',
@@ -40,6 +41,14 @@ function mapItem(row) {
   };
 }
 
+// Superseded by CommunityMarkt (server/src/routes/market.js): the
+// collection itself is never shown publicly wholesale any more, business
+// tariff or not — publishing an item is always its own deliberate act via
+// a market_listings row. A dealer's public page reads from that table,
+// not from here.
+
+router.use(requireAuth);
+
 async function getOrCreateSettings(pool, ownerId) {
   const [rows] = await pool.query('SELECT * FROM collection_settings WHERE owner_id = ?', [ownerId]);
   if (rows.length > 0) return rows[0];
@@ -57,18 +66,27 @@ async function getOrCreateSettings(pool, ownerId) {
   };
 }
 
-function mapSettings(row) {
+function mapSettings(row, req) {
+  const categoryImages = Object.fromEntries(Object.entries(row.category_images || {}).map(([name, imagePath]) => [name, publicImageUrl(imagePath, req, { private: true })]));
   return {
     categories: row.categories,
-    categoryImages: row.category_images,
+    categoryImages,
     categoryFields: row.category_fields,
     categoryTargets: row.category_targets,
     categoryCaseDesigns: row.category_case_designs
   };
 }
 
-async function updateSettings(pool, ownerId, patch) {
-  const current = mapSettings(await getOrCreateSettings(pool, ownerId));
+function mapRawSettings(row) {
+  return {
+    categories: row.categories, categoryImages: row.category_images || {}, categoryFields: row.category_fields,
+    categoryTargets: row.category_targets, categoryCaseDesigns: row.category_case_designs
+  };
+}
+
+async function updateSettings(pool, ownerId, patch, req) {
+  const row = await getOrCreateSettings(pool, ownerId);
+  const current = mapRawSettings(row);
   const next = { ...current, ...patch };
   await pool.query(
     'UPDATE collection_settings SET categories = ?, category_images = ?, category_fields = ?, category_targets = ?, category_case_designs = ? WHERE owner_id = ?',
@@ -77,15 +95,15 @@ async function updateSettings(pool, ownerId, patch) {
   return next;
 }
 
-async function fullState(pool, ownerId) {
+async function fullState(pool, ownerId, req) {
   const [items] = await pool.query('SELECT * FROM collection_items WHERE owner_id = ? ORDER BY created_at ASC', [ownerId]);
-  const settings = mapSettings(await getOrCreateSettings(pool, ownerId));
-  return { items: items.map(mapItem), ...settings };
+  const settings = mapSettings(await getOrCreateSettings(pool, ownerId), req);
+  return { items: items.map((row) => mapItem(row, req)), ...settings };
 }
 
 router.get('/', async (req, res, next) => {
   try {
-    res.json(await fullState(getMysqlPool(), req.user.id));
+    res.json(await fullState(getMysqlPool(), req.user.id, req));
   } catch (err) {
     next(err);
   }
@@ -100,6 +118,7 @@ router.post('/items', async (req, res, next) => {
     const now = new Date();
     let id = body.id;
     const ownershipStatus = OWNERSHIP_STATUSES.includes(body.ownershipStatus) ? body.ownershipStatus : 'keep';
+    const showcase = body.showcase ? 1 : 0;
     let previousStatus = null;
 
     if (id) {
@@ -115,34 +134,50 @@ router.post('/items', async (req, res, next) => {
         history.push({ date: previous.updated_at, value: oldValue });
       }
 
-      await pool.query(
+      let imagePath = previous.image_path;
+      if (body.imageData !== undefined && body.imageData !== null && !/^https?:\/\//i.test(body.imageData)) {
+        imagePath = await storeDataUrl(body.imageData, 'collections', req.user.id, id);
+      } else if (body.imageData === null) imagePath = null;
+      try {
+        await pool.query(
         `UPDATE collection_items SET name=?, category=?, item_condition=?, quantity=?, purchase_price=?, value=?, notes=?,
-           image_data=?, showcase=?, story_place=?, story_date=?, story_is_gift=?, story_is_first_piece=?, story_text=?,
+           image_path=?, case_design=?, showcase=?, story_place=?, story_date=?, story_is_gift=?, story_is_first_piece=?, story_text=?,
            custom_fields=?, catalog_info=?, catalog_item_id=?, ownership_status=?, value_history=?, updated_at=?
          WHERE id = ? AND owner_id = ?`,
         [
           body.name, body.category || '', body.condition || '', Number(body.quantity) || 1,
           body.purchasePrice || null, body.value || null, body.notes || '',
-          body.imageData !== undefined ? body.imageData : previous.image_data, body.showcase ? 1 : 0,
+          imagePath, body.caseDesign || null, showcase,
           body.story?.place || '', body.story?.date || '', body.story?.isGift ? 1 : 0, body.story?.isFirstPiece ? 1 : 0, body.story?.text || '',
           JSON.stringify(body.customFields || {}), JSON.stringify(body.catalogInfo || {}), body.catalogItemId || null,
           ownershipStatus, JSON.stringify(history), now, id, req.user.id
         ]
-      );
+        );
+      } catch (error) {
+        if (imagePath !== previous.image_path) await removeStoredImage(imagePath);
+        throw error;
+      }
+      if (imagePath !== previous.image_path) await removeStoredImage(previous.image_path);
     } else {
       id = crypto.randomUUID();
-      await pool.query(
+      const imagePath = await storeDataUrl(body.imageData, 'collections', req.user.id, id);
+      try {
+        await pool.query(
         `INSERT INTO collection_items
-           (id, owner_id, name, category, item_condition, quantity, purchase_price, value, notes, image_data, showcase,
+           (id, owner_id, name, category, item_condition, quantity, purchase_price, value, notes, image_path, case_design, showcase,
             story_place, story_date, story_is_gift, story_is_first_piece, story_text, custom_fields, catalog_info, catalog_item_id, ownership_status, value_history)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           id, req.user.id, body.name, body.category || '', body.condition || '', Number(body.quantity) || 1,
-          body.purchasePrice || null, body.value || null, body.notes || '', body.imageData || null, body.showcase ? 1 : 0,
+          body.purchasePrice || null, body.value || null, body.notes || '', imagePath, body.caseDesign || null, showcase,
           body.story?.place || '', body.story?.date || '', body.story?.isGift ? 1 : 0, body.story?.isFirstPiece ? 1 : 0, body.story?.text || '',
           JSON.stringify(body.customFields || {}), JSON.stringify(body.catalogInfo || {}), body.catalogItemId || null, ownershipStatus, JSON.stringify([])
         ]
-      );
+        );
+      } catch (error) {
+        await removeStoredImage(imagePath);
+        throw error;
+      }
     }
 
     // Notify friends whose wishlist wants this exact catalog item, the
@@ -170,13 +205,13 @@ router.post('/items', async (req, res, next) => {
     }
 
     if (body.category) {
-      const settings = mapSettings(await getOrCreateSettings(pool, req.user.id));
+      const settings = mapRawSettings(await getOrCreateSettings(pool, req.user.id));
       if (!settings.categories.includes(body.category)) {
-        await updateSettings(pool, req.user.id, { categories: [...settings.categories, body.category] });
+        await updateSettings(pool, req.user.id, { categories: [...settings.categories, body.category] }, req);
       }
     }
 
-    res.json(await fullState(pool, req.user.id));
+    res.json(await fullState(pool, req.user.id, req));
   } catch (err) {
     next(err);
   }
@@ -185,8 +220,10 @@ router.post('/items', async (req, res, next) => {
 router.delete('/items/:id', async (req, res, next) => {
   try {
     const pool = getMysqlPool();
+    const [rows] = await pool.query('SELECT image_path FROM collection_items WHERE id = ? AND owner_id = ?', [req.params.id, req.user.id]);
     await pool.query('DELETE FROM collection_items WHERE id = ? AND owner_id = ?', [req.params.id, req.user.id]);
-    res.json(await fullState(pool, req.user.id));
+    if (rows[0]) await removeStoredImage(rows[0].image_path);
+    res.json(await fullState(pool, req.user.id, req));
   } catch (err) {
     next(err);
   }
@@ -197,12 +234,12 @@ router.post('/categories', async (req, res, next) => {
     const category = String(req.body?.category || '').trim();
     const pool = getMysqlPool();
     if (category) {
-      const settings = mapSettings(await getOrCreateSettings(pool, req.user.id));
+      const settings = mapRawSettings(await getOrCreateSettings(pool, req.user.id));
       if (!settings.categories.includes(category)) {
-        await updateSettings(pool, req.user.id, { categories: [...settings.categories, category] });
+        await updateSettings(pool, req.user.id, { categories: [...settings.categories, category] }, req);
       }
     }
-    res.json(await fullState(pool, req.user.id));
+    res.json(await fullState(pool, req.user.id, req));
   } catch (err) {
     next(err);
   }
@@ -213,7 +250,7 @@ router.post('/categories/rename', async (req, res, next) => {
     const { oldName, newName } = req.body || {};
     const trimmed = String(newName || '').trim();
     const pool = getMysqlPool();
-    const settings = mapSettings(await getOrCreateSettings(pool, req.user.id));
+    const settings = mapRawSettings(await getOrCreateSettings(pool, req.user.id));
 
     if (trimmed && settings.categories.includes(oldName)) {
       const merging = trimmed !== oldName && settings.categories.includes(trimmed);
@@ -233,10 +270,10 @@ router.post('/categories/rename', async (req, res, next) => {
           }
         });
       }
-      await updateSettings(pool, req.user.id, patch);
+      await updateSettings(pool, req.user.id, patch, req);
     }
 
-    res.json(await fullState(pool, req.user.id));
+    res.json(await fullState(pool, req.user.id, req));
   } catch (err) {
     next(err);
   }
@@ -246,9 +283,11 @@ router.delete('/categories/:name', async (req, res, next) => {
   try {
     const pool = getMysqlPool();
     const name = req.params.name;
+    const [itemImages] = await pool.query('SELECT image_path FROM collection_items WHERE owner_id = ? AND category = ?', [req.user.id, name]);
     await pool.query('DELETE FROM collection_items WHERE owner_id = ? AND category = ?', [req.user.id, name]);
+    await Promise.all(itemImages.map((row) => removeStoredImage(row.image_path)));
 
-    const settings = mapSettings(await getOrCreateSettings(pool, req.user.id));
+    const settings = mapRawSettings(await getOrCreateSettings(pool, req.user.id));
     const categoryImages = { ...settings.categoryImages }; delete categoryImages[name];
     const categoryFields = { ...settings.categoryFields }; delete categoryFields[name];
     const categoryTargets = { ...settings.categoryTargets }; delete categoryTargets[name];
@@ -256,9 +295,10 @@ router.delete('/categories/:name', async (req, res, next) => {
 
     await updateSettings(pool, req.user.id, {
       categories: settings.categories.filter((c) => c !== name), categoryImages, categoryFields, categoryTargets, categoryCaseDesigns
-    });
+    }, req);
+    await removeStoredImage(settings.categoryImages[name]);
 
-    res.json(await fullState(pool, req.user.id));
+    res.json(await fullState(pool, req.user.id, req));
   } catch (err) {
     next(err);
   }
@@ -268,12 +308,12 @@ router.put('/categories/order', async (req, res, next) => {
   try {
     const pool = getMysqlPool();
     const order = Array.isArray(req.body?.order) ? req.body.order : [];
-    const settings = mapSettings(await getOrCreateSettings(pool, req.user.id));
+    const settings = mapRawSettings(await getOrCreateSettings(pool, req.user.id));
     const known = new Set(settings.categories);
     const cleaned = order.filter((c) => known.has(c));
     settings.categories.forEach((c) => { if (!cleaned.includes(c)) cleaned.push(c); });
-    await updateSettings(pool, req.user.id, { categories: cleaned });
-    res.json(await fullState(pool, req.user.id));
+    await updateSettings(pool, req.user.id, { categories: cleaned }, req);
+    res.json(await fullState(pool, req.user.id, req));
   } catch (err) {
     next(err);
   }
@@ -282,12 +322,20 @@ router.put('/categories/order', async (req, res, next) => {
 router.put('/categories/:name/image', async (req, res, next) => {
   try {
     const pool = getMysqlPool();
-    const settings = mapSettings(await getOrCreateSettings(pool, req.user.id));
+    const settings = mapRawSettings(await getOrCreateSettings(pool, req.user.id));
     const categoryImages = { ...settings.categoryImages };
-    if (req.body?.imageData) categoryImages[req.params.name] = req.body.imageData;
+    const previousPath = categoryImages[req.params.name];
+    const imagePath = await storeDataUrl(req.body?.imageData, 'category-backgrounds', req.user.id, crypto.randomUUID());
+    if (imagePath) categoryImages[req.params.name] = imagePath;
     else delete categoryImages[req.params.name];
-    await updateSettings(pool, req.user.id, { categoryImages });
-    res.json(await fullState(pool, req.user.id));
+    try {
+      await updateSettings(pool, req.user.id, { categoryImages }, req);
+    } catch (error) {
+      await removeStoredImage(imagePath);
+      throw error;
+    }
+    if (previousPath !== imagePath) await removeStoredImage(previousPath);
+    res.json(await fullState(pool, req.user.id, req));
   } catch (err) {
     next(err);
   }
@@ -296,12 +344,12 @@ router.put('/categories/:name/image', async (req, res, next) => {
 router.put('/categories/:name/fields', async (req, res, next) => {
   try {
     const pool = getMysqlPool();
-    const settings = mapSettings(await getOrCreateSettings(pool, req.user.id));
+    const settings = mapRawSettings(await getOrCreateSettings(pool, req.user.id));
     const categoryFields = { ...settings.categoryFields };
     if (Array.isArray(req.body?.fields) && req.body.fields.length > 0) categoryFields[req.params.name] = req.body.fields;
     else delete categoryFields[req.params.name];
-    await updateSettings(pool, req.user.id, { categoryFields });
-    res.json(await fullState(pool, req.user.id));
+    await updateSettings(pool, req.user.id, { categoryFields }, req);
+    res.json(await fullState(pool, req.user.id, req));
   } catch (err) {
     next(err);
   }
@@ -310,13 +358,13 @@ router.put('/categories/:name/fields', async (req, res, next) => {
 router.put('/categories/:name/target', async (req, res, next) => {
   try {
     const pool = getMysqlPool();
-    const settings = mapSettings(await getOrCreateSettings(pool, req.user.id));
+    const settings = mapRawSettings(await getOrCreateSettings(pool, req.user.id));
     const categoryTargets = { ...settings.categoryTargets };
     const num = Number(req.body?.target);
     if (num > 0) categoryTargets[req.params.name] = num;
     else delete categoryTargets[req.params.name];
-    await updateSettings(pool, req.user.id, { categoryTargets });
-    res.json(await fullState(pool, req.user.id));
+    await updateSettings(pool, req.user.id, { categoryTargets }, req);
+    res.json(await fullState(pool, req.user.id, req));
   } catch (err) {
     next(err);
   }
@@ -325,12 +373,12 @@ router.put('/categories/:name/target', async (req, res, next) => {
 router.put('/categories/:name/case-design', async (req, res, next) => {
   try {
     const pool = getMysqlPool();
-    const settings = mapSettings(await getOrCreateSettings(pool, req.user.id));
+    const settings = mapRawSettings(await getOrCreateSettings(pool, req.user.id));
     const categoryCaseDesigns = { ...settings.categoryCaseDesigns };
     if (req.body?.caseDesign) categoryCaseDesigns[req.params.name] = req.body.caseDesign;
     else delete categoryCaseDesigns[req.params.name];
-    await updateSettings(pool, req.user.id, { categoryCaseDesigns });
-    res.json(await fullState(pool, req.user.id));
+    await updateSettings(pool, req.user.id, { categoryCaseDesigns }, req);
+    res.json(await fullState(pool, req.user.id, req));
   } catch (err) {
     next(err);
   }

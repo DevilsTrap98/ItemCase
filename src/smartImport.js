@@ -22,12 +22,14 @@ const HEADER_KEYWORDS = {
 };
 
 const CONDITION_WORDS = {
-  mint: ['neu', 'mint', 'ovp', 'new', 'sealed'],
+  sealed: ['versiegelt', 'ovp', 'sealed', 'factory sealed'],
+  mint: ['neu', 'mint', 'new'],
   nearMint: ['fast neu', 'wie neu', 'near mint', 'nearmint'],
   excellent: ['sehr gut', 'excellent', 'hervorragend'],
   good: ['gut', 'good'],
   played: ['bespielt', 'gebraucht', 'played', 'used', 'akzeptabel'],
-  poor: ['schlecht', 'defekt', 'poor', 'beschädigt', 'beschaedigt', 'damaged']
+  poor: ['schlecht', 'poor'],
+  damaged: ['defekt', 'beschädigt', 'beschaedigt', 'damaged']
 };
 
 const MONEY_RE = /^-?\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?\s*(€|eur)?$/i;

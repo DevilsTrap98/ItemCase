@@ -10,6 +10,19 @@ import case1 from './assets/cases/case1.webp';
 import case2 from './assets/cases/case2.webp';
 import case3 from './assets/cases/case3.webp';
 import case4 from './assets/cases/case4.webp';
+import case5 from './assets/cases/case5-neon.png';
+import case6 from './assets/cases/case6-royal.png';
+import case7 from './assets/cases/case7-obsidian.png';
+import case8 from './assets/cases/case8-clear-acrylic.webp';
+import case9 from './assets/cases/case9-matte-black.webp';
+import case10 from './assets/cases/case10-titanium.webp';
+import case11 from './assets/cases/case11-carbon.webp';
+import case12 from './assets/cases/case12-walnut.webp';
+import case13 from './assets/cases/case13-leather.webp';
+import case14 from './assets/cases/case14-museum.webp';
+import case15 from './assets/cases/case15-archival.webp';
+import case16 from './assets/cases/case16-brushed-aluminum.webp';
+import case17 from './assets/cases/case17-matte-white.webp';
 
 // Hex-Werte der Farbthemen (für native UI-Elemente wie die Windows-Titelleiste,
 // die keine CSS-Variablen lesen können).
@@ -97,7 +110,25 @@ export const CASE_DESIGNS = {
   premium: case1,
   scifi: case2,
   football: case3,
-  fantasy: case4
+  fantasy: case4,
+  neon: case5,
+  royal: case6,
+  obsidian: case7,
+  clearAcrylic: case8,
+  matteBlack: case9,
+  titanium: case10,
+  carbon: case11,
+  walnut: case12,
+  leather: case13,
+  museum: case14,
+  archival: case15,
+  brushedAluminum: case16,
+  matteWhite: case17
 };
 
-export const CASE_DESIGN_IDS = ['crystal', 'premium', 'scifi', 'football', 'fantasy'];
+export const CASE_DESIGN_IDS = [
+  'crystal', 'premium', 'scifi', 'football', 'fantasy',
+  'neon', 'royal', 'obsidian',
+  'clearAcrylic', 'matteBlack', 'titanium', 'carbon', 'walnut',
+  'leather', 'museum', 'archival', 'brushedAluminum', 'matteWhite'
+];

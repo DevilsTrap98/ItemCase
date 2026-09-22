@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useI18n } from './i18n.jsx';
 import { DESIGN_THEME_COLOR_MAP, ALL_BACKGROUND_OPTIONS, BACKGROUND_PREVIEWS, COLOR_THEME_HEX } from './theme-defaults.js';
-import { TARIFF_IDS, TARIFFS, getTariff } from './tariff-defaults.js';
+import { TARIFF_IDS, TARIFFS, getTariff, tariffPriceLabel } from './tariff-defaults.js';
 import useImagePath from './useImagePath.js';
 
 const colorThemeIds = ['indigo', 'emerald', 'rose', 'amber', 'sky', 'violet'];
@@ -43,6 +43,7 @@ export default function SettingsModal({ user, itemCount, onSave, onLogout, onClo
   const [currency, setCurrency] = useState(user.currency || 'EUR');
   const [notifyOnImport, setNotifyOnImport] = useState(user.notifyOnImport ?? true);
   const [saved, setSaved] = useState(false);
+  const [securityError, setSecurityError] = useState('');
 
   const handleSelectColorTheme = (id) => {
     setColorTheme(id);
@@ -102,8 +103,22 @@ export default function SettingsModal({ user, itemCount, onSave, onLogout, onClo
     setTimeout(() => setSaved(false), 1800);
   };
 
-  const handleChangePassword = (e) => {
+  const handleChangePassword = async (e) => {
     e.preventDefault();
+    setSecurityError('');
+    if (newPassword.length < 10 || newPassword.length > 72) {
+      setSecurityError(t('settings.passwordLength'));
+      return;
+    }
+    if (newPassword !== newPasswordConfirm) {
+      setSecurityError(t('auth.errorPasswordMismatch'));
+      return;
+    }
+    const result = await window.api.changePassword({ currentPassword, newPassword });
+    if (!result.ok) {
+      setSecurityError(result.error || t('auth.errorGeneric'));
+      return;
+    }
     setCurrentPassword('');
     setNewPassword('');
     setNewPasswordConfirm('');
@@ -195,17 +210,18 @@ export default function SettingsModal({ user, itemCount, onSave, onLogout, onClo
                 <h3>{t('settings.passwordTitle')}</h3>
                 <label>
                   {t('settings.currentPassword')}
-                  <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="••••••••" />
+                  <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="••••••••" maxLength={72} required />
                 </label>
                 <label>
                   {t('settings.newPassword')}
-                  <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="••••••••" />
+                  <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="••••••••" minLength={10} maxLength={72} required />
                 </label>
                 <label>
                   {t('settings.newPasswordConfirm')}
-                  <input type="password" value={newPasswordConfirm} onChange={(e) => setNewPasswordConfirm(e.target.value)} placeholder="••••••••" />
+                  <input type="password" value={newPasswordConfirm} onChange={(e) => setNewPasswordConfirm(e.target.value)} placeholder="••••••••" minLength={10} maxLength={72} required />
                 </label>
                 <div className="modal-actions">
+                  {securityError && <span className="auth-error">{securityError}</span>}
                   {saved && <span className="saved-hint">{t('settings.saved')}</span>}
                   <button type="submit" className="btn-primary">{t('settings.updatePassword')}</button>
                 </div>
@@ -213,10 +229,10 @@ export default function SettingsModal({ user, itemCount, onSave, onLogout, onClo
             )}
 
             {tab === 'preferences' && (
-              <form className="form" onSubmit={handleSavePreferences}>
+              <form className="form settings-preferences-form" onSubmit={handleSavePreferences}>
                 <h3>{t('settings.preferencesTitle')}</h3>
 
-                <label>
+                <label className="preferences-language">
                   {t('settings.language')}
                   <div className="color-theme-grid">
                     <button
@@ -238,7 +254,7 @@ export default function SettingsModal({ user, itemCount, onSave, onLogout, onClo
                   </div>
                 </label>
 
-                <label>
+                <label className="preferences-design-style">
                   {t('settings.designStyle')}
                   <div className="color-theme-grid">
                     {designThemeIds.map((id) => (
@@ -257,7 +273,7 @@ export default function SettingsModal({ user, itemCount, onSave, onLogout, onClo
                   </div>
                 </label>
 
-                <label className="checkbox-row">
+                <label className="checkbox-row preferences-auto-color">
                   <input
                     type="checkbox"
                     checked={autoColor}
@@ -266,7 +282,7 @@ export default function SettingsModal({ user, itemCount, onSave, onLogout, onClo
                   {t('settings.autoColor')}
                 </label>
 
-                <label>
+                <label className="preferences-colors">
                   {t('settings.colorTheme')}
                   <div className="color-theme-grid">
                     {colorThemeIds.map((id) => (
@@ -285,7 +301,7 @@ export default function SettingsModal({ user, itemCount, onSave, onLogout, onClo
                   </div>
                 </label>
 
-                <label className="checkbox-row">
+                <label className="checkbox-row preferences-auto-background">
                   <input
                     type="checkbox"
                     checked={autoBackground}
@@ -294,7 +310,7 @@ export default function SettingsModal({ user, itemCount, onSave, onLogout, onClo
                   {t('settings.autoBackground')}
                 </label>
 
-                <label>
+                <label className="preferences-background">
                   {t('settings.background')}
                   <div className="color-theme-grid background-grid">
                     {backgroundIds.map((id) => (
@@ -314,7 +330,7 @@ export default function SettingsModal({ user, itemCount, onSave, onLogout, onClo
                   </div>
                 </label>
 
-                <label>
+                <label className="preferences-display">
                   {t('settings.design')}
                   <select value={theme} onChange={(e) => setTheme(e.target.value)}>
                     <option value="dark">{t('settings.designDark')}</option>
@@ -322,7 +338,7 @@ export default function SettingsModal({ user, itemCount, onSave, onLogout, onClo
                     <option value="system">{t('settings.designSystem')}</option>
                   </select>
                 </label>
-                <label>
+                <label className="preferences-currency">
                   {t('settings.currency')}
                   <select value={currency} onChange={(e) => setCurrency(e.target.value)}>
                     <option value="EUR">Euro (€)</option>
@@ -331,7 +347,7 @@ export default function SettingsModal({ user, itemCount, onSave, onLogout, onClo
                     <option value="GBP">Britisches Pfund (£)</option>
                   </select>
                 </label>
-                <label className="checkbox-row">
+                <label className="checkbox-row preferences-notify">
                   <input
                     type="checkbox"
                     checked={notifyOnImport}
@@ -364,15 +380,13 @@ export default function SettingsModal({ user, itemCount, onSave, onLogout, onClo
                       <div key={id} className={isActive ? 'tariff-card active' : 'tariff-card'}>
                         <div className="tariff-card-name">{t(`tariff.${id}.name`)}</div>
                         <div className="tariff-card-price">
-                          {tariffInfo.priceMonth === 0
-                            ? t('tariff.free.price')
-                            : `${tariffInfo.priceMonth.toFixed(2)} €/${t('tariff.perMonth')}`}
+                          {tariffPriceLabel(tariffInfo, t)}
                         </div>
                         {tariffInfo.priceYear > 0 && (
                           <div className="field-hint">{tariffInfo.priceYear.toFixed(2)} €/{t('tariff.perYear')}</div>
                         )}
                         <div className="tariff-card-limit">
-                          {tariffInfo.itemLimit === Infinity
+                          {id === 'business' ? t('tariff.business.publicInventory') : tariffInfo.itemLimit === Infinity
                             ? t('tariff.unlimited')
                             : t('tariff.itemLimitLabel', { limit: tariffInfo.itemLimit })}
                         </div>

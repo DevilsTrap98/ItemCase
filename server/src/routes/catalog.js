@@ -2,11 +2,12 @@ const express = require('express');
 const crypto = require('crypto');
 const { getMysqlPool } = require('../config/db-mysql');
 const { optionalAuth } = require('../middleware/auth');
+const { storeDataUrl, removeStoredImage, publicImageUrl } = require('../utils/imageStorage');
 
 const router = express.Router();
 router.use(optionalAuth);
 
-function mapEntry(row) {
+function mapEntry(row, req) {
   return {
     id: row.id,
     name: row.name,
@@ -16,8 +17,9 @@ function mapEntry(row) {
     ean: row.ean,
     isbn: row.isbn,
     manufacturerNumber: row.manufacturer_number,
-    imageData: row.image_data,
+    imageUrl: publicImageUrl(row.image_path, req),
     marketValue: row.market_value,
+    conditionValues: row.condition_values || {},
     status: row.status,
     contributor: row.contributor,
     rightsConfirmed: !!row.rights_confirmed,
@@ -26,11 +28,11 @@ function mapEntry(row) {
   };
 }
 
-router.get('/', async (_req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
     const pool = getMysqlPool();
-    const [rows] = await pool.query('SELECT * FROM catalog_entries ORDER BY submitted_at DESC');
-    res.json(rows.map(mapEntry));
+    const [rows] = await pool.query("SELECT * FROM catalog_entries WHERE status = 'approved' ORDER BY submitted_at DESC");
+    res.json(rows.map((row) => mapEntry(row, req)));
   } catch (err) {
     next(err);
   }
@@ -48,10 +50,12 @@ router.post('/', async (req, res, next) => {
 
     const id = crypto.randomUUID();
     const pool = getMysqlPool();
-    await pool.query(
+    const imagePath = await storeDataUrl(body.imageData, 'catalog', 'entries', id);
+    try {
+      await pool.query(
       `INSERT INTO catalog_entries
-        (id, name, brand, category, release_year, ean, isbn, manufacturer_number, image_data, market_value, status, contributor, rights_confirmed, license_version)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
+        (id, name, brand, category, release_year, ean, isbn, manufacturer_number, image_path, market_value, condition_values, status, contributor, rights_confirmed, license_version)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
       [
         id,
         String(body.name).trim(),
@@ -61,16 +65,21 @@ router.post('/', async (req, res, next) => {
         body.ean || '',
         body.isbn || '',
         body.manufacturerNumber || '',
-        body.imageData || null,
+        imagePath,
         body.marketValue || null,
+        JSON.stringify(body.conditionValues || {}),
         body.contributor || req.user?.name || '',
         body.rightsConfirmed ? 1 : 0,
         body.licenseVersion || '1.0'
       ]
-    );
+      );
+    } catch (error) {
+      await removeStoredImage(imagePath);
+      throw error;
+    }
 
     const [rows] = await pool.query('SELECT * FROM catalog_entries WHERE id = ?', [id]);
-    res.status(201).json(mapEntry(rows[0]));
+    res.status(201).json(mapEntry(rows[0], req));
   } catch (err) {
     next(err);
   }
@@ -90,12 +99,18 @@ router.post('/:id/photo', async (req, res, next) => {
     }
 
     const id = crypto.randomUUID();
-    await pool.query(
+    const imagePath = await storeDataUrl(body.imageData, 'catalog-proposals', req.user?.id || 'anonymous', id);
+    try {
+      await pool.query(
       `INSERT INTO catalog_photo_proposals
-        (id, catalog_item_id, image_data, contributor, rights_confirmed, license_version, status)
+        (id, catalog_item_id, image_path, contributor, rights_confirmed, license_version, status)
        VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
-      [id, req.params.id, body.imageData || null, body.contributor || req.user?.name || '', body.rightsConfirmed ? 1 : 0, body.licenseVersion || '1.0']
-    );
+      [id, req.params.id, imagePath, body.contributor || req.user?.name || '', body.rightsConfirmed ? 1 : 0, body.licenseVersion || '1.0']
+      );
+    } catch (error) {
+      await removeStoredImage(imagePath);
+      throw error;
+    }
     res.status(201).json({ id });
   } catch (err) {
     next(err);
@@ -105,7 +120,7 @@ router.post('/:id/photo', async (req, res, next) => {
 router.get('/categories', async (_req, res, next) => {
   try {
     const pool = getMysqlPool();
-    const [rows] = await pool.query('SELECT name FROM catalog_categories ORDER BY name ASC');
+    const [rows] = await pool.query("SELECT name FROM catalog_categories WHERE status = 'approved' ORDER BY name ASC");
     res.json(rows.map((r) => r.name));
   } catch (err) {
     next(err);

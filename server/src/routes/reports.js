@@ -1,8 +1,10 @@
 const express = require('express');
 const crypto = require('crypto');
 const { getMysqlPool } = require('../config/db-mysql');
+const { optionalAuth } = require('../middleware/auth');
 
 const router = express.Router();
+router.use(optionalAuth);
 
 router.post('/', async (req, res, next) => {
   try {
@@ -14,9 +16,9 @@ router.post('/', async (req, res, next) => {
     const id = crypto.randomUUID();
     const pool = getMysqlPool();
     await pool.query(
-      `INSERT INTO reports (id, target_type, target_id, target_name, reason, comment, status)
-       VALUES (?, ?, ?, ?, ?, ?, 'open')`,
-      [id, body.targetType, body.targetId, body.targetName || '', body.reason, body.comment || '']
+      `INSERT INTO reports (id, target_type, target_id, target_name, reason, comment, status, submitted_by_user_id)
+       VALUES (?, ?, ?, ?, ?, ?, 'open', ?)`,
+      [id, body.targetType, body.targetId, body.targetName || '', body.reason, body.comment || '', req.user?.id || null]
     );
     res.status(201).json({ id });
   } catch (err) {

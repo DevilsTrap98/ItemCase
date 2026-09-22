@@ -3,13 +3,27 @@ import { useI18n } from './i18n.jsx';
 import TitleBar from './TitleBar.jsx';
 
 const CATEGORIES = [
-  'show_tell', 'help_id', 'trading_cards', 'retro_games', 'lego', 'figures',
-  'comics', 'vinyl', 'coins', 'market_value', 'feedback'
+  'show_tell', 'help_id', 'market_value', 'trading_cards', 'sports_cards', 'coins',
+  'banknotes', 'stamps', 'medals', 'building_blocks', 'model_building', 'model_vehicles',
+  'model_railways', 'figures', 'dolls', 'plush', 'toys', 'board_games', 'comics',
+  'manga', 'books', 'magazines', 'vinyl', 'music_media', 'films', 'video_games',
+  'retro_tech', 'cameras', 'watches', 'jewelry', 'minerals', 'fossils', 'militaria',
+  'art', 'antiques', 'postcards', 'autographs', 'sports_memorabilia', 'pins',
+  'sneakers', 'fashion', 'bottles', 'advertising', 'other', 'feedback'
 ];
 
+const FEATURED_CATEGORIES = ['show_tell', 'help_id', 'trading_cards', 'building_blocks', 'figures', 'comics', 'video_games', 'coins', 'market_value', 'feedback'];
+const MORE_CATEGORIES = CATEGORIES.filter((category) => !FEATURED_CATEGORIES.includes(category));
+
 const CATEGORY_ICON = {
-  show_tell: '🎭', help_id: '🔍', trading_cards: '🎴', retro_games: '🕹️', lego: '🧱',
-  figures: '🎎', comics: '📚', vinyl: '💿', coins: '🪙', market_value: '💰', feedback: '💬'
+  show_tell: '🎭', help_id: '🔍', market_value: '💰', trading_cards: '🎴', sports_cards: '🏅',
+  coins: '🪙', banknotes: '💵', stamps: '✉️', medals: '🏅', building_blocks: '🧱', model_building: '🛠️',
+  model_vehicles: '🚗', model_railways: '🚂', figures: '🎎', dolls: '🪆', plush: '🧸', toys: '🪀',
+  board_games: '🎲', comics: '📚', manga: '📖', books: '📕', magazines: '📰', vinyl: '💿',
+  music_media: '🎵', films: '🎬', video_games: '🎮', retro_tech: '🖥️', cameras: '📷', watches: '⌚',
+  jewelry: '💍', minerals: '💎', fossils: '🦴', militaria: '🎖️', art: '🖼️', antiques: '🏺',
+  postcards: '💌', autographs: '✍️', sports_memorabilia: '🏆', pins: '📍', sneakers: '👟',
+  fashion: '👕', bottles: '🍾', advertising: '📢', other: '📦', feedback: '💬'
 };
 
 const CATEGORY_COLOR = {
@@ -35,7 +49,7 @@ function timeAgo(iso, t) {
 
 function CategoryTag({ category, t }) {
   return (
-    <span className="forum-tag" style={{ background: `${CATEGORY_COLOR[category]}22`, color: CATEGORY_COLOR[category] }}>
+    <span className="forum-tag" style={{ background: `${CATEGORY_COLOR[category] || '#8b8fa3'}22`, color: CATEGORY_COLOR[category] || '#8b8fa3' }}>
       {CATEGORY_ICON[category]} {t(`forum.category.${category}`)}
     </span>
   );
@@ -77,7 +91,7 @@ function PostCard({ post, onOpen, onLike, t }) {
   );
 }
 
-export default function ForumHubModal({ user, onClose, myLevel }) {
+export default function ForumHubModal({ user, onClose, myLevel, onOpenAllChat }) {
   const { t } = useI18n();
   const [view, setView] = useState('feed');
   const [category, setCategory] = useState('all');
@@ -168,6 +182,9 @@ export default function ForumHubModal({ user, onClose, myLevel }) {
           <div className="forum-tabbar-title">
             💬 {category === 'all' ? t('forum.categoryAll') : `${CATEGORY_ICON[category]} ${t(`forum.category.${category}`)}`}
           </div>
+          <button type="button" className="btn-secondary forum-all-chat-btn" onClick={onOpenAllChat}>
+            🌐 {t('forum.allChat')}
+          </button>
           <button type="button" className="btn-primary forum-create-btn" onClick={() => setView('create')}>+ {t('forum.createPost')}</button>
           <button type="button" className="icon-btn catalog-close-btn" onClick={onClose} title={t('catalog.close')}>✕</button>
         </div>
@@ -269,11 +286,21 @@ export default function ForumHubModal({ user, onClose, myLevel }) {
               <button type="button" className={category === 'all' ? 'forum-sidebar-cat active' : 'forum-sidebar-cat'} onClick={() => { setCategory('all'); setView('feed'); }}>
                 🌐 {t('forum.categoryAll')}
               </button>
-              {CATEGORIES.map((c) => (
+              {FEATURED_CATEGORIES.map((c) => (
                 <button type="button" key={c} className={category === c ? 'forum-sidebar-cat active' : 'forum-sidebar-cat'} onClick={() => { setCategory(c); setView('feed'); }}>
                   {CATEGORY_ICON[c]} {t(`forum.category.${c}`)}
                 </button>
               ))}
+              <label className="forum-more-categories">
+                <span>{t('forum.moreCategories')}</span>
+                <select
+                  value={MORE_CATEGORIES.includes(category) ? category : ''}
+                  onChange={(e) => { if (e.target.value) { setCategory(e.target.value); setView('feed'); } }}
+                >
+                  <option value="">{t('forum.chooseCategory')}</option>
+                  {MORE_CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_ICON[c]} {t(`forum.category.${c}`)}</option>)}
+                </select>
+              </label>
             </div>
 
             <div className="forum-sidebar-title-row">

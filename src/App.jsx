@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import ItemCard from './ItemCard.jsx';
 import ItemForm from './ItemForm.jsx';
 import AuthScreen from './AuthScreen.jsx';
@@ -12,27 +12,29 @@ import CollectionDNA from './CollectionDNA.jsx';
 import ImportExportModal from './ImportExportModal.jsx';
 import CommunityCatalogModal from './CommunityCatalogModal.jsx';
 import UpgradeModal from './UpgradeModal.jsx';
-import FriendsPanel from './FriendsPanel.jsx';
-import DraggablePanel from './DraggablePanel.jsx';
+import CommunityRail from './CommunityRail.jsx';
 import LegalModal from './LegalModal.jsx';
 import ChatWindow from './ChatWindow.jsx';
 import GroupsModal from './GroupsModal.jsx';
 import ForumHubModal from './ForumHubModal.jsx';
+import MarketModal from './MarketModal.jsx';
 import WishlistModal from './WishlistModal.jsx';
 import SmartImportModal from './SmartImportModal.jsx';
 import TitleBar from './TitleBar.jsx';
 import { computeCollectorLevel } from './collectorLevel.js';
 import NotificationBell from './NotificationBell.jsx';
 import Toast from './Toast.jsx';
+import AdminDashboard from './AdminDashboard.jsx';
+import ItemDetailModal from './ItemDetailModal.jsx';
 import { playNotificationSound } from './sound.js';
 import { useI18n } from './i18n.jsx';
 import logoMark from './assets/logo-mark.png';
 import useImagePath from './useImagePath.js';
+import UiIcon from './UiIcon.jsx';
 import { BACKGROUND_PATTERNS, DESIGN_THEME_BACKGROUND_MAP, CASE_DESIGNS } from './theme-defaults.js';
 import { SUGGESTED_CATEGORIES } from './category-defaults.js';
 import { getTariff } from './tariff-defaults.js';
 
-const USER_STORAGE_KEY = 'collectorapp_user';
 const ALL_CATEGORY = '__all__';
 
 // The five built-in default categories store a leading emoji as part of
@@ -40,6 +42,10 @@ const ALL_CATEGORY = '__all__';
 // on the exact string — this only strips it for on-screen display.
 function displayCategoryName(cat) {
   return (cat || '').replace(/^\p{Extended_Pictographic}️?\s*/u, '');
+}
+
+function categoryEmoji(cat) {
+  return (cat || '').match(/^\p{Extended_Pictographic}️?/u)?.[0] || '◆';
 }
 
 function CategoryThumb({ fileName, onClick, title }) {
@@ -52,11 +58,13 @@ function CategoryThumb({ fileName, onClick, title }) {
 }
 
 function CategoryOverviewCard({
-  name, fileName, onClick, countLabel, valueLabel,
+  name, fileName, onClick, count, countLabel, valueLabel,
+  share,
   onDragStart, onDragOver, onDragLeave, onDrop, onDragEnd, isDragging, isDropTarget
 }) {
   const src = useImagePath(fileName);
-  const classNames = ['category-overview-card'];
+  const classNames = ['category-overview-card', src ? 'has-image' : 'no-image'];
+  if (!count) classNames.push('is-empty');
   if (isDragging) classNames.push('dragging');
   if (isDropTarget) classNames.push('drop-target');
   return (
@@ -70,12 +78,21 @@ function CategoryOverviewCard({
       onDragLeave={onDragLeave}
       onDrop={onDrop}
       onDragEnd={onDragEnd}
-      style={src ? { backgroundImage: `linear-gradient(rgba(15,16,20,0.35), rgba(15,16,20,0.78)), url(${src})` } : undefined}
+      style={src ? { backgroundImage: `linear-gradient(180deg, rgba(12,14,20,0.08), rgba(12,14,20,0.92)), url(${src})` } : undefined}
     >
-      <span className="category-overview-name">{name}</span>
-      <span className="category-overview-meta">
-        <span className="category-overview-count">{countLabel}</span>
-        <span className="category-overview-value">{valueLabel}</span>
+      <span className="category-overview-top">
+        <span className="category-overview-icon">{categoryEmoji(name)}</span>
+        <span className="category-overview-arrow">↗</span>
+      </span>
+      <span className="category-overview-content">
+        <span className="category-overview-name">{displayCategoryName(name)}</span>
+        <span className="category-overview-meta">
+          <span className="category-overview-count">{countLabel}</span>
+          <span className="category-overview-value">{valueLabel}</span>
+        </span>
+        <span className="category-overview-progress" aria-hidden="true">
+          <span style={{ width: `${Math.max(3, share)}%` }} />
+        </span>
       </span>
     </button>
   );
@@ -83,14 +100,8 @@ function CategoryOverviewCard({
 
 export default function App() {
   const { lang, t } = useI18n();
-  const [user, setUser] = useState(() => {
-    try {
-      const raw = localStorage.getItem(USER_STORAGE_KEY);
-      return raw ? JSON.parse(raw) : null;
-    } catch (e) {
-      return null;
-    }
-  });
+  const [user, setUser] = useState(null);
+  const [sessionLoading, setSessionLoading] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
 
@@ -113,6 +124,7 @@ export default function App() {
   const [showSmartImport, setShowSmartImport] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
+  const [selectedItem, setSelectedItem] = useState(null);
   const [addingCategory, setAddingCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [editingCategory, setEditingCategory] = useState(null);
@@ -133,23 +145,41 @@ export default function App() {
   const [showGroups, setShowGroups] = useState(false);
   const [showFriendsPanel, setShowFriendsPanel] = useState(true);
   const [showForumHub, setShowForumHub] = useState(false);
+  const [showMarket, setShowMarket] = useState(false);
   const [showCommunityMenu, setShowCommunityMenu] = useState(false);
   const [draggedCategory, setDraggedCategory] = useState(null);
   const [dragOverCategory, setDragOverCategory] = useState(null);
   const [dialog, setDialog] = useState(null);
+  const [showAdmin, setShowAdmin] = useState(false);
+  const [collectionConnection, setCollectionConnection] = useState('loading');
 
   const askConfirm = (message, onConfirm, danger = false) => setDialog({ message, onConfirm, alertOnly: false, danger });
   const showAlert = (message) => setDialog({ message, onConfirm: null, alertOnly: true });
 
   const handleLogin = (userData) => {
     setUser(userData);
-    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(userData));
   };
 
-  const handleSaveUser = (updatedUser) => {
+  const handleSaveUser = async (updatedUser) => {
+    if (updatedUser.tariff && updatedUser.tariff !== user?.tariff && window.api.setTariff) {
+      const result = await window.api.setTariff(updatedUser.tariff);
+      if (!result.ok) { showAlert(result.error || t('errors.syncFailed')); return; }
+      setUser({ ...updatedUser, ...result.user });
+      return;
+    }
     setUser(updatedUser);
-    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(updatedUser));
   };
+
+  useEffect(() => {
+    let active = true;
+    localStorage.removeItem('collectorapp_user');
+    window.api.getSession().then((sessionUser) => {
+      if (active) setUser(sessionUser);
+    }).finally(() => {
+      if (active) setSessionLoading(false);
+    });
+    return () => { active = false; };
+  }, []);
 
   const initialsOf = (name) => (name || '?').split(' ').map((p) => p[0]).join('').slice(0, 2).toUpperCase();
 
@@ -169,6 +199,8 @@ export default function App() {
         meta[c.id] = { title: c.peer.name, initials: initialsOf(c.peer.name), isGroup: false, peerId: c.peer.id };
       } else if (c.type === 'group') {
         meta[c.id] = { title: c.groupName, initials: initialsOf(c.groupName), isGroup: true };
+      } else if (c.type === 'global') {
+        meta[c.id] = { title: t('forum.allChat'), initials: '🌐', isGroup: true };
       }
     });
     setConversationMeta(meta);
@@ -196,6 +228,10 @@ export default function App() {
 
   const handleOpenGroupChat = (group) => {
     openChatByConversation(group.conversationId, { title: group.name, initials: initialsOf(group.name), isGroup: true });
+  };
+
+  const handleOpenAllChat = async () => {
+    await openChatByConversation('global', { title: t('forum.allChat'), initials: '🌐', isGroup: true });
   };
 
   const handleCloseChat = (conversationId) => {
@@ -233,7 +269,6 @@ export default function App() {
 
   const handleLogout = async () => {
     await window.api.logout();
-    localStorage.removeItem(USER_STORAGE_KEY);
     setUser(null);
     setShowSettings(false);
     setShowUserMenu(false);
@@ -320,21 +355,39 @@ export default function App() {
     }
   }, [user?.designTheme, user?.background]);
 
-  const loadData = async () => {
-    const db = await window.api.getAll();
-    setItems(db.items || []);
-    setCategories(db.categories || []);
-    setCategoryImages(db.categoryImages || {});
-    setCategoryFields(db.categoryFields || {});
-    setCategoryTargets(db.categoryTargets || {});
-    setCategoryCaseDesigns(db.categoryCaseDesigns || {});
-    setCommunityCatalog(db.communityCatalog || []);
-    setCatalogCategories(db.catalogCategories || []);
-  };
+  const loadData = useCallback(async () => {
+    try {
+      const db = await window.api.getAll();
+      setItems(db.items || []);
+      setCategories(db.categories || []);
+      setCategoryImages(db.categoryImages || {});
+      setCategoryFields(db.categoryFields || {});
+      setCategoryTargets(db.categoryTargets || {});
+      setCategoryCaseDesigns(db.categoryCaseDesigns || {});
+      setCommunityCatalog(db.communityCatalog || []);
+      setCatalogCategories(db.catalogCategories || []);
+      setCollectionConnection('online');
+      return true;
+    } catch (e) {
+      // Keep the last successfully loaded collection visible. In particular,
+      // never replace database data with an empty default on connection loss.
+      setCollectionConnection('offline');
+      return false;
+    }
+  }, []);
 
   useEffect(() => {
+    if (sessionLoading || !user) return undefined;
+    setCollectionConnection('loading');
     loadData();
-  }, []);
+    return undefined;
+  }, [loadData, sessionLoading, user?.id]);
+
+  useEffect(() => {
+    if (collectionConnection !== 'offline') return undefined;
+    const retryTimer = setInterval(loadData, 5000);
+    return () => clearInterval(retryTimer);
+  }, [collectionConnection, loadData]);
 
   useEffect(() => {
     loadFriends();
@@ -367,15 +420,25 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isGuest, user?.id, conversationMeta]);
 
-  const handleSave = async (item) => {
+  const handleSave = async (item, marketOptions) => {
     if (!item.id && isOverItemLimit) {
       showAlert(t('tariff.overLimitBlocked', { limit: tariff.itemLimit }));
       return;
     }
     try {
-      await window.api.saveItem(item);
+      const db = await window.api.saveItem(item);
       setShowForm(false);
       setEditingItem(null);
+      if (marketOptions) {
+        const savedItem = item.id ? db.items.find((i) => i.id === item.id) : db.items[db.items.length - 1];
+        if (savedItem) {
+          await window.api.marketSaveListing({
+            collectionItemId: savedItem.id, title: savedItem.name, category: savedItem.category,
+            condition: savedItem.condition, imagePath: savedItem.imagePath, status: 'published',
+            ...marketOptions
+          });
+        }
+      }
       loadData();
     } catch (e) {
       showAlert(t('errors.syncFailed'));
@@ -391,15 +454,6 @@ export default function App() {
         showAlert(t('errors.syncFailed'));
       }
     }, true);
-  };
-
-  const handleUpdateValue = async (item, newValue) => {
-    try {
-      await window.api.saveItem({ ...item, value: newValue });
-      loadData();
-    } catch (e) {
-      showAlert(t('errors.syncFailed'));
-    }
   };
 
   const handleImport = async () => {
@@ -432,7 +486,7 @@ export default function App() {
       purchasePrice: '',
       notes: '',
       imagePath: entry.imagePath || null,
-      showcase: false,
+      showcase: user?.tariff === 'business',
       story: { place: '', date: '', isGift: false, isFirstPiece: false, text: '' },
       customFields: {},
       catalogInfo: {
@@ -469,6 +523,25 @@ export default function App() {
   const handleEdit = (item) => {
     setEditingItem(item);
     setShowForm(true);
+  };
+
+  const handleSaveItemFrame = async (caseDesign) => {
+    if (!selectedItem) return;
+    const updated = { ...selectedItem, caseDesign };
+    try {
+      await window.api.saveItem(updated);
+      setSelectedItem(updated);
+      setItems((list) => list.map((item) => (item.id === updated.id ? updated : item)));
+    } catch (error) {
+      showAlert(t('errors.syncFailed'));
+      throw error;
+    }
+  };
+
+  const handleDetailEdit = () => {
+    const item = selectedItem;
+    setSelectedItem(null);
+    handleEdit(item);
   };
 
   const handleAddCategory = async (e) => {
@@ -570,6 +643,7 @@ export default function App() {
   }, [items]);
 
   const tariff = getTariff(user?.tariff);
+  const isBusiness = tariff.id === 'business';
   const isOverItemLimit = items.length > tariff.itemLimit;
 
   const categoryCounts = useMemo(() => {
@@ -600,6 +674,8 @@ export default function App() {
 
   const titleBar = <TitleBar />;
 
+  if (sessionLoading) return titleBar;
+
   if (!user) {
     return (
       <>
@@ -626,17 +702,7 @@ export default function App() {
           <div>{t('app.taglineSub')}</div>
         </div>
 
-        <div className="stats-box">
-          <div className="stat">
-            <span className="stat-value">{stats.totalItems}</span>
-            <span className="stat-label">{t('sidebar.totalItems')}</span>
-          </div>
-          <div className="stat">
-            <span className="stat-value">{currencyFmt(stats.totalValue)}</span>
-            <span className="stat-label">{t('sidebar.totalValue')}</span>
-            <span className="stat-privacy-badge">🔒 {t('sidebar.privateCollection')}</span>
-          </div>
-        </div>
+        <div className="sidebar-privacy"><span aria-hidden="true">●</span>{t('sidebar.privateCollection')}</div>
 
         <nav className="category-list">
           <button
@@ -746,20 +812,23 @@ export default function App() {
 
           <div className="user-menu-wrap">
             <button className="btn-secondary" onClick={() => setShowCommunityMenu((v) => !v)}>
-              🌍 {t('topbar.community')} ▾
+              <UiIcon name="globe" /> {t('topbar.community')} ▾
             </button>
             {showCommunityMenu && (
               <>
                 <div className="user-menu-backdrop" onClick={() => setShowCommunityMenu(false)} />
                 <div className="user-menu">
                   <button onClick={() => { setShowCommunityCatalog(true); setShowCommunityMenu(false); }}>
-                    📚 {t('topbar.communityCatalog')}
+                    <UiIcon name="book" /> {t('topbar.communityCatalog')}
                   </button>
                   {!isGuest && (
                     <button onClick={() => { setShowForumHub(true); setShowCommunityMenu(false); }}>
-                      💬 {t('topbar.forum')}
+                      <UiIcon name="message" /> {t('topbar.forum')}
                     </button>
                   )}
+                  <button onClick={() => { setShowMarket(true); setShowCommunityMenu(false); }}>
+                    <UiIcon name="store" /> {t('topbar.communityMarket')}
+                  </button>
                 </div>
               </>
             )}
@@ -770,27 +839,24 @@ export default function App() {
             onClick={() => setShowShowcase((v) => !v)}
             title={showShowcase ? t('topbar.backToCollection') : t('topbar.showcase')}
           >
-            {showShowcase ? '🗂️' : '🌐'} {showShowcase ? t('topbar.backToCollection') : t('topbar.showcase')}
+            <UiIcon name={showShowcase ? 'grid' : 'globe'} /> {showShowcase ? t('topbar.backToCollection') : t('topbar.showcase')}
           </button>
 
           <button className="icon-btn topbar-icon-btn" onClick={() => setShowLevel(true)} title={t('topbar.level')}>
-            🏆
+            <UiIcon name="trophy" />
           </button>
 
           <button className="icon-btn topbar-icon-btn" onClick={() => setShowDNA(true)} title={t('topbar.dna')}>
-            🧬
+            <UiIcon name="dna" />
           </button>
 
           {!isGuest && (
             <>
               <button className="icon-btn topbar-icon-btn" onClick={() => setShowWishlist(true)} title={t('wishlist.title')}>
-                ❤️
+                <UiIcon name="heart" />
               </button>
               <button className="icon-btn topbar-icon-btn" onClick={() => setShowFriendsPanel((v) => !v)} title={t('friends.title')}>
-                🧑‍🤝‍🧑
-              </button>
-              <button className="icon-btn topbar-icon-btn" onClick={() => setShowGroups(true)} title={t('topbar.groups')}>
-                👥
+                <UiIcon name="users" />
               </button>
               <NotificationBell
                 notifications={notifications}
@@ -861,7 +927,8 @@ export default function App() {
                 <ItemCard
                   key={item.id}
                   item={item}
-                  caseDesignSrc={CASE_DESIGNS[categoryCaseDesigns[item.category]]}
+                  caseDesignSrc={CASE_DESIGNS[item.caseDesign || categoryCaseDesigns[item.category]]}
+                  onOpen={setSelectedItem}
                   readOnly
                 />
               ))}
@@ -874,50 +941,63 @@ export default function App() {
             <h1 className="collection-title">{activeCategory === ALL_CATEGORY ? t('collection.title') : displayCategoryName(activeCategory)}</h1>
             <p className="collection-tagline">{t('collection.tagline')}</p>
           </div>
-        </div>
-
-        <div className="collection-toolbar">
-          <div className="user-menu-wrap">
-            <button type="button" className="btn-secondary" onClick={() => setShowSortMenu((v) => !v)}>
-              {t('collection.filter')} ▾
-            </button>
-            {showSortMenu && (
-              <>
-                <div className="user-menu-backdrop" onClick={() => setShowSortMenu(false)} />
-                <div className="user-menu">
-                  <button className={sortBy === 'name' ? 'active' : ''} onClick={() => { setSortBy('name'); setShowSortMenu(false); }}>{t('collection.sortName')}</button>
-                  <button className={sortBy === 'value' ? 'active' : ''} onClick={() => { setSortBy('value'); setShowSortMenu(false); }}>{t('collection.sortValue')}</button>
-                  <button className={sortBy === 'newest' ? 'active' : ''} onClick={() => { setSortBy('newest'); setShowSortMenu(false); }}>{t('collection.sortNewest')}</button>
-                  <div className="user-menu-divider" />
-                  <button className={statusFilter === 'all' ? 'active' : ''} onClick={() => { setStatusFilter('all'); setShowSortMenu(false); }}>{t('collection.statusAll')}</button>
-                  <button className={statusFilter === 'duplicate' ? 'active' : ''} onClick={() => { setStatusFilter('duplicate'); setShowSortMenu(false); }}>👯 {t('ownershipStatus.duplicate')}</button>
-                  <button className={statusFilter === 'tradable' ? 'active' : ''} onClick={() => { setStatusFilter('tradable'); setShowSortMenu(false); }}>🔄 {t('ownershipStatus.tradable')}</button>
-                  <button className={statusFilter === 'for_sale' ? 'active' : ''} onClick={() => { setStatusFilter('for_sale'); setShowSortMenu(false); }}>💰 {t('ownershipStatus.for_sale')}</button>
-                </div>
-              </>
-            )}
+          <div className="collection-toolbar">
+            <div className="user-menu-wrap">
+              <button type="button" className="btn-secondary collection-filter-btn" onClick={() => setShowSortMenu((v) => !v)}>
+                {t('collection.filter')} ▾
+              </button>
+              {showSortMenu && (
+                <>
+                  <div className="user-menu-backdrop" onClick={() => setShowSortMenu(false)} />
+                  <div className="user-menu">
+                    <button className={sortBy === 'name' ? 'active' : ''} onClick={() => { setSortBy('name'); setShowSortMenu(false); }}>{t('collection.sortName')}</button>
+                    <button className={sortBy === 'value' ? 'active' : ''} onClick={() => { setSortBy('value'); setShowSortMenu(false); }}>{t('collection.sortValue')}</button>
+                    <button className={sortBy === 'newest' ? 'active' : ''} onClick={() => { setSortBy('newest'); setShowSortMenu(false); }}>{t('collection.sortNewest')}</button>
+                    <div className="user-menu-divider" />
+                    <button className={statusFilter === 'all' ? 'active' : ''} onClick={() => { setStatusFilter('all'); setShowSortMenu(false); }}>{t('collection.statusAll')}</button>
+                    <button className={statusFilter === 'duplicate' ? 'active' : ''} onClick={() => { setStatusFilter('duplicate'); setShowSortMenu(false); }}>👯 {t('ownershipStatus.duplicate')}</button>
+                    <button className={statusFilter === 'tradable' ? 'active' : ''} onClick={() => { setStatusFilter('tradable'); setShowSortMenu(false); }}>🔄 {t('ownershipStatus.tradable')}</button>
+                    <button className={statusFilter === 'for_sale' ? 'active' : ''} onClick={() => { setStatusFilter('for_sale'); setShowSortMenu(false); }}>💰 {t('ownershipStatus.for_sale')}</button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
         {showCategoryOverview ? (
-          <div className="category-overview-grid">
-            {categories.map((cat) => (
-              <CategoryOverviewCard
-                key={cat}
-                name={displayCategoryName(cat)}
-                fileName={categoryImages[cat]}
-                countLabel={t('category.itemCount', { count: categoryCounts[cat] || 0 })}
-                valueLabel={currencyFmt(categoryValues[cat] || 0)}
-                onClick={() => setActiveCategory(cat)}
-                isDragging={draggedCategory === cat}
-                isDropTarget={dragOverCategory === cat && draggedCategory !== cat}
-                onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; setDraggedCategory(cat); }}
-                onDragOver={(e) => { e.preventDefault(); if (dragOverCategory !== cat) setDragOverCategory(cat); }}
-                onDragLeave={() => setDragOverCategory((c) => (c === cat ? null : c))}
-                onDrop={(e) => { e.preventDefault(); handleCategoryDrop(cat); }}
-                onDragEnd={() => { setDraggedCategory(null); setDragOverCategory(null); }}
-              />
-            ))}
+          <div className="collection-overview">
+            <div className="collection-overview-stats">
+              <div><span>{t('overview.totalPieces')}</span><strong>{stats.totalItems.toLocaleString(lang === 'en' ? 'en-US' : 'de-DE')}</strong></div>
+              <div><span>{t('overview.uniqueItems')}</span><strong>{stats.uniqueItems.toLocaleString(lang === 'en' ? 'en-US' : 'de-DE')}</strong></div>
+              <div><span>{t('overview.categories')}</span><strong>{categories.length}</strong></div>
+              <div className="overview-value"><span>{t('sidebar.totalValue')}</span><strong>{currencyFmt(stats.totalValue)}</strong></div>
+            </div>
+            <div className="category-overview-heading">
+              <div><span className="section-kicker">{t('overview.organized')}</span><h2>{t('overview.categories')}</h2></div>
+              <span>{t('overview.openHint')}</span>
+            </div>
+            <div className="category-overview-grid">
+              {categories.map((cat) => (
+                <CategoryOverviewCard
+                  key={cat}
+                  name={cat}
+                  fileName={categoryImages[cat]}
+                  count={categoryCounts[cat] || 0}
+                  countLabel={t('category.itemCount', { count: categoryCounts[cat] || 0 })}
+                  valueLabel={currencyFmt(categoryValues[cat] || 0)}
+                  share={stats.uniqueItems ? ((categoryCounts[cat] || 0) / stats.uniqueItems) * 100 : 0}
+                  onClick={() => setActiveCategory(cat)}
+                  isDragging={draggedCategory === cat}
+                  isDropTarget={dragOverCategory === cat && draggedCategory !== cat}
+                  onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; setDraggedCategory(cat); }}
+                  onDragOver={(e) => { e.preventDefault(); if (dragOverCategory !== cat) setDragOverCategory(cat); }}
+                  onDragLeave={() => setDragOverCategory((c) => (c === cat ? null : c))}
+                  onDrop={(e) => { e.preventDefault(); handleCategoryDrop(cat); }}
+                  onDragEnd={() => { setDraggedCategory(null); setDragOverCategory(null); }}
+                />
+              ))}
+            </div>
           </div>
         ) : filteredItems.length === 0 ? (
           <div className="empty-state">
@@ -932,10 +1012,10 @@ export default function App() {
               <ItemCard
                 key={item.id}
                 item={item}
-                caseDesignSrc={CASE_DESIGNS[categoryCaseDesigns[item.category]]}
+                caseDesignSrc={CASE_DESIGNS[item.caseDesign || categoryCaseDesigns[item.category]]}
+                onOpen={setSelectedItem}
                 onEdit={handleEdit}
                 onDelete={handleDelete}
-                onUpdateValue={handleUpdateValue}
               />
             ))}
           </div>
@@ -943,6 +1023,36 @@ export default function App() {
         </>
         )}
         </main>
+
+        {showFriendsPanel && !isGuest && (
+          <CommunityRail
+            user={user}
+            friendsData={friendsData}
+            onClose={() => setShowFriendsPanel(false)}
+            onOpenChat={handleOpenChat}
+            onSendRequest={handleSendFriendRequest}
+            onAccept={handleAcceptFriendRequest}
+            onDecline={handleDeclineFriendRequest}
+            onBlock={handleBlockUser}
+            onOpenGroupChat={handleOpenGroupChat}
+            onManageGroups={() => setShowGroups(true)}
+          />
+        )}
+
+        {collectionConnection === 'offline' && (
+          <div className="connection-banner" role="alert">
+            <span>⚠ {t('connection.collectionUnavailable')}</span>
+            <button type="button" className="btn-secondary connection-banner-btn" onClick={loadData}>
+              {t('connection.retry')}
+            </button>
+          </div>
+        )}
+
+        {collectionConnection === 'loading' && (
+          <div className="connection-banner connection-banner-loading" role="status">
+            <span>{t('connection.loadingCollection')}</span>
+          </div>
+        )}
 
         </div>
       </div>
@@ -952,8 +1062,18 @@ export default function App() {
           item={editingItem}
           categories={categories.length ? categories : ['Sonstiges']}
           categoryFields={categoryFields}
+          businessMode={isBusiness}
           onSave={handleSave}
           onClose={() => { setShowForm(false); setEditingItem(null); }}
+          positionLabel={editingItem ? `${items.findIndex((candidate) => candidate.id === editingItem.id) + 1} / ${items.length}` : null}
+          onPrevious={editingItem && items.length > 1 ? () => {
+            const index = items.findIndex((candidate) => candidate.id === editingItem.id);
+            setEditingItem(items[(index - 1 + items.length) % items.length]);
+          } : null}
+          onNext={editingItem && items.length > 1 ? () => {
+            const index = items.findIndex((candidate) => candidate.id === editingItem.id);
+            setEditingItem(items[(index + 1) % items.length]);
+          } : null}
         />
       )}
 
@@ -1064,34 +1184,16 @@ export default function App() {
           onClose={() => handleCloseChat(chat.conversationId)}
           onBlock={chat.peerId ? () => handleBlockUser(chat.peerId) : null}
           defaultPosition={{ x: window.innerWidth - 340 - index * 26, y: window.innerHeight - 440 - index * 26 }}
+          docked={chat.conversationId === 'global' && showForumHub}
         />
       ))}
-
-      {showFriendsPanel && !isGuest && (
-        <DraggablePanel
-          id="friends"
-          title={`👥 ${t('friends.title')}`}
-          defaultPosition={{ x: window.innerWidth - 320, y: 90 }}
-          onClose={() => setShowFriendsPanel(false)}
-        >
-          <FriendsPanel
-            friends={friendsData.friends}
-            incoming={friendsData.incoming}
-            isGuest={isGuest}
-            onOpenChat={handleOpenChat}
-            onSendRequest={handleSendFriendRequest}
-            onAccept={handleAcceptFriendRequest}
-            onDecline={handleDeclineFriendRequest}
-            onBlock={handleBlockUser}
-          />
-        </DraggablePanel>
-      )}
 
       {showWishlist && <WishlistModal onClose={() => setShowWishlist(false)} />}
 
       {showSmartImport && (
         <SmartImportModal
           existingItems={items}
+          categories={categories}
           catalog={communityCatalog}
           onImported={loadData}
           onClose={() => setShowSmartImport(false)}
@@ -1107,7 +1209,26 @@ export default function App() {
       )}
 
       {showForumHub && (
-        <ForumHubModal user={user} myLevel={computeCollectorLevel(items, categories)} onClose={() => setShowForumHub(false)} />
+        <ForumHubModal
+          user={user}
+          myLevel={computeCollectorLevel(items, categories)}
+          onOpenAllChat={handleOpenAllChat}
+          onClose={() => setShowForumHub(false)}
+        />
+      )}
+
+      {showMarket && (
+        <MarketModal
+          user={user}
+          isGuest={isGuest}
+          items={items}
+          currencyFmt={currencyFmt}
+          onContacted={(conversationId, sellerName) => {
+            openChatByConversation(conversationId, { title: sellerName, initials: initialsOf(sellerName), isGroup: false });
+            setShowMarket(false);
+          }}
+          onClose={() => setShowMarket(false)}
+        />
       )}
 
       {toast && (
@@ -1117,6 +1238,24 @@ export default function App() {
           onClick={toast.onClick}
           onDismiss={() => setToast(null)}
         />
+      )}
+
+      {selectedItem && !showForm && (
+        <ItemDetailModal
+          item={selectedItem}
+          categoryCaseDesign={categoryCaseDesigns[selectedItem.category] || ''}
+          onSaveFrame={handleSaveItemFrame}
+          onEdit={handleDetailEdit}
+          onClose={() => setSelectedItem(null)}
+        />
+      )}
+      {user?.role === 'admin' && !showAdmin && (
+        <button type="button" className="admin-launcher" onClick={() => setShowAdmin(true)} title="Admin-Dashboard öffnen">
+          <span>◆</span><strong>Admin</strong>
+        </button>
+      )}
+      {user?.role === 'admin' && showAdmin && (
+        <AdminDashboard currentUser={user} onClose={() => setShowAdmin(false)} onCatalogChanged={loadData} />
       )}
       </div>
     </>

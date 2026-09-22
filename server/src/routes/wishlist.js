@@ -2,6 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const { getMysqlPool } = require('../config/db-mysql');
 const { requireAuth } = require('../middleware/auth');
+const { publicImageUrl } = require('../utils/imageStorage');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -9,12 +10,12 @@ router.use(requireAuth);
 const PRIORITIES = ['low', 'medium', 'high'];
 const VISIBILITIES = ['private', 'friends'];
 
-function mapWishlistItem(row) {
+function mapWishlistItem(row, req) {
   return {
     id: row.id,
     catalogItemId: row.catalog_item_id,
     catalogName: row.catalog_name || null,
-    catalogImage: row.catalog_image || null,
+    catalogImage: publicImageUrl(row.catalog_image || null, req),
     privateName: row.private_name || '',
     desiredCondition: row.desired_condition || '',
     maxPrice: row.max_price,
@@ -26,7 +27,7 @@ function mapWishlistItem(row) {
 }
 
 const SELECT = `
-  SELECT wi.*, ce.name AS catalog_name, ce.image_data AS catalog_image
+  SELECT wi.*, ce.name AS catalog_name, ce.image_path AS catalog_image
   FROM wishlist_items wi
   LEFT JOIN catalog_entries ce ON ce.id = wi.catalog_item_id
   WHERE wi.owner_id = ?
@@ -36,7 +37,7 @@ const SELECT = `
 router.get('/', async (req, res, next) => {
   try {
     const [rows] = await getMysqlPool().query(SELECT, [req.user.id]);
-    res.json(rows.map(mapWishlistItem));
+    res.json(rows.map((row) => mapWishlistItem(row, req)));
   } catch (err) {
     next(err);
   }
@@ -63,7 +64,7 @@ router.post('/', async (req, res, next) => {
     );
 
     const [rows] = await pool.query(SELECT, [req.user.id]);
-    res.json(rows.map(mapWishlistItem));
+    res.json(rows.map((row) => mapWishlistItem(row, req)));
   } catch (err) {
     next(err);
   }
@@ -94,7 +95,7 @@ router.put('/:id', async (req, res, next) => {
     );
 
     const [rows] = await pool.query(SELECT, [req.user.id]);
-    res.json(rows.map(mapWishlistItem));
+    res.json(rows.map((row) => mapWishlistItem(row, req)));
   } catch (err) {
     next(err);
   }
@@ -105,7 +106,7 @@ router.delete('/:id', async (req, res, next) => {
     const pool = getMysqlPool();
     await pool.query('DELETE FROM wishlist_items WHERE id = ? AND owner_id = ?', [req.params.id, req.user.id]);
     const [rows] = await pool.query(SELECT, [req.user.id]);
-    res.json(rows.map(mapWishlistItem));
+    res.json(rows.map((row) => mapWishlistItem(row, req)));
   } catch (err) {
     next(err);
   }

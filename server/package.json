@@ -8,6 +8,7 @@
     "start": "node server.js",
     "dev": "nodemon server.js",
     "db:migrate": "node scripts/migrate.js",
+    "db:migrate-images": "node scripts/migrate-images-to-files.js",
     "db:check": "node scripts/check-connection.js",
     "test:phase3": "node -r dotenv/config scripts/smoke-test-phase3.js",
     "test:forum": "node scripts/smoke-test-forum.js",
@@ -18,9 +19,11 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "express-rate-limit": "^8.1.0",
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
     "mysql2": "^3.11.0",
+    "nodemailer": "^10.0.10",
     "socket.io": "^4.7.5"
   },
   "devDependencies": {

@@ -12,6 +12,7 @@ const emptyItem = {
   purchasePrice: '',
   notes: '',
   imagePath: null,
+  caseDesign: '',
   showcase: false,
   ownershipStatus: 'keep',
   story: { place: '', date: '', isGift: false, isFirstPiece: false, text: '' },
@@ -19,15 +20,25 @@ const emptyItem = {
   catalogInfo: { brand: '', releaseYear: '', ean: '', isbn: '', manufacturerNumber: '' }
 };
 
-const conditionValues = ['mint', 'nearMint', 'excellent', 'good', 'played', 'poor'];
+const SHIPPING_OPTIONS = ['pickup', 'shipping', 'both'];
+
+const conditionValues = ['sealed', 'mint', 'nearMint', 'excellent', 'veryGood', 'good', 'incomplete', 'played', 'poor', 'damaged'];
 const ownershipStatusValues = ['keep', 'duplicate', 'tradable', 'for_sale', 'looking_for'];
 
-export default function ItemForm({ item, categories, categoryFields, onSave, onClose }) {
+export default function ItemForm({ item, categories, categoryFields, onSave, onClose, onPrevious, onNext, positionLabel, businessMode = false }) {
   const { t } = useI18n();
   const [form, setForm] = useState(emptyItem);
   const [imgPreview, setImgPreview] = useState(null);
   const [newCategory, setNewCategory] = useState('');
   const [showNewCategory, setShowNewCategory] = useState(false);
+  // Publishing to the CommunityMarkt is always this item's own separate,
+  // deliberate choice — never implied by account tariff. businessMode may
+  // pre-select it as a convenience for dealers, but never forces it (a
+  // draft, an already-sold piece, or private stock must stay unlisted).
+  const [publishTarget, setPublishTarget] = useState(businessMode ? 'market' : 'private');
+  const [marketFields, setMarketFields] = useState({
+    price: '', priceOnRequest: false, shippingOption: 'both', shippingCost: '', location: '', description: ''
+  });
 
   useEffect(() => {
     if (item) {
@@ -67,14 +78,22 @@ export default function ItemForm({ item, categories, categoryFields, onSave, onC
     e.preventDefault();
     if (!form.name.trim()) return;
     const finalCategory = showNewCategory && newCategory.trim() ? newCategory.trim() : form.category;
-    onSave({ ...form, category: finalCategory || categories[0] || 'Sonstiges' });
+    const marketOptions = publishTarget === 'market' ? {
+      price: marketFields.priceOnRequest ? null : (marketFields.price || null),
+      priceOnRequest: marketFields.priceOnRequest,
+      shippingOption: marketFields.shippingOption,
+      shippingCost: marketFields.shippingCost || null,
+      location: marketFields.location,
+      description: marketFields.description
+    } : null;
+    onSave({ ...form, category: finalCategory || categories[0] || 'Sonstiges' }, marketOptions);
   };
 
   const activeCategoryFields = (categoryFields && categoryFields[form.category]) || [];
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal modal-xwide" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay">
+      <div className="modal modal-xwide item-form-modal">
         <h2>{item ? t('form.titleEdit') : t('form.titleNew')}</h2>
         <form onSubmit={handleSubmit} className="form">
           <div className="item-form-columns">
@@ -310,21 +329,71 @@ export default function ItemForm({ item, categories, categoryFields, onSave, onC
                 </label>
               </fieldset>
 
-              <label>
-                {t('form.notes')}
-                <textarea
-                  rows="2"
-                  value={form.notes}
-                  onChange={(e) => update('notes', e.target.value)}
-                  placeholder={t('form.notesPlaceholder')}
-                />
-              </label>
+              <fieldset className="form-fieldset market-publish-fieldset">
+                <legend>🛍️ {t('form.marketTitle')}</legend>
+                <div className="market-publish-choice">
+                  <label className="checkbox-row">
+                    <input type="radio" name="publishTarget" checked={publishTarget === 'private'} onChange={() => setPublishTarget('private')} />
+                    {t('form.marketPrivateOnly')}
+                  </label>
+                  <label className="checkbox-row">
+                    <input type="radio" name="publishTarget" checked={publishTarget === 'market'} onChange={() => setPublishTarget('market')} />
+                    {t('form.marketOffer')}
+                  </label>
+                </div>
+
+                {publishTarget === 'market' && (
+                  <>
+                    <div className="field-hint">{t('form.marketHint')}</div>
+                    <div className="form-grid">
+                      <label>
+                        {t('form.value')}
+                        <input
+                          type="number" min="0" step="0.01" disabled={marketFields.priceOnRequest}
+                          value={marketFields.price}
+                          onChange={(e) => setMarketFields((f) => ({ ...f, price: e.target.value }))}
+                        />
+                      </label>
+                      <label>
+                        {t('market.shippingOption')}
+                        <select value={marketFields.shippingOption} onChange={(e) => setMarketFields((f) => ({ ...f, shippingOption: e.target.value }))}>
+                          {SHIPPING_OPTIONS.map((o) => <option key={o} value={o}>{t(`market.shipping.${o}`)}</option>)}
+                        </select>
+                      </label>
+                      <label>
+                        {t('market.shippingCostLabel')}
+                        <input type="number" min="0" step="0.01" value={marketFields.shippingCost} onChange={(e) => setMarketFields((f) => ({ ...f, shippingCost: e.target.value }))} />
+                      </label>
+                      <label>
+                        {t('market.locationPlaceholder')}
+                        <input type="text" value={marketFields.location} onChange={(e) => setMarketFields((f) => ({ ...f, location: e.target.value }))} />
+                      </label>
+                    </div>
+                    <label className="checkbox-row">
+                      <input type="checkbox" checked={marketFields.priceOnRequest} onChange={(e) => setMarketFields((f) => ({ ...f, priceOnRequest: e.target.checked }))} />
+                      {t('market.priceOnRequestLabel')}
+                    </label>
+                    <label>
+                      {t('market.description')}
+                      <textarea rows="2" value={marketFields.description} onChange={(e) => setMarketFields((f) => ({ ...f, description: e.target.value }))} placeholder={t('form.marketDescriptionPlaceholder')} />
+                    </label>
+                  </>
+                )}
+              </fieldset>
+
             </div>
           </div>
 
-          <div className="modal-actions">
+          <div className="modal-actions item-form-actions">
+            {item && (
+              <div className="item-edit-navigation">
+                <button type="button" className="btn-secondary" onClick={onPrevious} disabled={!onPrevious}>← {t('form.previousItem')}</button>
+                {positionLabel && <span>{positionLabel}</span>}
+                <button type="button" className="btn-secondary" onClick={onNext} disabled={!onNext}>{t('form.nextItem')} →</button>
+              </div>
+            )}
             <button type="button" className="btn-secondary" onClick={onClose}>{t('form.cancel')}</button>
-            <button type="submit" className="btn-primary">{t('form.save')}</button>
+            <button type="submit" className="btn-primary">{item ? t('form.save') : t('form.add')}</button>
           </div>
         </form>
       </div>

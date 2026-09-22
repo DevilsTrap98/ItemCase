@@ -5,8 +5,11 @@ import CatalogPhotoModal from './CatalogPhotoModal.jsx';
 import ReportModal from './ReportModal.jsx';
 import { SUGGESTED_CATEGORIES } from './category-defaults.js';
 import TitleBar from './TitleBar.jsx';
+import UiIcon from './UiIcon.jsx';
+import LogoPlaceholder from './LogoPlaceholder.jsx';
 
 const ALL_CAT = '__all__';
+const CONDITION_ORDER = ['sealed', 'mint', 'nearMint', 'excellent', 'veryGood', 'good', 'incomplete', 'played', 'poor', 'damaged'];
 
 const emptySubmission = {
   name: '',
@@ -17,34 +20,44 @@ const emptySubmission = {
   isbn: '',
   manufacturerNumber: '',
   imagePath: null,
-  marketValue: ''
+  marketValue: '',
+  conditionValues: {}
 };
 
-function CatalogCard({ entry, onAdopt, adopted, onOpenPhotoForm, photoSubmitted, onOpenReport, t }) {
+function CatalogDetailImage({ entry }) {
+  const src = useImagePath(entry.imagePath);
+  return (
+    <div className="catalog-detail-image">
+      {src ? <img src={src} alt={entry.name} /> : <LogoPlaceholder />}
+    </div>
+  );
+}
+
+function CatalogCard({ entry, onAdopt, adopted, onOpenPhotoForm, photoSubmitted, onOpenReport, onOpenDetails, t }) {
   const imgSrc = useImagePath(entry.imagePath);
 
   return (
-    <div className="card catalog-card">
-      <div className="card-image">
-        {imgSrc ? <img src={imgSrc} alt={entry.name} /> : <div className="card-image-placeholder">📦</div>}
+    <article className="catalog-card" role="button" tabIndex="0" onClick={() => onOpenDetails(entry)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onOpenDetails(entry); }}>
+      <div className="catalog-card-image">
+        {imgSrc ? <img src={imgSrc} alt={entry.name} /> : <div className="catalog-card-placeholder"><LogoPlaceholder /></div>}
+        <div className="catalog-card-shade" />
+        {entry.category && <span className="catalog-card-category">{entry.category}</span>}
+        <button type="button" className="catalog-card-report" title={t('report.action')} onClick={(e) => { e.stopPropagation(); onOpenReport(entry); }}><UiIcon name="flag" size={15} /></button>
       </div>
-      <div className="card-body">
-        <div className="card-title" title={entry.name}>{entry.name}</div>
-        <div className="card-meta">
-          {entry.brand && <span className="chip chip-outline">{entry.brand}</span>}
-          {entry.category && <span className="chip chip-outline">{entry.category}</span>}
-          {entry.releaseYear && <span className="chip chip-outline">{entry.releaseYear}</span>}
+      <div className="catalog-card-body">
+        <div className="catalog-card-title" title={entry.name}>{entry.name}</div>
+        <div className="catalog-card-meta">
+          {entry.brand && <span>{entry.brand}</span>}
+          {entry.releaseYear && <span>{entry.releaseYear}</span>}
         </div>
-        {entry.marketValue && (
-          <div className="catalog-market-value">{t('catalog.marketValueLabel')}: {entry.marketValue} €</div>
-        )}
-        {entry.contributor && (
-          <div className="card-notes">{t('catalog.submittedBy', { name: entry.contributor })}</div>
-        )}
+        <div className="catalog-card-info">
+          {entry.marketValue ? <div><small>{t('catalog.marketValueLabel')}</small><strong>{Number(entry.marketValue).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}</strong></div> : <span />}
+          {entry.contributor && <small className="catalog-card-contributor">{t('catalog.submittedBy', { name: entry.contributor })}</small>}
+        </div>
 
         {!entry.imagePath && !photoSubmitted && (
-          <button type="button" className="link-btn catalog-add-photo-link" onClick={() => onOpenPhotoForm(entry)}>
-            📷 {t('catalog.addPhoto')}
+          <button type="button" className="link-btn catalog-add-photo-link" onClick={(e) => { e.stopPropagation(); onOpenPhotoForm(entry); }}>
+            <UiIcon name="camera" size={14} /> {t('catalog.addPhoto')}
           </button>
         )}
 
@@ -57,17 +70,13 @@ function CatalogCard({ entry, onAdopt, adopted, onOpenPhotoForm, photoSubmitted,
             type="button"
             className="btn-primary catalog-adopt-btn"
             disabled={adopted}
-            onClick={() => onAdopt(entry)}
+            onClick={(e) => { e.stopPropagation(); onAdopt(entry); }}
           >
-            {adopted ? t('catalog.adopted') : t('catalog.adopt')}
+            {!adopted && <UiIcon name="plus" size={16} />}{adopted ? t('catalog.adopted') : t('catalog.adopt').replace(/^\+\s*/, '')}
           </button>
         </div>
-
-        <button type="button" className="link-btn catalog-report-link" onClick={() => onOpenReport(entry)}>
-          🚩 {t('report.action')}
-        </button>
       </div>
-    </div>
+    </article>
   );
 }
 
@@ -80,7 +89,6 @@ export default function CommunityCatalogModal({ catalog, catalogCategories, item
   const [form, setForm] = useState(emptySubmission);
   const [imgPreview, setImgPreview] = useState(null);
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
-  const [imageRightsConfirmed, setImageRightsConfirmed] = useState(false);
   const [error, setError] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [showCategoryForm, setShowCategoryForm] = useState(false);
@@ -90,6 +98,7 @@ export default function CommunityCatalogModal({ catalog, catalogCategories, item
   const [photoSubmittedIds, setPhotoSubmittedIds] = useState([]);
   const [selectedItemId, setSelectedItemId] = useState('');
   const [reportEntry, setReportEntry] = useState(null);
+  const [detailEntry, setDetailEntry] = useState(null);
 
   const update = (field, val) => setForm((f) => ({ ...f, [field]: val }));
 
@@ -117,7 +126,9 @@ export default function CommunityCatalogModal({ catalog, catalogCategories, item
       ean: info.ean || '',
       isbn: info.isbn || '',
       manufacturerNumber: info.manufacturerNumber || '',
-      imagePath: item.imagePath || null
+      imagePath: item.imagePath || null,
+      marketValue: item.value || '',
+      conditionValues: item.value ? { [item.condition || 'nearMint']: item.value } : {}
     });
     if (item.imagePath) {
       const dataUrl = await window.api.getImagePath(item.imagePath);
@@ -125,7 +136,6 @@ export default function CommunityCatalogModal({ catalog, catalogCategories, item
     } else {
       setImgPreview(null);
     }
-    setImageRightsConfirmed(false);
   };
 
   const filterCategories = useMemo(() => {
@@ -173,7 +183,6 @@ export default function CommunityCatalogModal({ catalog, catalogCategories, item
       update('imagePath', fileName);
       const dataUrl = await window.api.getImagePath(fileName);
       setImgPreview(dataUrl);
-      setImageRightsConfirmed(false);
     }
   };
 
@@ -182,10 +191,6 @@ export default function CommunityCatalogModal({ catalog, catalogCategories, item
     if (!form.name.trim()) return;
     if (!rightsConfirmed) {
       setError(t('catalog.rightsRequired'));
-      return;
-    }
-    if (form.imagePath && !imageRightsConfirmed) {
-      setError(t('catalog.imageRightsRequired'));
       return;
     }
     setError('');
@@ -198,7 +203,6 @@ export default function CommunityCatalogModal({ catalog, catalogCategories, item
     setForm(emptySubmission);
     setImgPreview(null);
     setRightsConfirmed(false);
-    setImageRightsConfirmed(false);
     setSelectedItemId('');
     setSubmitted(true);
   };
@@ -209,10 +213,15 @@ export default function CommunityCatalogModal({ catalog, catalogCategories, item
       <div className="modal catalog-modal catalog-modal-fullscreen" onClick={(e) => e.stopPropagation()}>
         <TitleBar />
         <div className="catalog-modal-header">
-          <div>
-            <h2 className="catalog-modal-title">📚 {t('catalog.title')}</h2>
+          <div className="catalog-title-block">
+            <span className="catalog-title-icon"><UiIcon name="book" size={24} /></span>
+            <div>
+            <span className="catalog-eyebrow"><UiIcon name="sparkles" size={13} /> {t('catalog.communityEyebrow')}</span>
+            <h2 className="catalog-modal-title">{t('catalog.title')}</h2>
             <p className="field-hint catalog-header-hint">{t('catalog.localNotice')}</p>
+            </div>
           </div>
+          <span className="catalog-total-count">{catalog.length} {t('catalog.entries')}</span>
           <button type="button" className="icon-btn catalog-close-btn" onClick={onClose} title={t('catalog.close')}>✕</button>
         </div>
 
@@ -237,6 +246,8 @@ export default function CommunityCatalogModal({ catalog, catalogCategories, item
           {tab === 'browse' && (
             <>
               <div className="catalog-filter-bar">
+                <label className="catalog-search-wrap">
+                <UiIcon name="search" size={19} />
                 <input
                   type="text"
                   className="search-input catalog-search"
@@ -244,6 +255,7 @@ export default function CommunityCatalogModal({ catalog, catalogCategories, item
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
+                </label>
                 <div className="catalog-category-filter">
                   <div className={categoriesExpanded ? 'catalog-category-chips expanded' : 'catalog-category-chips'}>
                     <button
@@ -308,6 +320,11 @@ export default function CommunityCatalogModal({ catalog, catalogCategories, item
                   <p>{t('catalog.empty')}</p>
                 </div>
               ) : (
+                <>
+                <div className="catalog-results-head">
+                  <div><span>{activeCat === ALL_CAT ? t('catalog.allDiscoveries') : activeCat}</span><strong>{filtered.length} {t('catalog.entries')}</strong></div>
+                  <span>{t('catalog.openHint')}</span>
+                </div>
                 <div className="grid catalog-grid">
                   {filtered.map((entry) => (
                     <CatalogCard
@@ -318,10 +335,12 @@ export default function CommunityCatalogModal({ catalog, catalogCategories, item
                       onOpenPhotoForm={setPhotoContributeEntry}
                       photoSubmitted={photoSubmittedIds.includes(entry.id)}
                       onOpenReport={setReportEntry}
+                      onOpenDetails={setDetailEntry}
                       t={t}
                     />
                   ))}
                 </div>
+                </>
               )}
             </>
           )}
@@ -400,7 +419,19 @@ export default function CommunityCatalogModal({ catalog, catalogCategories, item
                     <input type="number" min="0" step="0.01" value={form.marketValue} onChange={(e) => update('marketValue', e.target.value)} />
                   </label>
                 </div>
-                <p className="field-hint">{t('catalog.marketValueHint')}</p>
+                <p className="field-hint catalog-market-hint">{t('catalog.marketValueHint')}</p>
+                <div className="catalog-condition-editor">
+                  <h4>{t('catalog.conditionValues')}</h4>
+                  <p className="field-hint">{t('catalog.conditionValuesHint')}</p>
+                  <div className="catalog-condition-inputs">
+                    {CONDITION_ORDER.map((condition) => (
+                      <label key={condition}>
+                        {t(`condition.${condition}`)}
+                        <input type="number" min="0" step="0.01" value={form.conditionValues?.[condition] || ''} onChange={(e) => update('conditionValues', { ...form.conditionValues, [condition]: e.target.value })} placeholder="–" />
+                      </label>
+                    ))}
+                  </div>
+                </div>
               </fieldset>
 
               <div className="catalog-rights-box">
@@ -415,19 +446,6 @@ export default function CommunityCatalogModal({ catalog, catalogCategories, item
                 </label>
               </div>
 
-              {form.imagePath && (
-                <div className="catalog-rights-box">
-                  <span className="catalog-rights-icon">📷</span>
-                  <label className="checkbox-row catalog-rights-label">
-                    <input
-                      type="checkbox"
-                      checked={imageRightsConfirmed}
-                      onChange={(e) => { setImageRightsConfirmed(e.target.checked); setError(''); }}
-                    />
-                    {t('catalog.imageRightsConfirm')}
-                  </label>
-                </div>
-              )}
               {error && <p className="field-hint catalog-error">{error}</p>}
 
               <div className="modal-actions">
@@ -455,6 +473,32 @@ export default function CommunityCatalogModal({ catalog, catalogCategories, item
         onSubmit={handleReportSubmit}
         onClose={() => setReportEntry(null)}
       />
+    )}
+    {detailEntry && (
+      <div className="modal-overlay catalog-detail-overlay" onClick={() => setDetailEntry(null)}>
+        <div className="modal catalog-detail-modal" onClick={(e) => e.stopPropagation()}>
+          <button type="button" className="icon-btn catalog-detail-close" onClick={() => setDetailEntry(null)}>✕</button>
+          <div className="catalog-detail-layout">
+            <CatalogDetailImage entry={detailEntry} />
+            <div className="catalog-detail-content">
+              <span className="catalog-detail-eyebrow">{detailEntry.category || t('catalog.title')}</span>
+              <h2>{detailEntry.name}</h2>
+              <p>{[detailEntry.brand, detailEntry.releaseYear].filter(Boolean).join(' · ')}</p>
+              <h3>{t('catalog.variantsAndValues')}</h3>
+              <div className="catalog-variant-list">
+                {CONDITION_ORDER.filter((condition) => Number(detailEntry.conditionValues?.[condition]) > 0).map((condition) => (
+                  <div key={condition}><span>{t(`condition.${condition}`)}</span><strong>{Number(detailEntry.conditionValues[condition]).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}</strong></div>
+                ))}
+                {!CONDITION_ORDER.some((condition) => Number(detailEntry.conditionValues?.[condition]) > 0) && detailEntry.marketValue && (
+                  <div><span>{t('catalog.marketValueLabel')}</span><strong>{Number(detailEntry.marketValue).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}</strong></div>
+                )}
+                {!CONDITION_ORDER.some((condition) => Number(detailEntry.conditionValues?.[condition]) > 0) && !detailEntry.marketValue && <div className="admin-empty">{t('catalog.noVariantValues')}</div>}
+              </div>
+              <button type="button" className="btn-primary" disabled={adoptedIds.includes(detailEntry.id)} onClick={() => handleAdopt(detailEntry)}>{adoptedIds.includes(detailEntry.id) ? t('catalog.adopted') : t('catalog.adopt')}</button>
+            </div>
+          </div>
+        </div>
+      </div>
     )}
     </>
   );

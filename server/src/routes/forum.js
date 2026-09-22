@@ -4,20 +4,26 @@ const { getMysqlPool } = require('../config/db-mysql');
 const { requireAuth } = require('../middleware/auth');
 const { filterText } = require('../utils/wordFilter');
 const { isOnline } = require('../realtime');
+const { storeDataUrl, removeStoredImage, publicImageUrl } = require('../utils/imageStorage');
 
 const router = express.Router();
 router.use(requireAuth);
 
 const CATEGORIES = [
-  'show_tell', 'help_id', 'trading_cards', 'retro_games', 'lego', 'figures',
-  'comics', 'vinyl', 'coins', 'market_value', 'feedback'
+  'show_tell', 'help_id', 'market_value', 'trading_cards', 'sports_cards', 'coins',
+  'banknotes', 'stamps', 'medals', 'building_blocks', 'model_building', 'model_vehicles',
+  'model_railways', 'figures', 'dolls', 'plush', 'toys', 'board_games', 'comics',
+  'manga', 'books', 'magazines', 'vinyl', 'music_media', 'films', 'video_games',
+  'retro_tech', 'cameras', 'watches', 'jewelry', 'minerals', 'fossils', 'militaria',
+  'art', 'antiques', 'postcards', 'autographs', 'sports_memorabilia', 'pins',
+  'sneakers', 'fashion', 'bottles', 'advertising', 'other', 'feedback'
 ];
 
 // Feed cards show the thread's first post inline (title + body + image +
 // like/comment counts) — "comments" are every reply after that first post.
 const FEED_SELECT = `
   SELECT t.id, t.author_id, u.name AS author_name, u.level AS author_level,
-         t.title, t.category, t.image_data, t.status, t.created_at,
+         t.title, t.category, t.image_path, t.status, t.created_at,
          fp.id AS first_post_id, fp.body AS body,
          (SELECT COUNT(*) FROM forum_posts p WHERE p.thread_id = t.id) - 1 AS comment_count,
          (SELECT COUNT(*) FROM forum_post_likes l WHERE l.post_id = fp.id) AS like_count,
@@ -27,10 +33,10 @@ const FEED_SELECT = `
   JOIN forum_posts fp ON fp.id = (SELECT id FROM forum_posts WHERE thread_id = t.id ORDER BY seq ASC LIMIT 1)
 `;
 
-function mapFeedItem(row) {
+function mapFeedItem(row, req) {
   return {
     id: row.id, authorId: row.author_id, authorName: row.author_name, authorLevel: row.author_level,
-    title: row.title, category: row.category, imageData: row.image_data, status: row.status, createdAt: row.created_at,
+    title: row.title, category: row.category, imageData: publicImageUrl(row.image_path, req), status: row.status, createdAt: row.created_at,
     firstPostId: row.first_post_id, body: row.body,
     commentCount: row.comment_count, likeCount: row.like_count, likedByMe: !!row.liked_by_me
   };
@@ -61,7 +67,7 @@ router.get('/threads', async (req, res, next) => {
       `${FEED_SELECT} ${category ? 'WHERE t.category = ?' : ''} ORDER BY t.created_at DESC`,
       category ? [req.user.id, category] : [req.user.id]
     );
-    res.json(rows.map(mapFeedItem));
+    res.json(rows.map((row) => mapFeedItem(row, req)));
   } catch (err) {
     next(err);
   }
@@ -82,14 +88,26 @@ router.post('/threads', async (req, res, next) => {
 
     const threadId = crypto.randomUUID();
     const postId = crypto.randomUUID();
-    await pool.query(
-      'INSERT INTO forum_threads (id, author_id, title, category, image_data) VALUES (?, ?, ?, ?, ?)',
-      [threadId, req.user.id, title, category, req.body?.imageData || null]
-    );
-    await pool.query(
-      'INSERT INTO forum_posts (id, thread_id, author_id, body, filtered) VALUES (?, ?, ?, ?, ?)',
-      [postId, threadId, req.user.id, text, masked ? 1 : 0]
-    );
+    const imagePath = await storeDataUrl(req.body?.imageData, 'forum', req.user.id, threadId);
+    const connection = await pool.getConnection();
+    try {
+      await connection.beginTransaction();
+      await connection.query(
+        'INSERT INTO forum_threads (id, author_id, title, category, image_path) VALUES (?, ?, ?, ?, ?)',
+        [threadId, req.user.id, title, category, imagePath]
+      );
+      await connection.query(
+        'INSERT INTO forum_posts (id, thread_id, author_id, body, filtered) VALUES (?, ?, ?, ?, ?)',
+        [postId, threadId, req.user.id, text, masked ? 1 : 0]
+      );
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      await removeStoredImage(imagePath);
+      throw error;
+    } finally {
+      connection.release();
+    }
     res.status(201).json({ id: threadId });
   } catch (err) {
     next(err);
@@ -117,7 +135,7 @@ router.get('/threads/:threadId', async (req, res, next) => {
     const t = threadRows[0];
     res.json({
       id: t.id, authorId: t.author_id, authorName: t.author_name, authorLevel: t.author_level,
-      title: t.title, category: t.category, imageData: t.image_data, status: t.status, createdAt: t.created_at,
+      title: t.title, category: t.category, imageData: publicImageUrl(t.image_path, req), status: t.status, createdAt: t.created_at,
       posts: posts.map(mapPost)
     });
   } catch (err) {
@@ -184,6 +202,7 @@ router.delete('/threads/:threadId', async (req, res, next) => {
     const pool = getMysqlPool();
     await assertThreadAuthor(pool, req.params.threadId, req.user.id);
     await pool.query('DELETE FROM forum_threads WHERE id = ?', [req.params.threadId]);
+    await removeStoredImage(thread.image_path);
     res.status(204).end();
   } catch (err) {
     next(err);

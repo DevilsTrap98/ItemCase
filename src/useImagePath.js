@@ -5,9 +5,8 @@ export default function useImagePath(fileName) {
 
   useEffect(() => {
     let cancelled = false;
-    if (fileName && fileName.startsWith('data:')) {
-      // Already a resolved data URL (e.g. images coming from the community
-      // catalog server), no local file lookup needed.
+    if (fileName && (fileName.startsWith('data:') || /^https?:\/\//i.test(fileName))) {
+      // Already resolved by the server; no local file lookup needed.
       setSrc(fileName);
     } else if (fileName) {
       window.api.getImagePath(fileName).then((dataUrl) => {

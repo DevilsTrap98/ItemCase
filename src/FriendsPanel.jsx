@@ -23,7 +23,7 @@ export default function FriendsPanel({ friends, incoming, isGuest, onOpenChat, o
       setStatus({ type: 'ok', text: t('friends.requestSent') });
       setUsername('');
     } else {
-      setStatus({ type: 'error', text: result?.notFound ? t('friends.requestErrorNotFound') : t('friends.requestErrorGeneric') });
+      setStatus({ type: 'error', text: result?.error || (result?.notFound ? t('friends.requestErrorNotFound') : t('friends.requestErrorGeneric')) });
     }
   };
 
@@ -87,7 +87,7 @@ export default function FriendsPanel({ friends, incoming, isGuest, onOpenChat, o
                 <button type="submit" className="btn-primary" disabled={sending}>{t('friends.addFriendSubmit')}</button>
               </form>
               {status && (
-                <p className={status.type === 'error' ? 'field-hint catalog-error' : 'field-hint catalog-success'}>{status.text}</p>
+                <p role="status" className={status.type === 'error' ? 'friends-form-status is-error' : 'friends-form-status is-success'}>{status.text}</p>
               )}
             </div>
           </>

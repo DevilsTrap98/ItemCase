@@ -1,0 +1,9 @@
+{
+  "appId": "com.itemcase.mobile",
+  "appName": "ItemCase",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "http",
+    "cleartext": true
+  }
+}

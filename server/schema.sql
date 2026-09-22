@@ -10,6 +10,14 @@ CREATE TABLE IF NOT EXISTS users (
   -- Public handle used to find people for friend requests, so nobody has
   -- to share their email. Login stays email-based.
   username VARCHAR(32) NOT NULL,
+  token_version INT NOT NULL DEFAULT 0,
+  role ENUM('user', 'admin') NOT NULL DEFAULT 'user',
+  account_status ENUM('active', 'suspended') NOT NULL DEFAULT 'active',
+  tariff ENUM('free', 'collectorPlus', 'collectorPro', 'business') NOT NULL DEFAULT 'free',
+  email_verified_at DATETIME NULL,
+  email_verification_token_hash CHAR(64) NULL,
+  email_verification_expires_at DATETIME NULL,
+  email_verification_sent_at DATETIME NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY uniq_users_email (email),
   UNIQUE KEY uniq_users_username (username)
@@ -27,6 +35,18 @@ ALTER TABLE users ADD UNIQUE KEY uniq_users_username (username);
 -- (see src/CollectorLevel.jsx) — the client recomputes it locally and
 -- reports only the current value whenever it posts to the forum.
 ALTER TABLE users ADD COLUMN level INT NOT NULL DEFAULT 1;
+ALTER TABLE users ADD COLUMN token_version INT NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN role ENUM('user', 'admin') NOT NULL DEFAULT 'user';
+ALTER TABLE users ADD COLUMN account_status ENUM('active', 'suspended') NOT NULL DEFAULT 'active';
+ALTER TABLE users ADD COLUMN tariff ENUM('free', 'collectorPlus', 'collectorPro', 'business') NOT NULL DEFAULT 'free';
+ALTER TABLE users ADD COLUMN email_verified_at DATETIME NULL;
+ALTER TABLE users ADD COLUMN email_verification_token_hash CHAR(64) NULL;
+ALTER TABLE users ADD COLUMN email_verification_expires_at DATETIME NULL;
+ALTER TABLE users ADD COLUMN email_verification_sent_at DATETIME NULL;
+ALTER TABLE users ADD UNIQUE KEY uniq_users_verification_token (email_verification_token_hash);
+-- Accounts created before e-mail verification was introduced stay valid.
+UPDATE users SET email_verified_at = COALESCE(email_verified_at, created_at, NOW())
+WHERE email_verified_at IS NULL AND email_verification_token_hash IS NULL;
 
 -- Friendship is derived from accepted rows here (queried in either
 -- direction) rather than duplicated into a separate friendships table.
@@ -110,10 +130,15 @@ CREATE TABLE IF NOT EXISTS forum_threads (
   author_id VARCHAR(36) NOT NULL,
   title VARCHAR(255) NOT NULL,
   category ENUM(
-    'show_tell', 'help_id', 'trading_cards', 'retro_games', 'lego', 'figures',
-    'comics', 'vinyl', 'coins', 'market_value', 'feedback'
+    'show_tell', 'help_id', 'market_value', 'trading_cards', 'sports_cards', 'coins',
+    'banknotes', 'stamps', 'medals', 'building_blocks', 'model_building', 'model_vehicles',
+    'model_railways', 'figures', 'dolls', 'plush', 'toys', 'board_games', 'comics',
+    'manga', 'books', 'magazines', 'vinyl', 'music_media', 'films', 'video_games',
+    'retro_tech', 'cameras', 'watches', 'jewelry', 'minerals', 'fossils', 'militaria',
+    'art', 'antiques', 'postcards', 'autographs', 'sports_memorabilia', 'pins',
+    'sneakers', 'fashion', 'bottles', 'advertising', 'other', 'feedback'
   ) NOT NULL DEFAULT 'show_tell',
-  image_data MEDIUMTEXT NULL,
+  image_path VARCHAR(500) NULL,
   status ENUM('open', 'closed') NOT NULL DEFAULT 'open',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_ft_author FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -125,8 +150,25 @@ CREATE TABLE IF NOT EXISTS forum_threads (
 -- naturally idempotent — unlike the DROP+CREATE this replaced, it never
 -- discards existing threads/posts on a re-run).
 ALTER TABLE forum_threads MODIFY COLUMN category ENUM(
-  'show_tell', 'help_id', 'trading_cards', 'retro_games', 'lego', 'figures',
-  'comics', 'vinyl', 'coins', 'market_value', 'feedback'
+  'lego', 'retro_games',
+  'show_tell', 'help_id', 'market_value', 'trading_cards', 'sports_cards', 'coins',
+  'banknotes', 'stamps', 'medals', 'building_blocks', 'model_building', 'model_vehicles',
+  'model_railways', 'figures', 'dolls', 'plush', 'toys', 'board_games', 'comics',
+  'manga', 'books', 'magazines', 'vinyl', 'music_media', 'films', 'video_games',
+  'retro_tech', 'cameras', 'watches', 'jewelry', 'minerals', 'fossils', 'militaria',
+  'art', 'antiques', 'postcards', 'autographs', 'sports_memorabilia', 'pins',
+  'sneakers', 'fashion', 'bottles', 'advertising', 'other', 'feedback'
+) NOT NULL DEFAULT 'show_tell';
+UPDATE forum_threads SET category = 'building_blocks' WHERE category = 'lego';
+UPDATE forum_threads SET category = 'video_games' WHERE category = 'retro_games';
+ALTER TABLE forum_threads MODIFY COLUMN category ENUM(
+  'show_tell', 'help_id', 'market_value', 'trading_cards', 'sports_cards', 'coins',
+  'banknotes', 'stamps', 'medals', 'building_blocks', 'model_building', 'model_vehicles',
+  'model_railways', 'figures', 'dolls', 'plush', 'toys', 'board_games', 'comics',
+  'manga', 'books', 'magazines', 'vinyl', 'music_media', 'films', 'video_games',
+  'retro_tech', 'cameras', 'watches', 'jewelry', 'minerals', 'fossils', 'militaria',
+  'art', 'antiques', 'postcards', 'autographs', 'sports_memorabilia', 'pins',
+  'sneakers', 'fashion', 'bottles', 'advertising', 'other', 'feedback'
 ) NOT NULL DEFAULT 'show_tell';
 
 CREATE TABLE IF NOT EXISTS forum_posts (
@@ -229,7 +271,8 @@ CREATE TABLE IF NOT EXISTS collection_items (
   purchase_price DECIMAL(12,2) NULL,
   value DECIMAL(12,2) NULL,
   notes TEXT NULL,
-  image_data MEDIUMTEXT NULL,
+  image_path VARCHAR(500) NULL,
+  case_design VARCHAR(64) NULL,
   showcase TINYINT(1) NOT NULL DEFAULT 0,
   story_place VARCHAR(255) NULL,
   story_date VARCHAR(64) NULL,
@@ -269,10 +312,10 @@ CREATE TABLE IF NOT EXISTS catalog_entries (
   ean VARCHAR(64) NOT NULL DEFAULT '',
   isbn VARCHAR(64) NOT NULL DEFAULT '',
   manufacturer_number VARCHAR(128) NOT NULL DEFAULT '',
-  -- Data-URL (base64) image, mirroring what the Electron client already
-  -- produces via image:getPath. No separate file storage/CDN yet.
-  image_data MEDIUMTEXT NULL,
+  -- Relative path below UPLOADS_DIR. Image bytes never live in MySQL.
+  image_path VARCHAR(500) NULL,
   market_value DECIMAL(12,2) NULL,
+  condition_values JSON NULL,
   status ENUM('pending', 'approved', 'rejected') NOT NULL DEFAULT 'pending',
   contributor VARCHAR(255) NOT NULL DEFAULT '',
   rights_confirmed TINYINT(1) NOT NULL DEFAULT 0,
@@ -280,10 +323,16 @@ CREATE TABLE IF NOT EXISTS catalog_entries (
   submitted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+ALTER TABLE catalog_entries ADD COLUMN condition_values JSON NULL AFTER market_value;
+ALTER TABLE collection_items ADD COLUMN image_path VARCHAR(500) NULL AFTER notes;
+ALTER TABLE collection_items ADD COLUMN case_design VARCHAR(64) NULL AFTER image_path;
+ALTER TABLE catalog_entries ADD COLUMN image_path VARCHAR(500) NULL AFTER manufacturer_number;
+ALTER TABLE forum_threads ADD COLUMN image_path VARCHAR(500) NULL AFTER category;
+
 CREATE TABLE IF NOT EXISTS catalog_photo_proposals (
   id VARCHAR(36) PRIMARY KEY,
   catalog_item_id VARCHAR(36) NOT NULL,
-  image_data MEDIUMTEXT NULL,
+  image_path VARCHAR(500) NULL,
   contributor VARCHAR(255) NOT NULL DEFAULT '',
   rights_confirmed TINYINT(1) NOT NULL DEFAULT 0,
   license_version VARCHAR(16) NOT NULL DEFAULT '1.0',
@@ -292,6 +341,8 @@ CREATE TABLE IF NOT EXISTS catalog_photo_proposals (
   CONSTRAINT fk_photo_catalog_item FOREIGN KEY (catalog_item_id)
     REFERENCES catalog_entries(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+ALTER TABLE catalog_photo_proposals ADD COLUMN image_path VARCHAR(500) NULL AFTER catalog_item_id;
 
 CREATE TABLE IF NOT EXISTS catalog_categories (
   id INT AUTO_INCREMENT PRIMARY KEY,
@@ -309,6 +360,7 @@ CREATE TABLE IF NOT EXISTS reports (
   reason VARCHAR(64) NOT NULL,
   comment TEXT NULL,
   status ENUM('open', 'reviewed', 'dismissed') NOT NULL DEFAULT 'open',
+  submitted_by_user_id VARCHAR(36) NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -318,8 +370,14 @@ CREATE TABLE IF NOT EXISTS feedback (
   message TEXT NOT NULL,
   app_version VARCHAR(32) NOT NULL DEFAULT '',
   platform VARCHAR(32) NOT NULL DEFAULT '',
+  status ENUM('open', 'reviewed', 'archived') NOT NULL DEFAULT 'open',
+  submitted_by_user_id VARCHAR(36) NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+ALTER TABLE reports ADD COLUMN submitted_by_user_id VARCHAR(36) NULL;
+ALTER TABLE feedback ADD COLUMN status ENUM('open', 'reviewed', 'archived') NOT NULL DEFAULT 'open';
+ALTER TABLE feedback ADD COLUMN submitted_by_user_id VARCHAR(36) NULL;
 
 -- Ownership status per item (Phase 1 of the "Differenzierungsfunktionen"
 -- concept): lets an owner flag an item as a duplicate, tradable, for sale,
@@ -346,6 +404,65 @@ CREATE TABLE IF NOT EXISTS wishlist_items (
   CONSTRAINT fk_wi_catalog FOREIGN KEY (catalog_item_id) REFERENCES catalog_entries(id) ON DELETE SET NULL,
   INDEX idx_wi_owner (owner_id),
   INDEX idx_wi_catalog (catalog_item_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- CommunityMarkt: a separate, opt-in public marketplace. A collection item
+-- can exist without ever being listed here — publishing is always a
+-- deliberate action per item (see market_listings.collection_item_id),
+-- never implied by tariff. Business accounts additionally get a public
+-- dealer profile page; private sellers can list without one (their name
+-- alone identifies them on a listing).
+CREATE TABLE IF NOT EXISTS dealer_profiles (
+  owner_id VARCHAR(36) PRIMARY KEY,
+  shop_name VARCHAR(255) NOT NULL DEFAULT '',
+  logo_path VARCHAR(500) NULL,
+  short_description TEXT NULL,
+  location VARCHAR(255) NOT NULL DEFAULT '',
+  shipping_area VARCHAR(255) NOT NULL DEFAULT '',
+  contact_email VARCHAR(255) NOT NULL DEFAULT '',
+  contact_phone VARCHAR(64) NOT NULL DEFAULT '',
+  return_policy TEXT NULL,
+  shipping_info TEXT NULL,
+  payment_info TEXT NULL,
+  verification_status ENUM('pending', 'verified', 'rejected') NOT NULL DEFAULT 'pending',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_dp_owner FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS market_listings (
+  id VARCHAR(36) PRIMARY KEY,
+  owner_id VARCHAR(36) NOT NULL,
+  collection_item_id VARCHAR(36) NULL,
+  title VARCHAR(255) NOT NULL,
+  description TEXT NULL,
+  category VARCHAR(255) NOT NULL DEFAULT '',
+  item_condition VARCHAR(32) NOT NULL DEFAULT '',
+  price DECIMAL(12,2) NULL,
+  price_on_request TINYINT(1) NOT NULL DEFAULT 0,
+  shipping_option ENUM('pickup', 'shipping', 'both') NOT NULL DEFAULT 'both',
+  shipping_cost DECIMAL(12,2) NULL,
+  location VARCHAR(255) NOT NULL DEFAULT '',
+  image_path VARCHAR(500) NULL,
+  status ENUM('draft', 'published', 'paused', 'sold') NOT NULL DEFAULT 'draft',
+  views INT NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  published_at DATETIME NULL,
+  CONSTRAINT fk_ml_owner FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_ml_item FOREIGN KEY (collection_item_id) REFERENCES collection_items(id) ON DELETE SET NULL,
+  INDEX idx_ml_owner (owner_id),
+  INDEX idx_ml_status_category (status, category),
+  INDEX idx_ml_status_published (status, published_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS market_favorites (
+  user_id VARCHAR(36) NOT NULL,
+  listing_id VARCHAR(36) NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, listing_id),
+  CONSTRAINT fk_mf_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_mf_listing FOREIGN KEY (listing_id) REFERENCES market_listings(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Seed the same three demo items the local Electron store starts with
