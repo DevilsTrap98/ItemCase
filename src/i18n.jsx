@@ -820,6 +820,8 @@ export const translations = {
     'tariff.usageUnlimited': '{count} Items – unbegrenzt in deinem aktuellen Tarif.',
     'tariff.current': 'Aktueller Tarif',
     'tariff.select': 'Auswählen',
+    'tariff.paymentComingSoon': 'Demnächst verfügbar',
+    'tariff.paymentComingSoonHint': 'Die Zahlungsabwicklung ist noch nicht angebunden. Upgrades sind aktuell nicht per Selbstbedienung möglich.',
     'tariff.overLimitBanner': 'Deine Sammlung überschreitet das Limit deines Tarifs. Deine {count} Items sind sicher. Du kannst deine Sammlung weiterhin durchsehen, aber das Hinzufügen neuer Items ist deaktiviert, bis du deine Sammlung auf {limit} Items reduzierst oder erneut upgradest.',
     'tariff.overLimitBlocked': 'Dein Tarif erlaubt maximal {limit} Items. Entferne Items oder wähle in den Einstellungen einen größeren Tarif, um weitere hinzuzufügen.',
 
@@ -1729,6 +1731,8 @@ export const translations = {
     'tariff.usageUnlimited': '{count} items – unlimited on your current plan.',
     'tariff.current': 'Current plan',
     'tariff.select': 'Select',
+    'tariff.paymentComingSoon': 'Coming soon',
+    'tariff.paymentComingSoonHint': 'Payment processing isn’t connected yet, so upgrades aren’t self-service right now.',
     'tariff.overLimitBanner': 'Your collection exceeds your plan limit. Your {count} items are safe. You can continue browsing your collection, but adding new items is disabled until you reduce your collection to {limit} items or upgrade again.',
     'tariff.overLimitBlocked': 'Your plan allows up to {limit} items. Remove items or pick a larger plan in settings to add more.',
 

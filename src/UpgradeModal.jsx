@@ -56,14 +56,20 @@ export default function UpgradeModal({ user, itemCount, onSelectTariff, onClose 
                 <div className="upgrade-plan-limit">
                   {id === 'business' ? t('tariff.business.publicInventory') : (info.itemLimit === Infinity ? t('tariff.unlimited') : t('tariff.itemLimitLabel', { limit: info.itemLimit }))}
                 </div>
-                <button
-                  type="button"
-                  className={isActive ? 'btn-secondary' : 'btn-primary'}
-                  disabled={isActive}
-                  onClick={() => onSelectTariff(id)}
-                >
-                  {isActive ? t('tariff.current') : t('tariff.select')}
-                </button>
+                {id === 'free' ? (
+                  <button
+                    type="button"
+                    className={isActive ? 'btn-secondary' : 'btn-primary'}
+                    disabled={isActive}
+                    onClick={() => onSelectTariff(id)}
+                  >
+                    {isActive ? t('tariff.current') : t('tariff.select')}
+                  </button>
+                ) : (
+                  <button type="button" className="btn-secondary" disabled title={t('tariff.paymentComingSoonHint')}>
+                    {t('tariff.paymentComingSoon')}
+                  </button>
+                )}
               </div>
             );
           })}

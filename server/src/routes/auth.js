@@ -202,11 +202,16 @@ router.get('/me', requireAuth, async (req, res, next) => {
   }
 });
 
+// Self-service is downgrade-to-free only. Upgrading to a paid tariff
+// requires real payment processing, which doesn't exist yet — until it
+// does, a user can never grant themselves collectorPlus/collectorPro/
+// business through this endpoint; those are set by an admin (or, for
+// business, the dealer-verification flow) directly in the database.
 router.patch('/tariff', requireAuth, async (req, res, next) => {
   try {
     const tariff = String(req.body?.tariff || '');
-    if (!['free', 'collectorPlus', 'collectorPro', 'business'].includes(tariff)) {
-      return res.status(400).json({ error: 'Ungültiger Tarif.' });
+    if (tariff !== 'free') {
+      return res.status(403).json({ error: 'Ein Tarif-Upgrade ist derzeit nur nach Rücksprache möglich, da die Zahlungsabwicklung noch nicht angebunden ist.' });
     }
     const pool = getMysqlPool();
     await pool.query('UPDATE users SET tariff = ?, token_version = token_version + 1 WHERE id = ?', [tariff, req.user.id]);

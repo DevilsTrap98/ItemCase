@@ -390,14 +390,20 @@ export default function SettingsModal({ user, itemCount, onSave, onLogout, onClo
                             ? t('tariff.unlimited')
                             : t('tariff.itemLimitLabel', { limit: tariffInfo.itemLimit })}
                         </div>
-                        <button
-                          type="button"
-                          className={isActive ? 'btn-secondary' : 'btn-primary'}
-                          disabled={isActive}
-                          onClick={() => handleSelectTariff(id)}
-                        >
-                          {isActive ? t('tariff.current') : t('tariff.select')}
-                        </button>
+                        {id === 'free' ? (
+                          <button
+                            type="button"
+                            className={isActive ? 'btn-secondary' : 'btn-primary'}
+                            disabled={isActive}
+                            onClick={() => handleSelectTariff(id)}
+                          >
+                            {isActive ? t('tariff.current') : t('tariff.select')}
+                          </button>
+                        ) : (
+                          <button type="button" className="btn-secondary" disabled title={t('tariff.paymentComingSoonHint')}>
+                            {t('tariff.paymentComingSoon')}
+                          </button>
+                        )}
                       </div>
                     );
                   })}
