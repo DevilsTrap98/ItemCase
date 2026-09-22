@@ -10,8 +10,16 @@ const router = express.Router();
 router.use(requireAuth, requireAdmin);
 
 const VALID_REVIEW_STATUSES = new Set(['pending', 'approved', 'rejected']);
+const VALID_ENTRY_STATUSES = new Set(['pending', 'approved', 'rejected', 'needs_changes', 'removed']);
 const VALID_REPORT_STATUSES = new Set(['open', 'reviewed', 'dismissed']);
 const VALID_FEEDBACK_STATUSES = new Set(['open', 'reviewed', 'archived']);
+
+async function logCatalogHistory(pool, { catalogItemId, fromStatus, toStatus, reason, actorUserId }) {
+  await pool.query(
+    'INSERT INTO catalog_entry_history (id, catalog_item_id, from_status, to_status, reason, actor_user_id) VALUES (UUID(), ?, ?, ?, ?, ?)',
+    [catalogItemId, fromStatus, toStatus, reason || null, actorUserId || null]
+  );
+}
 
 router.get('/summary', async (_req, res, next) => {
   try {
@@ -62,7 +70,34 @@ router.patch('/reports/:id', async (req, res, next) => {
   try {
     const status = String(req.body?.status || '');
     if (!VALID_REPORT_STATUSES.has(status)) return res.status(400).json({ error: 'Ungültiger Status' });
-    await getMysqlPool().query('UPDATE reports SET status = ? WHERE id = ?', [status, req.params.id]);
+    const pool = getMysqlPool();
+    const [reports] = await pool.query('SELECT * FROM reports WHERE id = ?', [req.params.id]);
+    await pool.query('UPDATE reports SET status = ? WHERE id = ?', [status, req.params.id]);
+
+    // A report against a catalog item auto-hid it (see reports.js); resolve
+    // that here instead of leaving it stuck in "reported" forever.
+    const report = reports[0];
+    if (report && report.target_type === 'catalogItem') {
+      const [entries] = await pool.query('SELECT * FROM catalog_entries WHERE id = ?', [report.target_id]);
+      const entry = entries[0];
+      if (entry && entry.status === 'reported') {
+        if (status === 'dismissed') {
+          const restoreTo = entry.previous_status_before_report || 'approved';
+          await pool.query(
+            "UPDATE catalog_entries SET status = ?, previous_status_before_report = NULL, moderated_by = ?, moderated_at = NOW() WHERE id = ?",
+            [restoreTo, req.user.id, entry.id]
+          );
+          await logCatalogHistory(pool, { catalogItemId: entry.id, fromStatus: 'reported', toStatus: restoreTo, reason: 'Meldung abgewiesen', actorUserId: req.user.id });
+        } else if (status === 'reviewed') {
+          await pool.query(
+            "UPDATE catalog_entries SET status = 'removed', moderation_reason = ?, moderated_by = ?, moderated_at = NOW(), previous_status_before_report = NULL WHERE id = ?",
+            [`Nach Meldung entfernt: ${report.reason}${report.comment ? ' – ' + report.comment : ''}`, req.user.id, entry.id]
+          );
+          await logCatalogHistory(pool, { catalogItemId: entry.id, fromStatus: 'reported', toStatus: 'removed', reason: report.reason, actorUserId: req.user.id });
+          if (entry.submitted_by_user_id) await notify(req.app.get('io'), entry.submitted_by_user_id, 'catalog_entry_removed', { catalogItemId: entry.id, name: entry.name });
+        }
+      }
+    }
     res.json({ ok: true });
   } catch (error) { next(error); }
 });
@@ -87,11 +122,28 @@ router.get('/catalog', async (req, res, next) => {
 
 router.patch('/catalog/:kind/:id', async (req, res, next) => {
   const status = String(req.body?.status || '');
-  if (!VALID_REVIEW_STATUSES.has(status)) return res.status(400).json({ error: 'Ungültiger Status' });
+  const isEntry = req.params.kind === 'entries';
+  if (isEntry ? !VALID_ENTRY_STATUSES.has(status) : !VALID_REVIEW_STATUSES.has(status)) {
+    return res.status(400).json({ error: 'Ungültiger Status' });
+  }
+  const reason = String(req.body?.reason || '').trim();
+  if (isEntry && ['rejected', 'needs_changes', 'removed'].includes(status) && !reason) {
+    return res.status(400).json({ error: 'Für diese Entscheidung ist eine Begründung erforderlich.' });
+  }
   const pool = getMysqlPool();
   try {
     if (req.params.kind === 'entries') {
-      await pool.query('UPDATE catalog_entries SET status = ? WHERE id = ?', [status, req.params.id]);
+      const [rows] = await pool.query('SELECT * FROM catalog_entries WHERE id = ?', [req.params.id]);
+      if (!rows.length) return res.status(404).json({ error: 'Katalogeintrag nicht gefunden' });
+      const entry = rows[0];
+      await pool.query(
+        'UPDATE catalog_entries SET status = ?, moderation_reason = ?, moderated_by = ?, moderated_at = NOW() WHERE id = ?',
+        [status, reason || null, req.user.id, req.params.id]
+      );
+      await logCatalogHistory(pool, { catalogItemId: req.params.id, fromStatus: entry.status, toStatus: status, reason, actorUserId: req.user.id });
+      if (entry.submitted_by_user_id) {
+        await notify(req.app.get('io'), entry.submitted_by_user_id, `catalog_entry_${status}`, { catalogItemId: req.params.id, name: entry.name, reason });
+      }
     } else if (req.params.kind === 'categories') {
       await pool.query('UPDATE catalog_categories SET status = ? WHERE id = ?', [status, req.params.id]);
     } else if (req.params.kind === 'photos') {

@@ -34,11 +34,20 @@ function mapEntry(row, req) {
     marketValue: row.market_value,
     conditionValues: row.condition_values || {},
     status: row.status,
+    moderationReason: row.moderation_reason || '',
+    moderatedAt: row.moderated_at || null,
     contributor: row.contributor,
     rightsConfirmed: !!row.rights_confirmed,
     licenseVersion: row.license_version,
     submittedAt: row.submitted_at
   };
+}
+
+async function logCatalogHistory(pool, { catalogItemId, fromStatus, toStatus, reason, actorUserId }) {
+  await pool.query(
+    'INSERT INTO catalog_entry_history (id, catalog_item_id, from_status, to_status, reason, actor_user_id) VALUES (?, ?, ?, ?, ?, ?)',
+    [crypto.randomUUID(), catalogItemId, fromStatus, toStatus, reason || null, actorUserId || null]
+  );
 }
 
 router.get('/', async (req, res, next) => {
@@ -67,8 +76,8 @@ router.post('/', async (req, res, next) => {
     try {
       await pool.query(
       `INSERT INTO catalog_entries
-        (id, name, brand, category, release_year, ean, isbn, manufacturer_number, image_path, market_value, condition_values, status, contributor, rights_confirmed, license_version)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
+        (id, name, brand, category, release_year, ean, isbn, manufacturer_number, image_path, market_value, condition_values, status, contributor, submitted_by_user_id, rights_confirmed, license_version)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)`,
       [
         id,
         String(body.name).trim(),
@@ -82,6 +91,7 @@ router.post('/', async (req, res, next) => {
         body.marketValue || null,
         JSON.stringify(body.conditionValues || {}),
         body.contributor || req.user?.name || '',
+        req.user?.id || null,
         body.rightsConfirmed ? 1 : 0,
         body.licenseVersion || '1.0'
       ]
@@ -91,11 +101,66 @@ router.post('/', async (req, res, next) => {
       throw error;
     }
 
+    await logCatalogHistory(pool, { catalogItemId: id, fromStatus: 'new', toStatus: 'pending', actorUserId: req.user?.id });
     const [rows] = await pool.query('SELECT * FROM catalog_entries WHERE id = ?', [id]);
     res.status(201).json(mapEntry(rows[0], req));
   } catch (err) {
     next(err);
   }
+});
+
+// A submitter's own view of their submissions, including ones the public
+// list never shows (pending/needs_changes/rejected/reported/removed) — the
+// only way "Einreicher über Entscheidungen informieren" (spec) is possible.
+router.get('/mine/submissions', requireAuth, async (req, res, next) => {
+  try {
+    const pool = getMysqlPool();
+    const [rows] = await pool.query('SELECT * FROM catalog_entries WHERE submitted_by_user_id = ? ORDER BY submitted_at DESC', [req.user.id]);
+    res.json(rows.map((row) => mapEntry(row, req)));
+  } catch (err) { next(err); }
+});
+
+// Resubmit after "needs_changes" (or a rejection) — only the original
+// submitter, and only from a state where a resubmission makes sense. This
+// is intentionally a full replace of the reviewable fields, not a merge.
+router.put('/:id', requireAuth, async (req, res, next) => {
+  try {
+    const pool = getMysqlPool();
+    const [rows] = await pool.query('SELECT * FROM catalog_entries WHERE id = ? AND submitted_by_user_id = ?', [req.params.id, req.user.id]);
+    if (!rows.length) return res.status(404).json({ error: 'Einreichung nicht gefunden' });
+    const entry = rows[0];
+    if (!['needs_changes', 'rejected'].includes(entry.status)) {
+      return res.status(400).json({ error: 'Diese Einreichung kann in ihrem aktuellen Status nicht bearbeitet werden.' });
+    }
+    const body = req.body || {};
+    if (!body.name || !String(body.name).trim()) return res.status(400).json({ error: 'name is required' });
+
+    let imagePath = entry.image_path;
+    if (body.imageData !== undefined && body.imageData !== null && !/^https?:\/\//i.test(body.imageData)) {
+      imagePath = await storeDataUrl(body.imageData, 'catalog', 'entries', entry.id);
+    } else if (body.imageData === null) imagePath = null;
+
+    try {
+      await pool.query(
+        `UPDATE catalog_entries SET name=?, brand=?, category=?, release_year=?, ean=?, isbn=?, manufacturer_number=?,
+           image_path=?, market_value=?, condition_values=?, status='pending', moderation_reason=NULL, moderated_by=NULL, moderated_at=NULL
+         WHERE id = ?`,
+        [
+          String(body.name).trim(), body.brand || '', body.category || '', body.releaseYear || null,
+          body.ean || '', body.isbn || '', body.manufacturerNumber || '', imagePath,
+          body.marketValue || null, JSON.stringify(body.conditionValues || {}), entry.id
+        ]
+      );
+    } catch (error) {
+      if (imagePath !== entry.image_path) await removeStoredImage(imagePath);
+      throw error;
+    }
+    if (imagePath !== entry.image_path) await removeStoredImage(entry.image_path);
+    await logCatalogHistory(pool, { catalogItemId: entry.id, fromStatus: entry.status, toStatus: 'pending', reason: 'Erneut eingereicht nach Überarbeitung', actorUserId: req.user.id });
+
+    const [updated] = await pool.query('SELECT * FROM catalog_entries WHERE id = ?', [entry.id]);
+    res.json(mapEntry(updated[0], req));
+  } catch (err) { next(err); }
 });
 
 router.post('/:id/photo', async (req, res, next) => {

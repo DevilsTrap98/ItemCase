@@ -324,6 +324,34 @@ CREATE TABLE IF NOT EXISTS catalog_entries (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 ALTER TABLE catalog_entries ADD COLUMN condition_values JSON NULL AFTER market_value;
+
+-- Full status model per spec ("Community-Katalog" section): Private items
+-- never reach this table at all (they stay in collection_items); everything
+-- here starts Pending and moves through review. NeedsChanges lets an admin
+-- ask the submitter to fix something instead of a flat reject; Reported
+-- pulls an already-approved entry out of public view the moment someone
+-- files a report against it (see server/src/routes/reports.js), without
+-- deciding anything yet; Removed is the permanent moderation outcome.
+ALTER TABLE catalog_entries MODIFY COLUMN status ENUM('pending', 'approved', 'rejected', 'needs_changes', 'reported', 'removed') NOT NULL DEFAULT 'pending';
+ALTER TABLE catalog_entries ADD COLUMN submitted_by_user_id VARCHAR(36) NULL AFTER contributor;
+ALTER TABLE catalog_entries ADD COLUMN moderation_reason TEXT NULL AFTER status;
+ALTER TABLE catalog_entries ADD COLUMN moderated_by VARCHAR(36) NULL AFTER moderation_reason;
+ALTER TABLE catalog_entries ADD COLUMN moderated_at DATETIME NULL AFTER moderated_by;
+ALTER TABLE catalog_entries ADD COLUMN previous_status_before_report VARCHAR(32) NULL AFTER moderated_at;
+
+-- One row per status transition — "Entscheidungen und Begründungen
+-- protokollieren" (spec). Append-only, never edited.
+CREATE TABLE IF NOT EXISTS catalog_entry_history (
+  id VARCHAR(36) PRIMARY KEY,
+  catalog_item_id VARCHAR(36) NOT NULL,
+  from_status VARCHAR(32) NOT NULL,
+  to_status VARCHAR(32) NOT NULL,
+  reason TEXT NULL,
+  actor_user_id VARCHAR(36) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_ceh_item FOREIGN KEY (catalog_item_id) REFERENCES catalog_entries(id) ON DELETE CASCADE,
+  INDEX idx_ceh_item (catalog_item_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ALTER TABLE collection_items ADD COLUMN image_path VARCHAR(500) NULL AFTER notes;
 ALTER TABLE collection_items ADD COLUMN case_design VARCHAR(64) NULL AFTER image_path;
 ALTER TABLE catalog_entries ADD COLUMN image_path VARCHAR(500) NULL AFTER manufacturer_number;

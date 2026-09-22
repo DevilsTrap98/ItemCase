@@ -72,7 +72,14 @@ export default function AdminDashboard({ currentUser, onClose, onCatalogChanged 
   };
 
   const reviewApproval = async (item, status) => {
-    if (await act('catalogStatus', { kind: item.kind, id: item.id, status })) {
+    let reason = '';
+    if (['rejected', 'needs_changes', 'removed'].includes(status)) {
+      reason = window.prompt(
+        status === 'needs_changes' ? 'Was muss der Einreicher ändern? (wird ihm angezeigt)' : 'Grund für die Ablehnung (wird dem Einreicher angezeigt):', ''
+      ) || '';
+      if (!reason.trim()) return;
+    }
+    if (await act('catalogStatus', { kind: item.kind, id: item.id, status, reason })) {
       setSelectedApproval(null);
     }
   };
@@ -134,7 +141,7 @@ export default function AdminDashboard({ currentUser, onClose, onCatalogChanged 
 
           {tab === 'reports' && <section className="admin-panel"><h2>Meldungen</h2>{inbox.reports.map((item) => <article className="admin-message" key={item.id}><div className="admin-message-head"><div><strong>{item.reason} · {item.target_name || item.target_id}</strong><small>{item.target_type} · gemeldet von {item.sender_name || 'Unbekannt'} · {dateTime(item.created_at)}</small></div><StatusPill value={item.status} /></div>{item.comment && <p>{item.comment}</p>}<div className="admin-actions"><button onClick={() => act('reportStatus', { id: item.id, status: 'reviewed' })}>✓ Geprüft</button><button onClick={() => act('reportStatus', { id: item.id, status: 'dismissed' })}>Verwerfen</button></div></article>)}{!inbox.reports.length && <div className="admin-empty">Keine Meldungen vorhanden.</div>}</section>}
 
-          {tab === 'catalog' && <section className="admin-panel"><h2>Freigaben</h2>{pending.map((item) => <article className="admin-message admin-approval" role="button" tabIndex="0" key={`${item.kind}-${item.id}`} onClick={() => setSelectedApproval(item)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSelectedApproval(item); }}>{item.image_url && <img src={item.image_url} alt={`Vorschau von ${item.label}`} />}<div className="admin-approval-body"><div className="admin-message-head"><div><strong>{item.label}</strong><small>{item.kindLabel} · von {item.contributor || 'Unbekannt'} · {dateTime(item.submitted_at)}</small></div><StatusPill value={item.status} /></div>{item.kind === 'entries' && <p>{[item.brand, item.category, item.release_year].filter(Boolean).join(' · ') || 'Keine weiteren Angaben'}</p>}<div className="admin-actions"><button type="button" onClick={(e) => { e.stopPropagation(); setSelectedApproval(item); }}>Details ansehen</button><button type="button" className="approve" onClick={(e) => { e.stopPropagation(); reviewApproval(item, 'approved'); }}>✓ Genehmigen</button><button type="button" className="reject" onClick={(e) => { e.stopPropagation(); reviewApproval(item, 'rejected'); }}>✕ Ablehnen</button></div></div></article>)}{!pending.length && <div className="admin-empty">Keine ausstehenden Vorschläge.</div>}</section>}
+          {tab === 'catalog' && <section className="admin-panel"><h2>Freigaben</h2>{pending.map((item) => <article className="admin-message admin-approval" role="button" tabIndex="0" key={`${item.kind}-${item.id}`} onClick={() => setSelectedApproval(item)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSelectedApproval(item); }}>{item.image_url && <img src={item.image_url} alt={`Vorschau von ${item.label}`} />}<div className="admin-approval-body"><div className="admin-message-head"><div><strong>{item.label}</strong><small>{item.kindLabel} · von {item.contributor || 'Unbekannt'} · {dateTime(item.submitted_at)}</small></div><StatusPill value={item.status} /></div>{item.kind === 'entries' && <p>{[item.brand, item.category, item.release_year].filter(Boolean).join(' · ') || 'Keine weiteren Angaben'}</p>}<div className="admin-actions"><button type="button" onClick={(e) => { e.stopPropagation(); setSelectedApproval(item); }}>Details ansehen</button><button type="button" className="approve" onClick={(e) => { e.stopPropagation(); reviewApproval(item, 'approved'); }}>✓ Genehmigen</button>{item.kind === 'entries' && <button type="button" onClick={(e) => { e.stopPropagation(); reviewApproval(item, 'needs_changes'); }}>✎ Änderungen anfordern</button>}<button type="button" className="reject" onClick={(e) => { e.stopPropagation(); reviewApproval(item, 'rejected'); }}>✕ Ablehnen</button></div></div></article>)}{!pending.length && <div className="admin-empty">Keine ausstehenden Vorschläge.</div>}</section>}
 
           {tab === 'dealers' && <section className="admin-panel"><h2>Händlerverifizierung</h2>{dealers.map((d) => <div className="admin-row" key={d.owner_id}><div><strong>{d.shop_name || d.name}</strong><small>@{d.username} · {d.email} · {d.listing_count} Angebote{d.business_registration_note ? ` · ${d.business_registration_note}` : ''}</small></div><StatusPill value={d.verification_status} />{d.verification_status !== 'verified' && <button className="approve" onClick={() => reviewDealer(d, 'verified')}>✓ Verifizieren</button>}{d.verification_status !== 'rejected' && <button className="reject" onClick={() => reviewDealer(d, 'rejected')}>✕ Ablehnen</button>}</div>)}{!dealers.length && <div className="admin-empty">Keine Händlerprofile vorhanden.</div>}</section>}
 
@@ -166,6 +173,7 @@ export default function AdminDashboard({ currentUser, onClose, onCatalogChanged 
                 {selectedApproval.condition_values && <section className="admin-approval-condition"><h3>Zustandswerte</h3><pre>{typeof selectedApproval.condition_values === 'string' ? selectedApproval.condition_values : JSON.stringify(selectedApproval.condition_values, null, 2)}</pre></section>}
                 <div className="admin-actions admin-approval-detail-actions">
                   <button type="button" className="approve" onClick={() => reviewApproval(selectedApproval, 'approved')}>✓ Genehmigen</button>
+                  {selectedApproval.kind === 'entries' && <button type="button" onClick={() => reviewApproval(selectedApproval, 'needs_changes')}>✎ Änderungen anfordern</button>}
                   <button type="button" className="reject" onClick={() => reviewApproval(selectedApproval, 'rejected')}>✕ Ablehnen</button>
                 </div>
               </div>

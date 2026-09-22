@@ -1940,7 +1940,7 @@ ipcMain.handle('admin:action', async (_event, { action, payload = {} }) => {
   const routes = {
     feedbackStatus: [`/admin/feedback/${payload.id}`, 'PATCH', { status: payload.status }],
     reportStatus: [`/admin/reports/${payload.id}`, 'PATCH', { status: payload.status }],
-    catalogStatus: [`/admin/catalog/${payload.kind}/${payload.id}`, 'PATCH', { status: payload.status }],
+    catalogStatus: [`/admin/catalog/${payload.kind}/${payload.id}`, 'PATCH', { status: payload.status, reason: payload.reason }],
     deleteThread: [`/admin/forum/threads/${payload.id}`, 'DELETE'],
     userRole: [`/admin/users/${payload.id}/role`, 'PATCH', { role: payload.role }],
     userStatus: [`/admin/users/${payload.id}/status`, 'PATCH', { status: payload.status }],

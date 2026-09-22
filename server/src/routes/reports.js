@@ -20,6 +20,19 @@ router.post('/', async (req, res, next) => {
        VALUES (?, ?, ?, ?, ?, ?, 'open', ?)`,
       [id, body.targetType, body.targetId, body.targetName || '', body.reason, body.comment || '', req.user?.id || null]
     );
+
+    // A report against a public catalog entry pulls it out of public view
+    // immediately, before any admin has looked at it — moderation then
+    // either restores or permanently removes it (see admin.js). Only an
+    // approved entry gets hidden this way; anything already pending/removed
+    // etc. is left alone.
+    if (body.targetType === 'catalogItem') {
+      await pool.query(
+        "UPDATE catalog_entries SET previous_status_before_report = status, status = 'reported' WHERE id = ? AND status = 'approved'",
+        [body.targetId]
+      );
+    }
+
     res.status(201).json({ id });
   } catch (err) {
     next(err);
