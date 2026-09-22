@@ -132,11 +132,6 @@ router.patch('/catalog/:kind/:id', async (req, res, next) => {
       const [rows] = await pool.query('SELECT * FROM catalog_entries WHERE id = ?', [req.params.id]);
       if (!rows.length) return res.status(404).json({ error: 'Katalogeintrag nicht gefunden' });
       const entry = rows[0];
-      // "Moderatoren dürfen eigene Beiträge nicht selbst genehmigen" — a
-      // second pair of eyes is required, full stop, not just for XP purposes.
-      if (entry.submitted_by_user_id && entry.submitted_by_user_id === req.user.id) {
-        return res.status(403).json({ error: 'Du kannst deine eigene Einreichung nicht selbst moderieren.' });
-      }
       // 'reported' is a manual quarantine here (a moderator deliberately
       // pulling a live entry, e.g. a clear-cut violation or a security
       // concern) — remember what to restore it to if the concern turns out
@@ -187,9 +182,6 @@ router.patch('/catalog/:kind/:id', async (req, res, next) => {
       const [rows] = await pool.query('SELECT * FROM catalog_photo_proposals WHERE id = ?', [req.params.id]);
       if (!rows.length) return res.status(404).json({ error: 'Vorschlag nicht gefunden' });
       const proposal = rows[0];
-      if (proposal.submitted_by_user_id && proposal.submitted_by_user_id === req.user.id) {
-        return res.status(403).json({ error: 'Du kannst deinen eigenen Vorschlag nicht selbst moderieren.' });
-      }
       if (status === 'approved' && proposal.image_path) {
         const [entries] = await pool.query('SELECT image_path FROM catalog_entries WHERE id = ?', [proposal.catalog_item_id]);
         await pool.query('UPDATE catalog_entries SET image_path = ? WHERE id = ?', [proposal.image_path, proposal.catalog_item_id]);

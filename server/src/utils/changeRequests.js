@@ -216,9 +216,6 @@ async function decideChangeRequest(pool, { changeRequestId, moderatorId, decisio
     const [[request]] = await conn.query('SELECT * FROM catalog_change_requests WHERE id = ? FOR UPDATE', [changeRequestId]);
     if (!request) throw Object.assign(new Error('Änderungsvorschlag nicht gefunden'), { status: 404 });
     if (request.status !== 'pending') throw Object.assign(new Error('Dieser Vorschlag wurde bereits entschieden.'), { status: 400 });
-    if (request.submitted_by && request.submitted_by === moderatorId) {
-      throw Object.assign(new Error('Du kannst deinen eigenen Vorschlag nicht selbst moderieren.'), { status: 403 });
-    }
     if (xpTypeOverride && xpTypeOverride !== request.change_type && !reason) {
       throw Object.assign(new Error('Eine Abweichung von der vorgeschlagenen Kategorie erfordert eine Begründung.'), { status: 400 });
     }
