@@ -1927,12 +1927,12 @@ ipcMain.handle('forum:likePost', async (_event, postId) => {
 // ---- Admin dashboard ----
 ipcMain.handle('admin:load', async () => {
   try {
-    const [summary, inbox, catalog, forum, users, dealers] = await Promise.all([
+    const [summary, inbox, catalog, forum, users, dealers, duplicates] = await Promise.all([
       apiFetch('/admin/summary', { auth: true }), apiFetch('/admin/inbox', { auth: true }),
       apiFetch('/admin/catalog', { auth: true }), apiFetch('/admin/forum', { auth: true }), apiFetch('/admin/users', { auth: true }),
-      apiFetch('/admin/dealers', { auth: true })
+      apiFetch('/admin/dealers', { auth: true }), apiFetch('/admin/catalog/duplicates', { auth: true })
     ]);
-    return { ok: true, summary, inbox, catalog, forum, users, dealers };
+    return { ok: true, summary, inbox, catalog, forum, users, dealers, duplicates };
   } catch (e) { return { ok: false, error: e.data?.error || e.message }; }
 });
 
@@ -1944,7 +1944,8 @@ ipcMain.handle('admin:action', async (_event, { action, payload = {} }) => {
     deleteThread: [`/admin/forum/threads/${payload.id}`, 'DELETE'],
     userRole: [`/admin/users/${payload.id}/role`, 'PATCH', { role: payload.role }],
     userStatus: [`/admin/users/${payload.id}/status`, 'PATCH', { status: payload.status }],
-    dealerVerification: [`/admin/dealers/${payload.ownerId}/verification`, 'PATCH', { status: payload.status, reason: payload.reason }]
+    dealerVerification: [`/admin/dealers/${payload.ownerId}/verification`, 'PATCH', { status: payload.status, reason: payload.reason }],
+    mergeCatalogEntries: [`/admin/catalog/entries/${payload.sourceId}/merge`, 'POST', { intoId: payload.intoId, reason: payload.reason }]
   };
   const route = routes[action];
   if (!route) return { ok: false, error: 'Unbekannte Admin-Aktion' };

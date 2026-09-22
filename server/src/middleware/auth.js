@@ -27,6 +27,27 @@ function readToken(req) {
   }
 }
 
+// A manual tariff grant (see admin.js POST /tariff-grants) ends itself the
+// moment it's past due, without needing a scheduled job: the very next
+// authenticated request from that user reverts them. Only queried for
+// non-free users, so this costs nothing on the hot path for everyone else.
+async function expireTariffGrantIfDue(pool, userId, currentTariff) {
+  if (currentTariff === 'free') return currentTariff;
+  const [[grant]] = await pool.query(
+    "SELECT * FROM tariff_grants WHERE user_id = ? AND status = 'active' AND ends_at IS NOT NULL AND ends_at <= NOW() LIMIT 1",
+    [userId]
+  );
+  if (!grant) return currentTariff;
+  await pool.query("UPDATE tariff_grants SET status = 'expired' WHERE id = ?", [grant.id]);
+  // Only revert if nothing else (a newer grant, an admin action) already
+  // changed the tariff away from what this grant set.
+  if (grant.tariff === currentTariff) {
+    await pool.query("UPDATE users SET tariff = 'free', token_version = token_version + 1 WHERE id = ?", [userId]);
+    return 'free';
+  }
+  return currentTariff;
+}
+
 // Rejects the request if there's no valid token.
 async function requireAuth(req, res, next) {
   const payload = readToken(req);
@@ -38,7 +59,8 @@ async function requireAuth(req, res, next) {
       return res.status(401).json({ error: 'Sitzung ist abgelaufen' });
     }
     if (rows[0].account_status === 'suspended') return res.status(403).json({ error: 'Dieses Konto wurde gesperrt.' });
-    req.user = { ...payload, role: rows[0].role, tariff: rows[0].tariff || 'free' };
+    const tariff = await expireTariffGrantIfDue(pool, payload.id, rows[0].tariff || 'free');
+    req.user = { ...payload, role: rows[0].role, tariff };
     next();
   } catch (error) {
     next(error);

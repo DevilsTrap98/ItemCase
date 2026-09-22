@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 const TABS = [
   ['overview', '📊', 'Übersicht'], ['inbox', '📥', 'Inbox'], ['catalog', '✅', 'Freigaben'],
-  ['reports', '🚩', 'Meldungen'], ['dealers', '🏪', 'Händler'], ['forum', '💬', 'Forum'], ['users', '👥', 'Nutzer']
+  ['duplicates', '🧩', 'Duplikate'], ['reports', '🚩', 'Meldungen'], ['dealers', '🏪', 'Händler'], ['forum', '💬', 'Forum'], ['users', '👥', 'Nutzer']
 ];
 
 const dateTime = (value) => value ? new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '–';
@@ -29,6 +29,7 @@ export default function AdminDashboard({ currentUser, onClose, onCatalogChanged 
   const [threads, setThreads] = useState([]);
   const [users, setUsers] = useState([]);
   const [dealers, setDealers] = useState([]);
+  const [duplicates, setDuplicates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [lastUpdated, setLastUpdated] = useState(null);
@@ -47,6 +48,7 @@ export default function AdminDashboard({ currentUser, onClose, onCatalogChanged 
       setThreads(result.forum || []);
       setUsers(result.users || []);
       setDealers(result.dealers || []);
+      setDuplicates(result.duplicates || []);
       setLastUpdated(new Date());
     }
     setLoading(false);
@@ -91,6 +93,12 @@ export default function AdminDashboard({ currentUser, onClose, onCatalogChanged 
       if (!reason.trim()) return;
     }
     await act('dealerVerification', { ownerId: dealer.owner_id, status, reason });
+  };
+
+  const mergeIntoCanonical = async (sourceId, intoId, groupLabel) => {
+    const reason = window.prompt(`"${groupLabel}" wirklich zusammenführen? Grund/Begründung eingeben:`, 'Gleiches Produkt, doppelt eingereicht') || '';
+    if (!reason.trim()) return;
+    await act('mergeCatalogEntries', { sourceId, intoId, reason });
   };
 
   const pending = useMemo(() => [
@@ -143,6 +151,28 @@ export default function AdminDashboard({ currentUser, onClose, onCatalogChanged 
 
           {tab === 'catalog' && <section className="admin-panel"><h2>Freigaben</h2>{pending.map((item) => <article className="admin-message admin-approval" role="button" tabIndex="0" key={`${item.kind}-${item.id}`} onClick={() => setSelectedApproval(item)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSelectedApproval(item); }}>{item.image_url && <img src={item.image_url} alt={`Vorschau von ${item.label}`} />}<div className="admin-approval-body"><div className="admin-message-head"><div><strong>{item.label}</strong><small>{item.kindLabel} · von {item.contributor || 'Unbekannt'} · {dateTime(item.submitted_at)}</small></div><StatusPill value={item.status} /></div>{item.kind === 'entries' && <p>{[item.brand, item.category, item.release_year].filter(Boolean).join(' · ') || 'Keine weiteren Angaben'}</p>}<div className="admin-actions"><button type="button" onClick={(e) => { e.stopPropagation(); setSelectedApproval(item); }}>Details ansehen</button><button type="button" className="approve" onClick={(e) => { e.stopPropagation(); reviewApproval(item, 'approved'); }}>✓ Genehmigen</button>{item.kind === 'entries' && <button type="button" onClick={(e) => { e.stopPropagation(); reviewApproval(item, 'needs_changes'); }}>✎ Änderungen anfordern</button>}<button type="button" className="reject" onClick={(e) => { e.stopPropagation(); reviewApproval(item, 'rejected'); }}>✕ Ablehnen</button></div></div></article>)}{!pending.length && <div className="admin-empty">Keine ausstehenden Vorschläge.</div>}</section>}
 
+          {tab === 'duplicates' && (
+            <section className="admin-panel">
+              <h2>Mögliche Duplikate</h2>
+              <p className="field-hint" style={{ marginTop: 0 }}>Heuristik auf Basis von Name/EAN/ISBN/Artikelnummer — bitte vor dem Zusammenführen prüfen, ob es wirklich dasselbe Produkt ist. Alle privaten Sammlungsdaten, Reports und der Verlauf bleiben beim Merge erhalten.</p>
+              {duplicates.map((group, gi) => (
+                <div className="admin-row admin-duplicate-group" key={gi} style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
+                  {group.map((entry) => (
+                    <div key={entry.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                      <div><strong>{entry.name}</strong><small> · {[entry.brand, entry.category, entry.ean, entry.isbn, entry.manufacturerNumber].filter(Boolean).join(' · ') || 'Keine weiteren Angaben'}</small></div>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        <StatusPill value={entry.status} />
+                        <button type="button" onClick={() => mergeIntoCanonical(entry.id, group.find((o) => o.id !== entry.id)?.id, entry.name)}>
+                          In anderen zusammenführen
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ))}
+              {!duplicates.length && <div className="admin-empty">Keine offensichtlichen Duplikate gefunden.</div>}
+            </section>
+          )}
           {tab === 'dealers' && <section className="admin-panel"><h2>Händlerverifizierung</h2>{dealers.map((d) => <div className="admin-row" key={d.owner_id}><div><strong>{d.shop_name || d.name}</strong><small>@{d.username} · {d.email} · {d.listing_count} Angebote{d.business_registration_note ? ` · ${d.business_registration_note}` : ''}</small></div><StatusPill value={d.verification_status} />{d.verification_status !== 'verified' && <button className="approve" onClick={() => reviewDealer(d, 'verified')}>✓ Verifizieren</button>}{d.verification_status !== 'rejected' && <button className="reject" onClick={() => reviewDealer(d, 'rejected')}>✕ Ablehnen</button>}</div>)}{!dealers.length && <div className="admin-empty">Keine Händlerprofile vorhanden.</div>}</section>}
 
           {tab === 'forum' && <section className="admin-panel"><h2>Forum verwalten</h2>{threads.map((thread) => <div className="admin-row" key={thread.id}><div><strong>{thread.title}</strong><small>{thread.author_name} (@{thread.author_username}) · {thread.category} · {thread.post_count} Beiträge · {dateTime(thread.created_at)}</small></div><StatusPill value={thread.status} /><button className="danger" onClick={() => { if (window.confirm('Forum-Thema wirklich endgültig löschen?')) act('deleteThread', { id: thread.id }); }}>Löschen</button></div>)}{!threads.length && <div className="admin-empty">Keine Forum-Themen vorhanden.</div>}</section>}

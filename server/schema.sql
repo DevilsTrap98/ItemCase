@@ -332,12 +332,40 @@ ALTER TABLE catalog_entries ADD COLUMN condition_values JSON NULL AFTER market_v
 -- pulls an already-approved entry out of public view the moment someone
 -- files a report against it (see server/src/routes/reports.js), without
 -- deciding anything yet; Removed is the permanent moderation outcome.
-ALTER TABLE catalog_entries MODIFY COLUMN status ENUM('pending', 'approved', 'rejected', 'needs_changes', 'reported', 'removed') NOT NULL DEFAULT 'pending';
+-- 'reported' is a moderator-triggered quarantine, never something a single
+-- report sets on its own (see server/src/routes/reports.js) — otherwise any
+-- one user could hide any catalog item at will. 'merged' marks an entry
+-- that has been folded into a canonical duplicate (merged_into_id); it is
+-- kept forever as a redirect stub, never deleted, so nothing referencing it
+-- (reports, history, wishlist entries) ever dangles.
+ALTER TABLE catalog_entries MODIFY COLUMN status ENUM('pending', 'approved', 'rejected', 'needs_changes', 'reported', 'removed', 'merged') NOT NULL DEFAULT 'pending';
 ALTER TABLE catalog_entries ADD COLUMN submitted_by_user_id VARCHAR(36) NULL AFTER contributor;
 ALTER TABLE catalog_entries ADD COLUMN moderation_reason TEXT NULL AFTER status;
 ALTER TABLE catalog_entries ADD COLUMN moderated_by VARCHAR(36) NULL AFTER moderation_reason;
 ALTER TABLE catalog_entries ADD COLUMN moderated_at DATETIME NULL AFTER moderated_by;
 ALTER TABLE catalog_entries ADD COLUMN previous_status_before_report VARCHAR(32) NULL AFTER moderated_at;
+ALTER TABLE catalog_entries ADD COLUMN merged_into_id VARCHAR(36) NULL AFTER previous_status_before_report;
+
+-- Manual tariff grants (admin-assigned, e.g. a temporary Pro+ perk or a
+-- hand-approved business account before real payment processing exists).
+-- Kept as its own append-only-ish record, separate from users.tariff, so
+-- "who granted what, why, and until when" is always answerable and an
+-- expired grant can revert the tariff automatically instead of silently
+-- staying premium forever.
+CREATE TABLE IF NOT EXISTS tariff_grants (
+  id VARCHAR(36) PRIMARY KEY,
+  user_id VARCHAR(36) NOT NULL,
+  tariff VARCHAR(32) NOT NULL,
+  granted_by VARCHAR(36) NOT NULL,
+  reason TEXT NULL,
+  starts_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  ends_at DATETIME NULL,
+  status ENUM('active', 'expired', 'revoked') NOT NULL DEFAULT 'active',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_tg_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_tg_admin FOREIGN KEY (granted_by) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX idx_tg_user_status (user_id, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- One row per status transition — "Entscheidungen und Begründungen
 -- protokollieren" (spec). Append-only, never edited.

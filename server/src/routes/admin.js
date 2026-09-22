@@ -10,7 +10,7 @@ const router = express.Router();
 router.use(requireAuth, requireAdmin);
 
 const VALID_REVIEW_STATUSES = new Set(['pending', 'approved', 'rejected']);
-const VALID_ENTRY_STATUSES = new Set(['pending', 'approved', 'rejected', 'needs_changes', 'removed']);
+const VALID_ENTRY_STATUSES = new Set(['pending', 'approved', 'rejected', 'needs_changes', 'removed', 'reported']);
 const VALID_REPORT_STATUSES = new Set(['open', 'reviewed', 'dismissed']);
 const VALID_FEEDBACK_STATUSES = new Set(['open', 'reviewed', 'archived']);
 
@@ -127,7 +127,7 @@ router.patch('/catalog/:kind/:id', async (req, res, next) => {
     return res.status(400).json({ error: 'Ungültiger Status' });
   }
   const reason = String(req.body?.reason || '').trim();
-  if (isEntry && ['rejected', 'needs_changes', 'removed'].includes(status) && !reason) {
+  if (isEntry && ['rejected', 'needs_changes', 'removed', 'reported'].includes(status) && !reason) {
     return res.status(400).json({ error: 'Für diese Entscheidung ist eine Begründung erforderlich.' });
   }
   const pool = getMysqlPool();
@@ -136,9 +136,14 @@ router.patch('/catalog/:kind/:id', async (req, res, next) => {
       const [rows] = await pool.query('SELECT * FROM catalog_entries WHERE id = ?', [req.params.id]);
       if (!rows.length) return res.status(404).json({ error: 'Katalogeintrag nicht gefunden' });
       const entry = rows[0];
+      // 'reported' is a manual quarantine here (a moderator deliberately
+      // pulling a live entry, e.g. a clear-cut violation or a security
+      // concern) — remember what to restore it to if the concern turns out
+      // to be unfounded, same as the auto-quarantine path in reports.js.
+      const previousStatusBeforeReport = status === 'reported' ? entry.status : null;
       await pool.query(
-        'UPDATE catalog_entries SET status = ?, moderation_reason = ?, moderated_by = ?, moderated_at = NOW() WHERE id = ?',
-        [status, reason || null, req.user.id, req.params.id]
+        'UPDATE catalog_entries SET status = ?, moderation_reason = ?, moderated_by = ?, moderated_at = NOW(), previous_status_before_report = ? WHERE id = ?',
+        [status, reason || null, req.user.id, previousStatusBeforeReport, req.params.id]
       );
       await logCatalogHistory(pool, { catalogItemId: req.params.id, fromStatus: entry.status, toStatus: status, reason, actorUserId: req.user.id });
       if (entry.submitted_by_user_id) {
@@ -157,6 +162,114 @@ router.patch('/catalog/:kind/:id', async (req, res, next) => {
       await pool.query('UPDATE catalog_photo_proposals SET status = ? WHERE id = ?', [status, req.params.id]);
     } else return res.status(404).json({ error: 'Unbekannte Freigabeart' });
     res.json({ ok: true });
+  } catch (error) { next(error); }
+});
+
+// Candidate duplicate groups: entries sharing an identical name (case-
+// insensitive) or an identical, non-empty EAN/ISBN/manufacturer number.
+// Heuristic only — an admin still decides whether they're really the same
+// product before merging.
+router.get('/catalog/duplicates', async (_req, res, next) => {
+  try {
+    const pool = getMysqlPool();
+    const [rows] = await pool.query(
+      `SELECT * FROM catalog_entries WHERE status NOT IN ('merged', 'removed') ORDER BY LOWER(name) ASC`
+    );
+    const groups = [];
+    const seen = new Set();
+    const keyOf = (r, field) => (r[field] ? `${field}:${String(r[field]).toLowerCase().trim()}` : null);
+    for (const row of rows) {
+      if (seen.has(row.id)) continue;
+      const keys = [keyOf(row, 'name'), keyOf(row, 'ean'), keyOf(row, 'isbn'), keyOf(row, 'manufacturer_number')].filter(Boolean);
+      const matches = rows.filter((other) => other.id !== row.id && !seen.has(other.id) && keys.some((k) => [keyOf(other, 'name'), keyOf(other, 'ean'), keyOf(other, 'isbn'), keyOf(other, 'manufacturer_number')].includes(k)));
+      if (matches.length) {
+        const group = [row, ...matches];
+        group.forEach((g) => seen.add(g.id));
+        groups.push(group.map((g) => ({ id: g.id, name: g.name, brand: g.brand, category: g.category, ean: g.ean, isbn: g.isbn, manufacturerNumber: g.manufacturer_number, status: g.status, submittedAt: g.submitted_at })));
+      }
+    }
+    res.json(groups);
+  } catch (error) { next(error); }
+});
+
+// Follows merged_into_id to the final canonical entry (an entry can itself
+// have been merged again later), capped so a bad chain can't loop forever.
+async function resolveCanonical(pool, id) {
+  let current = id;
+  for (let i = 0; i < 5; i++) {
+    const [[row]] = await pool.query('SELECT id, merged_into_id FROM catalog_entries WHERE id = ?', [current]);
+    if (!row) return null;
+    if (!row.merged_into_id) return row.id;
+    current = row.merged_into_id;
+  }
+  return current;
+}
+
+router.post('/catalog/entries/:id/merge', async (req, res, next) => {
+  try {
+    const reason = String(req.body?.reason || '').trim();
+    if (!reason) return res.status(400).json({ error: 'Bitte einen Grund für den Merge angeben.' });
+    const pool = getMysqlPool();
+    const sourceId = req.params.id;
+    const targetId = await resolveCanonical(pool, String(req.body?.intoId || ''));
+    if (!targetId) return res.status(404).json({ error: 'Ziel-Katalogeintrag nicht gefunden' });
+    if (targetId === sourceId) return res.status(400).json({ error: 'Ein Eintrag kann nicht mit sich selbst zusammengeführt werden.' });
+
+    const [[source]] = await pool.query('SELECT * FROM catalog_entries WHERE id = ?', [sourceId]);
+    if (!source) return res.status(404).json({ error: 'Katalogeintrag nicht gefunden' });
+    if (source.status === 'merged') return res.status(400).json({ error: 'Dieser Eintrag wurde bereits zusammengeführt.' });
+
+    // 1) Every private collection item that pointed at the old entry now
+    // points at the canonical one — the private data itself (name,
+    // condition, purchase price, notes, images…) is never touched.
+    await pool.query('UPDATE collection_items SET catalog_item_id = ? WHERE catalog_item_id = ?', [targetId, sourceId]);
+    await pool.query('UPDATE wishlist_items SET catalog_item_id = ? WHERE catalog_item_id = ?', [targetId, sourceId]);
+    // Pending photo proposals on the old entry get reviewed against the
+    // canonical one instead of being silently dropped.
+    await pool.query('UPDATE catalog_photo_proposals SET catalog_item_id = ? WHERE catalog_item_id = ?', [targetId, sourceId]);
+    // Reports keep their full history/audit trail — they're re-pointed at
+    // the canonical entry, never deleted.
+    await pool.query("UPDATE reports SET target_id = ? WHERE target_type = 'catalogItem' AND target_id = ?", [targetId, sourceId]);
+
+    // 2) Community-Schätzwert estimates move over too. A user may already
+    // have estimated the canonical item under the same condition — in that
+    // case keep whichever estimate is more recent and drop the other,
+    // since the unique (user, item, condition) key can't hold both.
+    const [estimates] = await pool.query("SELECT * FROM community_value_estimates WHERE catalog_item_id = ? AND status = 'Active'", [sourceId]);
+    const touchedConditions = new Set();
+    for (const est of estimates) {
+      touchedConditions.add(est.condition_code);
+      const [[existing]] = await pool.query(
+        "SELECT * FROM community_value_estimates WHERE catalog_item_id = ? AND user_id = ? AND condition_code = ?",
+        [targetId, est.user_id, est.condition_code]
+      );
+      if (!existing) {
+        await pool.query('UPDATE community_value_estimates SET catalog_item_id = ? WHERE id = ?', [targetId, est.id]);
+      } else if (new Date(est.updated_at) > new Date(existing.updated_at)) {
+        await pool.query('UPDATE community_value_estimates SET status = ? WHERE id = ?', ['Deleted', existing.id]);
+        await pool.query('UPDATE community_value_estimates SET catalog_item_id = ? WHERE id = ?', [targetId, est.id]);
+      } else {
+        await pool.query('UPDATE community_value_estimates SET status = ? WHERE id = ?', ['Deleted', est.id]);
+      }
+    }
+    await pool.query('DELETE FROM community_value_aggregates WHERE catalog_item_id = ?', [sourceId]);
+    for (const condition of touchedConditions) await recalculate(pool, targetId, condition);
+
+    // 3) The old entry becomes a permanent redirect stub — never deleted,
+    // so nothing that referenced it (history, reports) ever dangles.
+    await pool.query(
+      "UPDATE catalog_entries SET status = 'merged', merged_into_id = ?, moderation_reason = ?, moderated_by = ?, moderated_at = NOW() WHERE id = ?",
+      [targetId, reason, req.user.id, sourceId]
+    );
+    await logCatalogHistory(pool, { catalogItemId: sourceId, fromStatus: source.status, toStatus: 'merged', reason: `Zusammengeführt mit ${targetId}: ${reason}`, actorUserId: req.user.id });
+    const [[target]] = await pool.query('SELECT status FROM catalog_entries WHERE id = ?', [targetId]);
+    await logCatalogHistory(pool, { catalogItemId: targetId, fromStatus: target.status, toStatus: target.status, reason: `Duplikat zusammengeführt von ${sourceId}: ${reason}`, actorUserId: req.user.id });
+
+    if (source.submitted_by_user_id) {
+      await notify(req.app.get('io'), source.submitted_by_user_id, 'catalog_entry_merged', { catalogItemId: sourceId, mergedIntoId: targetId, name: source.name });
+    }
+
+    res.json({ ok: true, targetId });
   } catch (error) { next(error); }
 });
 
@@ -208,6 +321,62 @@ router.patch('/users/:id/status', async (req, res, next) => {
     const status = req.body?.status === 'suspended' ? 'suspended' : 'active';
     if (req.params.id === req.user.id && status !== 'active') return res.status(400).json({ error: 'Du kannst dein eigenes Konto nicht sperren.' });
     await getMysqlPool().query('UPDATE users SET account_status = ?, token_version = token_version + 1 WHERE id = ?', [status, req.params.id]);
+    res.json({ ok: true });
+  } catch (error) { next(error); }
+});
+
+// Manual tariff grants: a temporary or hand-approved paid tariff, with a
+// full audit trail (who, why, when, until when) — see the user's own
+// instruction that this must never be an untracked UPDATE users.tariff.
+router.get('/tariff-grants', async (req, res, next) => {
+  try {
+    const pool = getMysqlPool();
+    const userId = req.query.userId ? String(req.query.userId) : null;
+    const [rows] = await pool.query(
+      `SELECT tg.*, u.name user_name, u.username user_username, a.name granted_by_name
+       FROM tariff_grants tg JOIN users u ON u.id = tg.user_id JOIN users a ON a.id = tg.granted_by
+       WHERE ? IS NULL OR tg.user_id = ? ORDER BY tg.created_at DESC LIMIT 250`,
+      [userId, userId]
+    );
+    res.json(rows);
+  } catch (error) { next(error); }
+});
+
+router.post('/tariff-grants', async (req, res, next) => {
+  try {
+    const { userId, tariff, reason, endsAt } = req.body || {};
+    if (!['collectorPlus', 'collectorPro', 'business'].includes(tariff)) return res.status(400).json({ error: 'Ungültiger Tarif' });
+    if (!String(reason || '').trim()) return res.status(400).json({ error: 'Ein Grund ist erforderlich.' });
+    const pool = getMysqlPool();
+    const [[targetUser]] = await pool.query('SELECT id FROM users WHERE id = ?', [userId]);
+    if (!targetUser) return res.status(404).json({ error: 'Nutzer nicht gefunden' });
+
+    const ends = endsAt ? new Date(endsAt) : null;
+    if (ends && Number.isNaN(ends.getTime())) return res.status(400).json({ error: 'Ungültiges Enddatum' });
+
+    // Superseding a still-active grant closes it out first, so the audit
+    // trail never has two "active" grants open for the same account at once.
+    await pool.query("UPDATE tariff_grants SET status = 'revoked' WHERE user_id = ? AND status = 'active'", [userId]);
+    await pool.query(
+      'INSERT INTO tariff_grants (id, user_id, tariff, granted_by, reason, ends_at) VALUES (UUID(), ?, ?, ?, ?, ?)',
+      [userId, tariff, req.user.id, reason.trim(), ends]
+    );
+    await pool.query('UPDATE users SET tariff = ?, token_version = token_version + 1 WHERE id = ?', [tariff, userId]);
+    await notify(req.app.get('io'), userId, 'tariff_granted', { tariff, reason: reason.trim(), endsAt: ends });
+    res.status(201).json({ ok: true });
+  } catch (error) { next(error); }
+});
+
+router.post('/tariff-grants/:id/revoke', async (req, res, next) => {
+  try {
+    const pool = getMysqlPool();
+    const [[grant]] = await pool.query("SELECT * FROM tariff_grants WHERE id = ? AND status = 'active'", [req.params.id]);
+    if (!grant) return res.status(404).json({ error: 'Aktive Vergabe nicht gefunden' });
+    await pool.query("UPDATE tariff_grants SET status = 'revoked' WHERE id = ?", [req.params.id]);
+    const [[user]] = await pool.query('SELECT tariff FROM users WHERE id = ?', [grant.user_id]);
+    if (user?.tariff === grant.tariff) {
+      await pool.query("UPDATE users SET tariff = 'free', token_version = token_version + 1 WHERE id = ?", [grant.user_id]);
+    }
     res.json({ ok: true });
   } catch (error) { next(error); }
 });

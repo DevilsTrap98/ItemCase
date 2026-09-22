@@ -6,6 +6,15 @@ const { optionalAuth } = require('../middleware/auth');
 const router = express.Router();
 router.use(optionalAuth);
 
+// A single report never hides anything by itself — that would let any one
+// account sabotage the catalog on demand. It only becomes an automatic
+// quarantine once several *independent, authenticated* reporters have all
+// flagged the same item (anonymous/guest reports don't count toward this).
+// Anything more targeted — one clearly severe report, a technical/security
+// concern — is a deliberate moderator action (see admin.js's manual
+// quarantine endpoint), not something this threshold decides.
+const INDEPENDENT_REPORTS_FOR_AUTO_QUARANTINE = 3;
+
 router.post('/', async (req, res, next) => {
   try {
     const body = req.body || {};
@@ -21,16 +30,24 @@ router.post('/', async (req, res, next) => {
       [id, body.targetType, body.targetId, body.targetName || '', body.reason, body.comment || '', req.user?.id || null]
     );
 
-    // A report against a public catalog entry pulls it out of public view
-    // immediately, before any admin has looked at it — moderation then
-    // either restores or permanently removes it (see admin.js). Only an
-    // approved entry gets hidden this way; anything already pending/removed
-    // etc. is left alone.
     if (body.targetType === 'catalogItem') {
-      await pool.query(
-        "UPDATE catalog_entries SET previous_status_before_report = status, status = 'reported' WHERE id = ? AND status = 'approved'",
+      const [[{ count }]] = await pool.query(
+        `SELECT COUNT(DISTINCT submitted_by_user_id) AS count FROM reports
+         WHERE target_type = 'catalogItem' AND target_id = ? AND status = 'open' AND submitted_by_user_id IS NOT NULL`,
         [body.targetId]
       );
+      if (Number(count) >= INDEPENDENT_REPORTS_FOR_AUTO_QUARANTINE) {
+        const [result] = await pool.query(
+          "UPDATE catalog_entries SET previous_status_before_report = status, status = 'reported' WHERE id = ? AND status = 'approved'",
+          [body.targetId]
+        );
+        if (result.affectedRows) {
+          await pool.query(
+            'INSERT INTO catalog_entry_history (id, catalog_item_id, from_status, to_status, reason, actor_user_id) VALUES (UUID(), ?, ?, ?, ?, ?)',
+            [body.targetId, 'approved', 'reported', `Automatisch in Quarantäne: ${count} unabhängige Meldungen`, null]
+          );
+        }
+      }
     }
 
     res.status(201).json({ id });

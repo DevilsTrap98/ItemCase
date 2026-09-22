@@ -36,6 +36,7 @@ function mapEntry(row, req) {
     status: row.status,
     moderationReason: row.moderation_reason || '',
     moderatedAt: row.moderated_at || null,
+    mergedIntoId: row.merged_into_id || null,
     contributor: row.contributor,
     rightsConfirmed: !!row.rights_confirmed,
     licenseVersion: row.license_version,
