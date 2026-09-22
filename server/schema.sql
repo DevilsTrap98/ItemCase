@@ -381,6 +381,7 @@ CREATE TABLE IF NOT EXISTS contribution_xp_transactions (
 ALTER TABLE contribution_xp_transactions ADD COLUMN status ENUM('confirmed', 'withheld') NOT NULL DEFAULT 'confirmed' AFTER xp_amount;
 ALTER TABLE contribution_xp_transactions ADD COLUMN released_by VARCHAR(36) NULL AFTER status;
 ALTER TABLE contribution_xp_transactions ADD COLUMN released_at DATETIME NULL AFTER released_by;
+ALTER TABLE contribution_xp_transactions ADD COLUMN release_note TEXT NULL AFTER released_at;
 
 -- A short safety hold before a milestone reward becomes redeemable —
 -- status starts 'Locked' with available_at in the future, and is promoted

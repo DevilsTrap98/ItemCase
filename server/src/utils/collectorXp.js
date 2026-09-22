@@ -6,7 +6,8 @@
 // see server/src/routes/catalog.js's reward endpoints.
 
 const crypto = require('crypto');
-const { unlockDueMilestones } = require('./entitlements');
+const { unlockDueMilestones, revokeStaleLockedRewards } = require('./entitlements');
+const { withTransaction } = require('../config/db-mysql');
 
 const XP_VALUES = {
   CatalogItemApproved: 10,
@@ -55,6 +56,10 @@ async function recomputeProgress(pool, userId) {
        slot_eligible_xp = VALUES(slot_eligible_xp), earned_collection_slots = VALUES(earned_collection_slots), updated_at = NOW()`,
     [userId, confirmedLifetimeXp, collectorLevel, slotEligibleXp, earnedCollectionSlots]
   );
+  // Order matters: revoke anything now above the (possibly lower) level
+  // first, then unlock/re-arm anything at or below it — the two operate on
+  // disjoint reward_level ranges so there's no conflict either way.
+  await revokeStaleLockedRewards(pool, userId, collectorLevel);
   await unlockDueMilestones(pool, userId, collectorLevel);
   return { confirmedLifetimeXp, collectorLevel, slotEligibleXp, earnedCollectionSlots };
 }
@@ -91,17 +96,22 @@ async function awardXp(pool, { userId, sourceType, sourceId, reason, approvedBy,
 }
 
 // Admin releases a withheld transaction after review — it becomes
-// 'confirmed' and counts toward the ledger from that point on. Never
-// silent: released_by/released_at are recorded.
-async function releaseWithheldXp(pool, { transactionId, releasedBy }) {
-  const [[tx]] = await pool.query('SELECT * FROM contribution_xp_transactions WHERE id = ?', [transactionId]);
-  if (!tx) throw Object.assign(new Error('Transaktion nicht gefunden'), { status: 404 });
-  if (tx.status !== 'withheld') throw Object.assign(new Error('Diese Transaktion ist nicht zurückgehalten.'), { status: 400 });
-  await pool.query(
-    "UPDATE contribution_xp_transactions SET status = 'confirmed', released_by = ?, released_at = NOW() WHERE id = ?",
-    [releasedBy, transactionId]
-  );
-  return recomputeProgress(pool, tx.user_id);
+// 'confirmed', counts toward the ledger, and can trigger level/reward
+// recalculation, all atomically: a row lock on the transaction makes a
+// concurrent second release attempt block until the first commits, then
+// cleanly see 'confirmed' and refuse rather than double-releasing.
+// released_by/released_at (and an optional internal note) are always recorded.
+async function releaseWithheldXp(pool, { transactionId, releasedBy, note }) {
+  return withTransaction(pool, async (conn) => {
+    const [[tx]] = await conn.query('SELECT * FROM contribution_xp_transactions WHERE id = ? FOR UPDATE', [transactionId]);
+    if (!tx) throw Object.assign(new Error('Transaktion nicht gefunden'), { status: 404 });
+    if (tx.status !== 'withheld') throw Object.assign(new Error('Diese Transaktion ist nicht zurückgehalten.'), { status: 400 });
+    await conn.query(
+      "UPDATE contribution_xp_transactions SET status = 'confirmed', released_by = ?, released_at = NOW(), release_note = ? WHERE id = ?",
+      [releasedBy, note || null, transactionId]
+    );
+    return recomputeProgress(conn, tx.user_id);
+  });
 }
 
 // Reverses a specific transaction with its own counter-booking (spec
@@ -152,11 +162,21 @@ async function getProgress(pool, userId) {
   return created;
 }
 
+// For the submitter-facing "N XP werden geprüft" message — never shown as
+// lost or denied, just pending review.
+async function getWithheldSummary(pool, userId) {
+  const [[row]] = await pool.query(
+    "SELECT COUNT(*) AS count, COALESCE(SUM(xp_amount), 0) AS total FROM contribution_xp_transactions WHERE user_id = ? AND status = 'withheld'",
+    [userId]
+  );
+  return { count: Number(row.count), totalAmount: Number(row.total) };
+}
+
 function effectiveFreeItemLimit(earnedCollectionSlots) {
   return BASE_FREE_LIMIT + Math.min(earnedCollectionSlots, SLOTS_PER_LEVEL * SLOT_REWARD_LEVEL_CAP);
 }
 
 module.exports = {
-  XP_VALUES, awardXp, reverseXp, reverseCatalogItemXp, releaseWithheldXp, recomputeProgress, getProgress,
+  XP_VALUES, awardXp, reverseXp, reverseCatalogItemXp, releaseWithheldXp, getWithheldSummary, recomputeProgress, getProgress,
   levelForXp, slotsForXp, effectiveFreeItemLimit, BASE_FREE_LIMIT, SLOT_XP_CAP, XP_PER_LEVEL, SLOT_REWARD_LEVEL_CAP, DAILY_XP_CAP
 };

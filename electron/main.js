@@ -2013,7 +2013,7 @@ ipcMain.handle('admin:action', async (_event, { action, payload = {} }) => {
     dealerVerification: [`/admin/dealers/${payload.ownerId}/verification`, 'PATCH', { status: payload.status, reason: payload.reason }],
     mergeCatalogEntries: [`/admin/catalog/entries/${payload.sourceId}/merge`, 'POST', { intoId: payload.intoId, reason: payload.reason }],
     reverseXp: [`/admin/xp-transactions/${payload.transactionId}/reverse`, 'POST', { reason: payload.reason }],
-    releaseXp: [`/admin/xp-transactions/${payload.transactionId}/release`, 'POST'],
+    releaseXp: [`/admin/xp-transactions/${payload.transactionId}/release`, 'POST', { note: payload.note }],
     decideChangeRequest: [`/admin/change-requests/${payload.id}/decide`, 'POST', { decision: payload.decision, reason: payload.reason, xpTypeOverride: payload.xpTypeOverride }]
   };
   const route = routes[action];

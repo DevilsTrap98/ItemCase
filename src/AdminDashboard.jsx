@@ -54,7 +54,7 @@ export default function AdminDashboard({ currentUser, onClose, onCatalogChanged 
       setDealers(result.dealers || []);
       setDuplicates(result.duplicates || []);
       setChangeRequests(result.changeRequests || []);
-      setWithheldXp(result.withheldXp || []);
+      setWithheldXp(result.withheldXp?.rows || []);
       setRiskOverview(result.riskOverview || { highVelocity: [], withheldByUser: [] });
       setLastUpdated(new Date());
     }
@@ -121,7 +121,8 @@ export default function AdminDashboard({ currentUser, onClose, onCatalogChanged 
 
   const releaseXp = async (tx) => {
     if (!window.confirm(`${tx.xp_amount} XP für ${tx.user_name} (@${tx.user_username}) freigeben?`)) return;
-    await act('releaseXp', { transactionId: tx.id });
+    const note = window.prompt('Interne Notiz zur Freigabe (optional):', '') || '';
+    await act('releaseXp', { transactionId: tx.id, note });
   };
 
   const pending = useMemo(() => [

@@ -172,6 +172,11 @@ function MyContributions({ t }) {
           ⭐ {t('catalog.proPlusActiveUntil', { date: new Date(progress.proPlus.endsAt).toLocaleDateString('de-DE') })}
         </div>
       )}
+      {progress.pendingWithheldXp?.count > 0 && (
+        <div className="contribution-withheld-notice">
+          ⏳ {t('catalog.withheldXpNotice', { xp: progress.pendingWithheldXp.totalAmount })}
+        </div>
+      )}
 
       {availableRewards.length > 0 && (
         <>
@@ -241,7 +246,10 @@ function MyContributions({ t }) {
           {xpHistory.map((tx, i) => (
             <div className="contribution-xp-row" key={i}>
               <span className={tx.xp_amount < 0 ? 'contribution-xp-negative' : 'contribution-xp-positive'}>{tx.xp_amount > 0 ? `+${tx.xp_amount}` : tx.xp_amount} XP</span>
-              <span className="field-hint">{t(XP_SOURCE_LABELS[tx.source_type] || tx.source_type)}{tx.reason ? ` · ${tx.reason}` : ''}</span>
+              <span className="field-hint">
+                {tx.status === 'withheld' ? t('catalog.xpRowWithheld') : t(XP_SOURCE_LABELS[tx.source_type] || tx.source_type)}
+                {tx.reason ? ` · ${tx.reason}` : ''}
+              </span>
             </div>
           ))}
         </>

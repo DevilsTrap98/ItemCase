@@ -18,20 +18,46 @@ const MILESTONES = {
 // catch something before the reward matters.
 const REWARD_HOLD_HOURS = 48;
 
-// Called from recomputeProgress whenever XP changes. Unlocks (but does not
-// activate) any milestone the user has newly reached, starting 'Locked'
-// with a hold period. INSERT IGNORE is the exactly-once guard — the unique
-// key never lets the same milestone unlock twice.
+// Called from recomputeProgress whenever CONFIRMED XP changes (never for
+// withheld XP — see collectorXp.js) — so the 48h hold genuinely starts the
+// moment the level is actually reached via confirmed XP, not at submission
+// time and not while the qualifying XP is still withheld.
+//
+// The ON DUPLICATE KEY branch only ever re-arms a 'Revoked' row (see
+// revokeStaleLockedRewards below) with a fresh hold period; it leaves
+// Available/Active/Redeemed/Expired rows completely untouched — a reward
+// that was already regularly activated is never reset by re-crossing the
+// threshold. A first-time INSERT is DB-atomic against concurrent callers
+// via the unique key, so two parallel recomputes for the same user can
+// never create two rows for the same milestone.
 async function unlockDueMilestones(pool, userId, collectorLevel) {
   for (const [levelStr, milestone] of Object.entries(MILESTONES)) {
     const level = Number(levelStr);
     if (collectorLevel < level) continue;
     await pool.query(
-      `INSERT IGNORE INTO level_rewards (id, user_id, reward_level, reward_type, duration_days, status, available_at)
-       VALUES (?, ?, ?, ?, ?, 'Locked', NOW() + INTERVAL ? HOUR)`,
-      [crypto.randomUUID(), userId, level, milestone.rewardType, milestone.durationDays, REWARD_HOLD_HOURS]
+      `INSERT INTO level_rewards (id, user_id, reward_level, reward_type, duration_days, status, available_at)
+       VALUES (?, ?, ?, ?, ?, 'Locked', NOW() + INTERVAL ? HOUR)
+       ON DUPLICATE KEY UPDATE
+         available_at = IF(status = 'Revoked', NOW() + INTERVAL ? HOUR, available_at),
+         status = IF(status = 'Revoked', 'Locked', status)`,
+      [crypto.randomUUID(), userId, level, milestone.rewardType, milestone.durationDays, REWARD_HOLD_HOURS, REWARD_HOLD_HOURS]
     );
   }
+}
+
+// If confirmed XP drops back below a milestone while its reward is still
+// in the safety hold (status 'Locked' — never yet redeemable), the reward
+// is revoked. Anything already 'Available', 'Active' or 'Redeemed' is
+// deliberately untouched — a regularly activated free period is never
+// clawed back by an ordinary later correction/reversal (only a manual
+// admin action can end an active one).
+async function revokeStaleLockedRewards(pool, userId, collectorLevel) {
+  await pool.query(
+    `UPDATE level_rewards SET status = 'Revoked', revoked_at = NOW(),
+       revocation_reason = 'Bestätigter XP-Stand fiel während der Sperrfrist unter die Levelschwelle (Gegenbuchung)'
+     WHERE user_id = ? AND status = 'Locked' AND reward_level > ?`,
+    [userId, collectorLevel]
+  );
 }
 
 // Promotes any reward whose hold period has passed. Called lazily
@@ -96,4 +122,4 @@ async function activateReward(pool, { userId, rewardId }) {
   return { entitlementId, endsAt };
 }
 
-module.exports = { MILESTONES, REWARD_HOLD_HOURS, unlockDueMilestones, promoteDueRewards, expireDueEntitlements, getActiveProPlus, activateReward };
+module.exports = { MILESTONES, REWARD_HOLD_HOURS, unlockDueMilestones, revokeStaleLockedRewards, promoteDueRewards, expireDueEntitlements, getActiveProPlus, activateReward };

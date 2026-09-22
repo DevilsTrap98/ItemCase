@@ -4542,6 +4542,7 @@ input:focus, select:focus, textarea:focus {
 .contribution-submissions-title { margin: 18px 0 8px 0; }
 .contribution-levelup { margin-bottom: 12px; padding: 10px 14px; border-radius: 10px; background: linear-gradient(90deg, #6c8cff, #8f6cff); color: #fff; font-weight: 600; cursor: pointer; }
 .contribution-proplus-active { margin-top: 6px; color: #f5a524; }
+.contribution-withheld-notice { margin-top: 8px; padding: 8px 12px; border-radius: 8px; background: var(--bg-card); border: 1px dashed var(--border); font-size: 13px; }
 .contribution-xp-row { display: flex; gap: 10px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--border); }
 .contribution-xp-positive { color: #2fae5c; font-weight: 600; min-width: 60px; }
 .contribution-xp-negative { color: #d64545; font-weight: 600; min-width: 60px; }

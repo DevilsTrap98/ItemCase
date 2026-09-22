@@ -448,21 +448,34 @@ router.post('/xp-transactions/:id/reverse', async (req, res, next) => {
 });
 
 // Lean Phase 3: withheld-XP review queue + release.
-router.get('/xp/withheld/list', async (_req, res, next) => {
+// limit/offset pagination — a growing user base must not make this tab
+// slow to load; the client fetches a page at a time.
+function paginationParams(req, { defaultLimit = 50, maxLimit = 200 } = {}) {
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || defaultLimit, 1), maxLimit);
+  const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
+  return { limit, offset };
+}
+
+router.get('/xp/withheld/list', async (req, res, next) => {
   try {
-    const [rows] = await getMysqlPool().query(
+    const { limit, offset } = paginationParams(req);
+    const pool = getMysqlPool();
+    const [[{ total }]] = await pool.query("SELECT COUNT(*) AS total FROM contribution_xp_transactions WHERE status = 'withheld'");
+    const [rows] = await pool.query(
       `SELECT tx.*, u.name AS user_name, u.username AS user_username
        FROM contribution_xp_transactions tx JOIN users u ON u.id = tx.user_id
-       WHERE tx.status = 'withheld' ORDER BY tx.created_at ASC LIMIT 200`
+       WHERE tx.status = 'withheld' ORDER BY tx.created_at ASC LIMIT ? OFFSET ?`,
+      [limit, offset]
     );
-    res.json(rows);
+    res.json({ rows, total: Number(total), limit, offset });
   } catch (error) { next(error); }
 });
 
 router.post('/xp-transactions/:id/release', async (req, res, next) => {
   try {
     const pool = getMysqlPool();
-    await releaseWithheldXp(pool, { transactionId: req.params.id, releasedBy: req.user.id });
+    const note = String(req.body?.note || '').trim();
+    await releaseWithheldXp(pool, { transactionId: req.params.id, releasedBy: req.user.id, note: note || null });
     res.json({ ok: true });
   } catch (error) {
     if (error.status) return res.status(error.status).json({ error: error.message });
@@ -475,8 +488,9 @@ router.post('/xp-transactions/:id/release', async (req, res, next) => {
 // feedback: "nicht automatisch sperren"). Two cheap, low-false-positive
 // signals for a lean pass: unusually high approved-contribution volume in
 // the last 24h, and accounts sitting on several withheld transactions.
-router.get('/risk-overview', async (_req, res, next) => {
+router.get('/risk-overview', async (req, res, next) => {
   try {
+    const { limit, offset } = paginationParams(req, { defaultLimit: 50, maxLimit: 100 });
     const pool = getMysqlPool();
     const [highVelocity] = await pool.query(
       `SELECT u.id, u.name, u.username, COUNT(*) AS approvals_24h
@@ -484,16 +498,18 @@ router.get('/risk-overview', async (_req, res, next) => {
        WHERE tx.status = 'confirmed' AND tx.xp_amount > 0 AND tx.created_at >= NOW() - INTERVAL 24 HOUR
        GROUP BY u.id, u.name, u.username
        HAVING COUNT(*) >= 8
-       ORDER BY approvals_24h DESC LIMIT 50`
+       ORDER BY approvals_24h DESC LIMIT ? OFFSET ?`,
+      [limit, offset]
     );
     const [withheldByUser] = await pool.query(
       `SELECT u.id, u.name, u.username, COUNT(*) AS withheld_count, SUM(tx.xp_amount) AS withheld_xp
        FROM contribution_xp_transactions tx JOIN users u ON u.id = tx.user_id
        WHERE tx.status = 'withheld'
        GROUP BY u.id, u.name, u.username
-       ORDER BY withheld_count DESC LIMIT 50`
+       ORDER BY withheld_count DESC LIMIT ? OFFSET ?`,
+      [limit, offset]
     );
-    res.json({ highVelocity, withheldByUser });
+    res.json({ highVelocity, withheldByUser, limit, offset });
   } catch (error) { next(error); }
 });
 

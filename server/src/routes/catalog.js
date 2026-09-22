@@ -5,7 +5,7 @@ const { getMysqlPool } = require('../config/db-mysql');
 const { optionalAuth, requireAuth } = require('../middleware/auth');
 const { storeDataUrl, removeStoredImage, publicImageUrl } = require('../utils/imageStorage');
 const { recalculate, CONDITION_CODES } = require('../utils/communityValue');
-const { getProgress, effectiveFreeItemLimit, XP_PER_LEVEL, SLOT_XP_CAP } = require('../utils/collectorXp');
+const { getProgress, getWithheldSummary, effectiveFreeItemLimit, XP_PER_LEVEL, SLOT_XP_CAP } = require('../utils/collectorXp');
 const { getActiveProPlus, activateReward, promoteDueRewards } = require('../utils/entitlements');
 const { logCatalogHistory } = require('../utils/catalogHistory');
 const { createDirectRequest, proposeCorrection, resubmitChangeRequest, decideChangeRequest, CHANGE_TYPE_XP } = require('../utils/changeRequests');
@@ -148,7 +148,10 @@ router.get('/mine/progress', requireAuth, async (req, res, next) => {
       proPlus: await (async () => {
         const active = await getActiveProPlus(getMysqlPool(), req.user.id);
         return active ? { active: true, endsAt: active.ends_at } : { active: false, endsAt: null };
-      })()
+      })(),
+      // Never shown as lost or denied — just XP the daily check hasn't
+      // confirmed yet. See src/CommunityCatalogModal.jsx for the copy.
+      pendingWithheldXp: await getWithheldSummary(getMysqlPool(), req.user.id)
     });
   } catch (err) { next(err); }
 });
@@ -157,7 +160,7 @@ router.get('/mine/progress', requireAuth, async (req, res, next) => {
 router.get('/mine/xp-history', requireAuth, async (req, res, next) => {
   try {
     const [rows] = await getMysqlPool().query(
-      'SELECT source_type, xp_amount, reason, created_at FROM contribution_xp_transactions WHERE user_id = ? ORDER BY created_at DESC LIMIT 100',
+      'SELECT source_type, xp_amount, status, reason, created_at FROM contribution_xp_transactions WHERE user_id = ? ORDER BY created_at DESC LIMIT 100',
       [req.user.id]
     );
     res.json(rows);
