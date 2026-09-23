@@ -6,7 +6,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 // Händler, Forum, Nutzer) is admin-only, matching the server side (which
 // also blocks the admin-only routes with requireAdmin regardless of what
 // the UI shows).
-const MODERATOR_TABS = new Set(['catalog', 'changeRequests', 'duplicates']);
+const MODERATOR_TABS = new Set(['overview', 'catalog', 'changeRequests', 'duplicates']);
 const TABS = [
   ['overview', '📊', 'Übersicht'], ['inbox', '📥', 'Inbox'], ['catalog', '✅', 'Freigaben'],
   ['changeRequests', '📝', 'Korrekturen'], ['risk', '🛡️', 'Risiko'],
@@ -31,9 +31,7 @@ function StatusPill({ value }) {
 }
 
 export default function AdminDashboard({ currentUser, onClose, onCatalogChanged }) {
-  // A moderator has no Übersicht tab at all (see MODERATOR_TABS), so their
-  // panel has to open straight on a tab they can actually see.
-  const [tab, setTab] = useState(currentUser.role === 'admin' ? 'overview' : 'catalog');
+  const [tab, setTab] = useState('overview');
   const [summary, setSummary] = useState({});
   const [inbox, setInbox] = useState({ feedback: [], reports: [] });
   const [catalog, setCatalog] = useState({ entries: [], photos: [], categories: [] });
@@ -180,9 +178,11 @@ export default function AdminDashboard({ currentUser, onClose, onCatalogChanged 
         {loading ? <div className="admin-loading">Admin-Dashboard wird geladen …</div> : <>
           {tab === 'overview' && <section>
             <div className="admin-stat-grid">
-              <button onClick={() => setTab('inbox')}><span>📥</span><strong>{summary.openFeedback || 0}</strong><small>Offenes Feedback</small></button>
-              <button onClick={() => setTab('reports')}><span>🚩</span><strong>{summary.openReports || 0}</strong><small>Offene Meldungen</small></button>
+              {isAdmin && <button onClick={() => setTab('inbox')}><span>📥</span><strong>{summary.openFeedback || 0}</strong><small>Offenes Feedback</small></button>}
+              {isAdmin && <button onClick={() => setTab('reports')}><span>🚩</span><strong>{summary.openReports || 0}</strong><small>Offene Meldungen</small></button>}
               <button onClick={() => setTab('catalog')}><span>✅</span><strong>{pending.length}</strong><small>Ausstehende Freigaben</small></button>
+              <button onClick={() => setTab('changeRequests')}><span>📝</span><strong>{changeRequests.length}</strong><small>Offene Korrekturen</small></button>
+              <button onClick={() => setTab('duplicates')}><span>🧩</span><strong>{duplicates.length}</strong><small>Duplikat-Gruppen</small></button>
               {isAdmin && <button onClick={() => setTab('dealers')}><span>🏪</span><strong>{summary.pendingDealers || 0}</strong><small>Händler zu prüfen</small></button>}
               {isAdmin && <button onClick={() => setTab('users')}><span>👥</span><strong>{summary.users || 0}</strong><small>Nutzer</small></button>}
               {isAdmin && <button onClick={() => setTab('forum')}><span>💬</span><strong>{summary.forumThreads || 0}</strong><small>Forum-Themen</small></button>}
