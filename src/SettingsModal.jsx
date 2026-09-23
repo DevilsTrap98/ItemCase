@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useI18n } from './i18n.jsx';
 import { DESIGN_THEME_COLOR_MAP, ALL_BACKGROUND_OPTIONS, BACKGROUND_PREVIEWS, COLOR_THEME_HEX } from './theme-defaults.js';
 import { VISIBLE_TARIFF_IDS, TARIFFS, getTariff, tariffPriceLabel } from './tariff-defaults.js';
@@ -29,6 +29,90 @@ const backgroundIcons = {
 // Art. 15/17/20 DSGVO self-service: a full data export and account
 // deletion, both reachable directly by the user — not just documented as
 // "possible on request".
+function BackupSection({ t }) {
+  const [settings, setSettings] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState(null); // { type: 'ok'|'error', text }
+
+  useEffect(() => {
+    window.api.backupGetSettings?.().then(setSettings);
+  }, []);
+
+  const save = async (patch) => {
+    const next = { enabled: settings.enabled, frequency: settings.frequency, ...patch };
+    setSettings({ ...settings, ...next });
+    const result = await window.api.backupSaveSettings(next);
+    if (!result?.ok) setMessage({ type: 'error', text: result?.error || t('settings.backupsError') });
+  };
+
+  const handleCreateNow = async () => {
+    setBusy(true);
+    setMessage(null);
+    const result = await window.api.backupCreateNow();
+    setBusy(false);
+    if (result?.ok) {
+      setMessage({ type: 'ok', text: t('settings.backupsCreated') });
+      window.api.backupGetSettings?.().then(setSettings);
+    } else {
+      setMessage({ type: 'error', text: result?.error || t('settings.backupsError') });
+    }
+  };
+
+  const handleRestore = async () => {
+    setBusy(true);
+    setMessage(null);
+    const result = await window.api.backupRestore();
+    setBusy(false);
+    if (result?.ok) setMessage({ type: 'ok', text: t('settings.backupsRestored', { count: result.count ?? 0 }) });
+    else if (result?.reason !== 'canceled') setMessage({ type: 'error', text: result?.error || t('settings.backupsError') });
+  };
+
+  if (!settings) return null;
+
+  if (settings.unavailable) {
+    return (
+      <div className="form settings-data-section">
+        <h3>{t('settings.backupsTitle')}</h3>
+        <p className="field-hint">{t('settings.backupsUnavailable')}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="form settings-data-section">
+      <h3>{t('settings.backupsTitle')}</h3>
+      <p className="field-hint">{t('settings.backupsHint')}</p>
+
+      <label className="checkbox-row">
+        <input type="checkbox" checked={!!settings.enabled} onChange={(e) => save({ enabled: e.target.checked })} />
+        {t('settings.backupsEnable')}
+      </label>
+
+      {settings.enabled && (
+        <label style={{ marginTop: 10, maxWidth: 260 }}>
+          {t('settings.backupsFrequency')}
+          <select value={settings.frequency} onChange={(e) => save({ frequency: e.target.value })}>
+            <option value="daily">{t('settings.backupsFrequencyDaily')}</option>
+            <option value="weekly">{t('settings.backupsFrequencyWeekly')}</option>
+            <option value="monthly">{t('settings.backupsFrequencyMonthly')}</option>
+          </select>
+        </label>
+      )}
+
+      <p className="field-hint" style={{ marginTop: 10 }}>
+        {t('settings.backupsLastRun')}: {settings.lastBackupAt ? new Date(settings.lastBackupAt).toLocaleString() : t('settings.backupsNever')}
+      </p>
+
+      <div className="modal-actions" style={{ marginTop: 4, marginBottom: 8, flexWrap: 'wrap' }}>
+        <button type="button" className="btn-secondary" onClick={handleCreateNow} disabled={busy}>{t('settings.backupsCreateNow')}</button>
+        <button type="button" className="btn-secondary" onClick={handleRestore} disabled={busy}>{t('settings.backupsRestore')}</button>
+        <button type="button" className="btn-secondary" onClick={() => window.api.backupOpenFolder?.()}>{t('settings.backupsOpenFolder')}</button>
+      </div>
+      {message && <span className={message.type === 'ok' ? 'saved-hint' : 'auth-error'}>{message.text}</span>}
+    </div>
+  );
+}
+
 function DataAndAccountSection({ t }) {
   const [exportBusy, setExportBusy] = useState(false);
   const [exportResult, setExportResult] = useState(null);
@@ -87,6 +171,8 @@ function DataAndAccountSection({ t }) {
         {exportResult === 'ok' && <span className="saved-hint">{t('settings.exportSaved')}</span>}
         {exportResult === 'error' && <span className="auth-error">{t('auth.errorGeneric')}</span>}
       </div>
+
+      <BackupSection t={t} />
 
       <h3 className="settings-danger-title">{t('settings.dangerZone')}</h3>
       {!showDeleteForm ? (

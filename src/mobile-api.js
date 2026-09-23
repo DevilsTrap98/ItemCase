@@ -121,6 +121,15 @@ export function createMobileApi() {
     importCsv: async () => ({ ok: false, reason: 'unsupported' }),
     exportPdf: async () => false,
     pickImportSpreadsheet: async () => null,
+    // Local JSON backups write into ItemCase's own desktop app-data folder
+    // (electron/main.js) — there's no equivalent local filesystem in a
+    // browser/mobile context, so this feature is desktop-only.
+    backupGetSettings: async () => ({ enabled: false, frequency: 'daily', lastBackupAt: null, folderPath: null, unavailable: true }),
+    backupSaveSettings: async () => ({ ok: false, error: 'Backups sind nur in der Desktop-App verfügbar.' }),
+    backupCreateNow: async () => ({ ok: false, error: 'Backups sind nur in der Desktop-App verfügbar.' }),
+    backupList: async () => [],
+    backupOpenFolder: async () => ({ ok: false }),
+    backupRestore: async () => ({ ok: false, error: 'Backups sind nur in der Desktop-App verfügbar.' }),
     getCaptcha: () => okResult(async () => await request('/auth/captcha')),
     register: (body) => okResult(async () => await request('/auth/register', { method: 'POST', body })),
     resendVerification: (email) => okResult(async () => await request('/auth/resend-verification', { method: 'POST', body: { email } })),

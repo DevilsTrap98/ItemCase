@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, safeStorage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, safeStorage, shell } = require('electron');
 app.setName('ItemCase');
 const path = require('path');
 const fs = require('fs');
@@ -27,6 +27,12 @@ const imagesDir = path.join(userDataDir, 'images');
 const feedbackFile = path.join(userDataDir, 'feedback-outbox.json');
 const reportsFile = path.join(userDataDir, 'reports-outbox.json');
 const authFile = path.join(userDataDir, 'auth.json');
+// Local, per-machine backup settings and destination — deliberately not
+// synced to the server (see backup:* handlers below): a snapshot of the
+// user's own collection as plain JSON, dropped into a folder inside
+// ItemCase's own app-data directory.
+const backupSettingsFile = path.join(userDataDir, 'backup-settings.json');
+const backupsDir = path.join(userDataDir, 'Backups');
 let sessionToken = null;
 
 // Development uses the server on this machine. Packaged clients connect to
@@ -315,6 +321,13 @@ app.whenReady().then(() => {
   ensureDirs();
   createWindow();
   connectRealtime();
+
+  // maybeRunScheduledBackup() is a no-op until logged in and until enabled,
+  // so it's safe to just always check shortly after startup, then hourly —
+  // catches up on a due backup whenever the app next happens to be open,
+  // rather than needing a precise OS-level scheduler.
+  setTimeout(() => maybeRunScheduledBackup(), 15000);
+  setInterval(() => maybeRunScheduledBackup(), 60 * 60 * 1000);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -911,6 +924,193 @@ async function freshDb() {
   if (!loadAuthToken()) return readDb();
   return apiFetch('/collection', { auth: true });
 }
+
+// ---- Local JSON backups ----
+// Opt-in, per-machine scheduled snapshots of the collection as a single
+// self-contained JSON file (no separate images/ folder like exportZip) —
+// item/category images are fetched and embedded as data: URLs at backup
+// time, since /collection returns short-lived signed image URLs (expire
+// after ~1h) that would otherwise be dead by the time an old backup is
+// ever opened again.
+const BACKUP_FREQUENCIES = new Set(['daily', 'weekly', 'monthly']);
+const BACKUP_INTERVAL_MS = { daily: 24 * 60 * 60 * 1000, weekly: 7 * 24 * 60 * 60 * 1000, monthly: 30 * 24 * 60 * 60 * 1000 };
+const MAX_AUTO_BACKUPS = 20; // retention: oldest files beyond this are pruned after each run
+
+function readBackupSettings() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(backupSettingsFile, 'utf-8'));
+    return {
+      enabled: !!parsed.enabled,
+      frequency: BACKUP_FREQUENCIES.has(parsed.frequency) ? parsed.frequency : 'daily',
+      lastBackupAt: parsed.lastBackupAt || null
+    };
+  } catch (e) {
+    return { enabled: false, frequency: 'daily', lastBackupAt: null };
+  }
+}
+
+function writeBackupSettings(settings) {
+  ensureDirs();
+  fs.writeFileSync(backupSettingsFile, JSON.stringify(settings, null, 2), 'utf-8');
+}
+
+async function embedImagesForBackup(db) {
+  const cache = new Map();
+  const resolve = async (url) => {
+    if (!url) return url;
+    if (cache.has(url)) return cache.get(url);
+    const promise = imageInputToDataUrl(url).catch((e) => {
+      // Fall back to the original (possibly already-expired) URL rather
+      // than silently dropping the image from the backup.
+      console.error('[backup] could not embed image', e.message);
+      return url;
+    });
+    cache.set(url, promise);
+    return promise;
+  };
+  const items = await Promise.all((db.items || []).map(async (item) => ({ ...item, imagePath: await resolve(item.imagePath) })));
+  const categoryImages = {};
+  for (const [name, url] of Object.entries(db.categoryImages || {})) {
+    categoryImages[name] = await resolve(url);
+  }
+  return { ...db, items, categoryImages };
+}
+
+async function performBackup() {
+  ensureDirs();
+  if (!fs.existsSync(backupsDir)) fs.mkdirSync(backupsDir, { recursive: true });
+  const db = await embedImagesForBackup(await freshDb());
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const fileName = `itemcase-backup-${timestamp}.json`;
+  fs.writeFileSync(path.join(backupsDir, fileName), JSON.stringify(db, null, 2), 'utf-8');
+
+  const files = fs.readdirSync(backupsDir).filter((f) => f.endsWith('.json')).sort().reverse();
+  files.slice(MAX_AUTO_BACKUPS).forEach((f) => { try { fs.unlinkSync(path.join(backupsDir, f)); } catch (e) {} });
+
+  return fileName;
+}
+
+// Checked once shortly after startup/login and again every hour while the
+// app stays open — the app isn't guaranteed to be running exactly when a
+// backup falls due, so this just catches up as soon as it next can, rather
+// than needing a precise OS-level scheduler.
+async function maybeRunScheduledBackup() {
+  if (!loadAuthToken()) return;
+  const settings = readBackupSettings();
+  if (!settings.enabled) return;
+  const intervalMs = BACKUP_INTERVAL_MS[settings.frequency] || BACKUP_INTERVAL_MS.daily;
+  const last = settings.lastBackupAt ? new Date(settings.lastBackupAt).getTime() : 0;
+  if (Date.now() - last < intervalMs) return;
+  try {
+    await performBackup();
+    writeBackupSettings({ ...settings, lastBackupAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('[backup] scheduled backup failed', e.message);
+  }
+}
+
+ipcMain.handle('backup:getSettings', async () => ({ ...readBackupSettings(), folderPath: backupsDir }));
+
+ipcMain.handle('backup:saveSettings', async (_event, { enabled, frequency } = {}) => {
+  const current = readBackupSettings();
+  const next = {
+    ...current,
+    enabled: !!enabled,
+    frequency: BACKUP_FREQUENCIES.has(frequency) ? frequency : current.frequency
+  };
+  writeBackupSettings(next);
+  // Enabling it now shouldn't require waiting a full cycle for the first one.
+  if (next.enabled && !current.lastBackupAt) maybeRunScheduledBackup();
+  return { ok: true, settings: next };
+});
+
+ipcMain.handle('backup:createNow', async () => {
+  if (!loadAuthToken()) return { ok: false, error: 'Backups sind nur für angemeldete Konten verfügbar.' };
+  try {
+    const fileName = await performBackup();
+    writeBackupSettings({ ...readBackupSettings(), lastBackupAt: new Date().toISOString() });
+    return { ok: true, fileName };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle('backup:list', async () => {
+  ensureDirs();
+  if (!fs.existsSync(backupsDir)) return [];
+  return fs.readdirSync(backupsDir)
+    .filter((f) => f.endsWith('.json'))
+    .map((f) => {
+      const stat = fs.statSync(path.join(backupsDir, f));
+      return { fileName: f, size: stat.size, mtime: stat.mtime.toISOString() };
+    })
+    .sort((a, b) => b.mtime.localeCompare(a.mtime));
+});
+
+ipcMain.handle('backup:openFolder', async () => {
+  ensureDirs();
+  if (!fs.existsSync(backupsDir)) fs.mkdirSync(backupsDir, { recursive: true });
+  await shell.openPath(backupsDir);
+  return { ok: true };
+});
+
+ipcMain.handle('backup:restore', async (_event, fileName) => {
+  if (!loadAuthToken()) return { ok: false, reason: 'not_logged_in' };
+
+  let filePath;
+  if (fileName) {
+    const resolved = path.join(backupsDir, fileName);
+    if (path.dirname(resolved) !== backupsDir) return { ok: false, reason: 'invalid' };
+    filePath = resolved;
+  } else {
+    ensureDirs();
+    if (!fs.existsSync(backupsDir)) fs.mkdirSync(backupsDir, { recursive: true });
+    const result = await dialog.showOpenDialog({
+      title: 'Backup auswählen',
+      defaultPath: backupsDir,
+      properties: ['openFile'],
+      filters: [{ name: 'ItemCase-Backup', extensions: ['json'] }]
+    });
+    if (result.canceled || !result.filePaths.length) return { ok: false, reason: 'canceled' };
+    filePath = result.filePaths[0];
+  }
+
+  let imported;
+  try {
+    imported = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+  } catch (e) {
+    return { ok: false, reason: 'invalid' };
+  }
+  if (!imported || !Array.isArray(imported.items)) return { ok: false, reason: 'invalid' };
+
+  const importedCategories = Array.isArray(imported.categories) ? [...imported.categories] : [];
+  const importedItems = imported.items.map((item) => ({ ...item, id: undefined, updatedAt: new Date().toISOString() }));
+  importedItems.forEach((item) => { if (item.category && !importedCategories.includes(item.category)) importedCategories.push(item.category); });
+
+  for (const cat of importedCategories) {
+    if (!cat) continue;
+    try { await apiFetch('/collection/categories', { method: 'POST', auth: true, body: { category: cat } }); } catch (e) {}
+  }
+  let restoredCount = 0;
+  for (const item of importedItems) {
+    // A backup's imagePath is already a data: URL (embedded at backup time)
+    // or, for an older/foreign file, possibly still a bare local filename —
+    // never re-fetched from a URL here since restoring shouldn't depend on
+    // that URL (likely someone else's signed link, or long expired) still
+    // being reachable.
+    const imageData = item.imagePath && !item.imagePath.startsWith('data:') && !/^https?:\/\//i.test(item.imagePath)
+      ? fileToDataUrl(item.imagePath)
+      : (item.imagePath && item.imagePath.startsWith('data:') ? item.imagePath : null);
+    try {
+      await apiFetch('/collection/items', { method: 'POST', auth: true, body: { ...item, imageData } });
+      restoredCount += 1;
+    } catch (e) {
+      console.error('[backup] failed to restore item', item.name, e.message);
+    }
+  }
+  await freshDb();
+  return { ok: true, count: restoredCount };
+});
 
 ipcMain.handle('data:exportZip', async () => {
   const result = await dialog.showSaveDialog({
