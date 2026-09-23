@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS users (
   -- to share their email. Login stays email-based.
   username VARCHAR(32) NOT NULL,
   token_version INT NOT NULL DEFAULT 0,
-  role ENUM('user', 'admin') NOT NULL DEFAULT 'user',
+  role ENUM('user', 'moderator', 'admin') NOT NULL DEFAULT 'user',
   account_status ENUM('active', 'suspended') NOT NULL DEFAULT 'active',
   tariff ENUM('free', 'collectorPlus', 'collectorPro', 'business') NOT NULL DEFAULT 'free',
   email_verified_at DATETIME NULL,
@@ -58,6 +58,10 @@ ALTER TABLE users ADD COLUMN email_verification_token_hash CHAR(64) NULL;
 ALTER TABLE users ADD COLUMN email_verification_expires_at DATETIME NULL;
 ALTER TABLE users ADD COLUMN email_verification_sent_at DATETIME NULL;
 ALTER TABLE users ADD UNIQUE KEY uniq_users_verification_token (email_verification_token_hash);
+-- Moderator: can handle catalog/report/feedback submissions like an admin
+-- (its own restricted panel), but not user management, tariffs, dealer
+-- verification or forum moderation — see middleware/admin.js.
+ALTER TABLE users MODIFY COLUMN role ENUM('user', 'moderator', 'admin') NOT NULL DEFAULT 'user';
 -- Accounts created before e-mail verification was introduced stay valid.
 UPDATE users SET email_verified_at = COALESCE(email_verified_at, created_at, NOW())
 WHERE email_verified_at IS NULL AND email_verification_token_hash IS NULL;

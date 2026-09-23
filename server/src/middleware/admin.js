@@ -3,4 +3,14 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-module.exports = { requireAdmin };
+// Moderators handle catalog/report/feedback submissions like an admin, but
+// not user management, tariffs, dealer verification or forum moderation —
+// those routes additionally require requireAdmin (see routes/admin.js).
+function requireModerator(req, res, next) {
+  if (req.user?.role !== 'admin' && req.user?.role !== 'moderator') {
+    return res.status(403).json({ error: 'Moderator- oder Admin-Rechte erforderlich' });
+  }
+  next();
+}
+
+module.exports = { requireAdmin, requireModerator };

@@ -1298,12 +1298,12 @@ export default function App() {
           onClose={() => setSelectedItem(null)}
         />
       )}
-      {user?.role === 'admin' && !showAdmin && (
-        <button type="button" className="admin-launcher" onClick={() => setShowAdmin(true)} title="Admin-Dashboard öffnen">
-          <span>◆</span><strong>Admin</strong>
+      {(user?.role === 'admin' || user?.role === 'moderator') && !showAdmin && (
+        <button type="button" className="admin-launcher" onClick={() => setShowAdmin(true)} title={user.role === 'admin' ? 'Admin-Dashboard öffnen' : 'Moderations-Panel öffnen'}>
+          <span>◆</span><strong>{user.role === 'admin' ? 'Admin' : 'Moderation'}</strong>
         </button>
       )}
-      {user?.role === 'admin' && showAdmin && (
+      {(user?.role === 'admin' || user?.role === 'moderator') && showAdmin && (
         <AdminDashboard currentUser={user} onClose={() => setShowAdmin(false)} onCatalogChanged={loadData} />
       )}
       </div>

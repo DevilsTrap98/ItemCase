@@ -2066,11 +2066,19 @@ ipcMain.handle('forum:likePost', async (_event, postId) => {
 
 // ---- Admin dashboard ----
 ipcMain.handle('admin:load', async () => {
+  // /forum, /users and /dealers are admin-only (requireAdmin) — a
+  // moderator gets a 403 on those specifically, not a broken dashboard, so
+  // they're fetched leniently and default to empty instead of failing the
+  // whole Promise.all.
+  const orEmpty = (promise, fallback) => promise.catch(() => fallback);
   try {
     const [summary, inbox, catalog, forum, users, dealers, duplicates, changeRequests, withheldXp, riskOverview] = await Promise.all([
       apiFetch('/admin/summary', { auth: true }), apiFetch('/admin/inbox', { auth: true }),
-      apiFetch('/admin/catalog', { auth: true }), apiFetch('/admin/forum', { auth: true }), apiFetch('/admin/users', { auth: true }),
-      apiFetch('/admin/dealers', { auth: true }), apiFetch('/admin/catalog/duplicates', { auth: true }),
+      apiFetch('/admin/catalog', { auth: true }),
+      orEmpty(apiFetch('/admin/forum', { auth: true }), []),
+      orEmpty(apiFetch('/admin/users', { auth: true }), []),
+      orEmpty(apiFetch('/admin/dealers', { auth: true }), []),
+      apiFetch('/admin/catalog/duplicates', { auth: true }),
       apiFetch('/admin/change-requests?status=pending', { auth: true }),
       apiFetch('/admin/xp/withheld/list', { auth: true }), apiFetch('/admin/risk-overview', { auth: true })
     ]);

@@ -1,10 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
+// Dealer-Verifizierung, Forum-Moderation und Nutzerverwaltung bleiben
+// Admins vorbehalten (der Server lehnt sie einem Moderator ohnehin mit 403
+// ab, requireAdmin in server/src/routes/admin.js) — für Moderatoren wird
+// die Tab-Leiste entsprechend gekürzt, siehe TABS_FOR().
+const ADMIN_ONLY_TABS = new Set(['dealers', 'forum', 'users']);
 const TABS = [
   ['overview', '📊', 'Übersicht'], ['inbox', '📥', 'Inbox'], ['catalog', '✅', 'Freigaben'],
   ['changeRequests', '📝', 'Korrekturen'], ['risk', '🛡️', 'Risiko'],
   ['duplicates', '🧩', 'Duplikate'], ['reports', '🚩', 'Meldungen'], ['dealers', '🏪', 'Händler'], ['forum', '💬', 'Forum'], ['users', '👥', 'Nutzer']
 ];
+const tabsFor = (isAdmin) => isAdmin ? TABS : TABS.filter(([id]) => !ADMIN_ONLY_TABS.has(id));
 
 const dateTime = (value) => value ? new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '–';
 const money = (value) => value !== null && value !== undefined && value !== ''
@@ -141,12 +147,14 @@ export default function AdminDashboard({ currentUser, onClose, onCatalogChanged 
   ], [catalog]);
 
   const filteredUsers = users.filter((u) => `${u.name} ${u.username} ${u.email}`.toLowerCase().includes(search.toLowerCase()));
+  const isAdmin = currentUser.role === 'admin';
+  const visibleTabs = tabsFor(isAdmin);
 
   return (
     <div className="admin-shell">
       <aside className="admin-sidebar">
-        <div className="admin-brand"><span>◆</span><div><strong>ItemCase</strong><small>Administration</small></div></div>
-        <nav>{TABS.map(([id, icon, label]) => (
+        <div className="admin-brand"><span>◆</span><div><strong>ItemCase</strong><small>{isAdmin ? 'Administration' : 'Moderation'}</small></div></div>
+        <nav>{visibleTabs.map(([id, icon, label]) => (
           <button key={id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)}>
             <span>{icon}</span>{label}
             {id === 'inbox' && summary.openFeedback > 0 && <b>{summary.openFeedback}</b>}
@@ -171,9 +179,9 @@ export default function AdminDashboard({ currentUser, onClose, onCatalogChanged 
               <button onClick={() => setTab('inbox')}><span>📥</span><strong>{summary.openFeedback || 0}</strong><small>Offenes Feedback</small></button>
               <button onClick={() => setTab('reports')}><span>🚩</span><strong>{summary.openReports || 0}</strong><small>Offene Meldungen</small></button>
               <button onClick={() => setTab('catalog')}><span>✅</span><strong>{pending.length}</strong><small>Ausstehende Freigaben</small></button>
-              <button onClick={() => setTab('dealers')}><span>🏪</span><strong>{summary.pendingDealers || 0}</strong><small>Händler zu prüfen</small></button>
-              <button onClick={() => setTab('users')}><span>👥</span><strong>{summary.users || 0}</strong><small>Nutzer</small></button>
-              <button onClick={() => setTab('forum')}><span>💬</span><strong>{summary.forumThreads || 0}</strong><small>Forum-Themen</small></button>
+              {isAdmin && <button onClick={() => setTab('dealers')}><span>🏪</span><strong>{summary.pendingDealers || 0}</strong><small>Händler zu prüfen</small></button>}
+              {isAdmin && <button onClick={() => setTab('users')}><span>👥</span><strong>{summary.users || 0}</strong><small>Nutzer</small></button>}
+              {isAdmin && <button onClick={() => setTab('forum')}><span>💬</span><strong>{summary.forumThreads || 0}</strong><small>Forum-Themen</small></button>}
             </div>
             <div className="admin-panel"><h2>Arbeitsvorrat</h2>{pending.slice(0, 5).map((item) => <div className="admin-row" key={`${item.kind}-${item.id}`}><div><strong>{item.label}</strong><small>{item.kindLabel} · {dateTime(item.submitted_at)}</small></div><button className="btn-secondary" onClick={() => setTab('catalog')}>Prüfen</button></div>)}{!pending.length && <div className="admin-empty">Alles erledigt – keine offenen Freigaben.</div>}</div>
           </section>}
@@ -271,7 +279,7 @@ export default function AdminDashboard({ currentUser, onClose, onCatalogChanged 
 
           {tab === 'forum' && <section className="admin-panel"><h2>Forum verwalten</h2>{threads.map((thread) => <div className="admin-row" key={thread.id}><div><strong>{thread.title}</strong><small>{thread.author_name} (@{thread.author_username}) · {thread.category} · {thread.post_count} Beiträge · {dateTime(thread.created_at)}</small></div><StatusPill value={thread.status} /><button className="danger" onClick={() => { if (window.confirm('Forum-Thema wirklich endgültig löschen?')) act('deleteThread', { id: thread.id }); }}>Löschen</button></div>)}{!threads.length && <div className="admin-empty">Keine Forum-Themen vorhanden.</div>}</section>}
 
-          {tab === 'users' && <section className="admin-panel"><div className="admin-panel-title"><h2>Nutzer und Rollen</h2><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Nutzer suchen …" /></div>{filteredUsers.map((item) => <div className="admin-row" key={item.id}><div><strong>{item.name} {item.id === currentUser.id && '(du)'}</strong><small>@{item.username} · {item.email} · seit {dateTime(item.created_at)}</small></div><select value={item.account_status} disabled={item.id === currentUser.id} onChange={(e) => act('userStatus', { id: item.id, status: e.target.value })}><option value="active">Aktiv</option><option value="suspended">Gesperrt</option></select><select value={item.role} disabled={item.id === currentUser.id} onChange={(e) => act('userRole', { id: item.id, role: e.target.value })}><option value="user">Nutzer</option><option value="admin">Admin</option></select></div>)}</section>}
+          {tab === 'users' && <section className="admin-panel"><div className="admin-panel-title"><h2>Nutzer und Rollen</h2><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Nutzer suchen …" /></div>{filteredUsers.map((item) => <div className="admin-row" key={item.id}><div><strong>{item.name} {item.id === currentUser.id && '(du)'}</strong><small>@{item.username} · {item.email} · seit {dateTime(item.created_at)}</small></div><select value={item.account_status} disabled={item.id === currentUser.id} onChange={(e) => act('userStatus', { id: item.id, status: e.target.value })}><option value="active">Aktiv</option><option value="suspended">Gesperrt</option></select><select value={item.role} disabled={item.id === currentUser.id} onChange={(e) => act('userRole', { id: item.id, role: e.target.value })}><option value="user">Nutzer</option><option value="moderator">Moderator</option><option value="admin">Admin</option></select></div>)}</section>}
         </>}
       </main>
       {selectedApproval && (

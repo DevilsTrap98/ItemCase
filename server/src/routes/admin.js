@@ -1,7 +1,7 @@
 const express = require('express');
 const { getMysqlPool, withTransaction } = require('../config/db-mysql');
 const { requireAuth } = require('../middleware/auth');
-const { requireAdmin } = require('../middleware/admin');
+const { requireAdmin, requireModerator } = require('../middleware/admin');
 const { publicImageUrl, removeStoredImage } = require('../utils/imageStorage');
 const { notify } = require('../utils/notify');
 const { recalculate } = require('../utils/communityValue');
@@ -10,7 +10,9 @@ const { logCatalogHistory } = require('../utils/catalogHistory');
 const { decideChangeRequest, CHANGE_TYPE_XP } = require('../utils/changeRequests');
 
 const router = express.Router();
-router.use(requireAuth, requireAdmin);
+// Moderators get everything below except the routes explicitly re-guarded
+// with requireAdmin (user management, tariffs, dealer verification, forum).
+router.use(requireAuth, requireModerator);
 
 const VALID_REVIEW_STATUSES = new Set(['pending', 'approved', 'rejected']);
 const VALID_ENTRY_STATUSES = new Set(['pending', 'approved', 'rejected', 'needs_changes', 'removed', 'reported']);
@@ -358,7 +360,7 @@ router.post('/catalog/entries/:id/merge', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-router.get('/forum', async (_req, res, next) => {
+router.get('/forum', requireAdmin, async (_req, res, next) => {
   try {
     const [threads] = await getMysqlPool().query(
       `SELECT t.id, t.title, t.category, t.status, t.created_at, u.name author_name, u.username author_username,
@@ -369,7 +371,7 @@ router.get('/forum', async (_req, res, next) => {
   } catch (error) { next(error); }
 });
 
-router.delete('/forum/threads/:id', async (req, res, next) => {
+router.delete('/forum/threads/:id', requireAdmin, async (req, res, next) => {
   try {
     const pool = getMysqlPool();
     const [rows] = await pool.query('SELECT image_path FROM forum_threads WHERE id = ?', [req.params.id]);
@@ -379,7 +381,7 @@ router.delete('/forum/threads/:id', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-router.get('/users', async (req, res, next) => {
+router.get('/users', requireAdmin, async (req, res, next) => {
   try {
     const search = String(req.query.search || '').trim().slice(0, 80);
     const like = `%${search}%`;
@@ -392,16 +394,16 @@ router.get('/users', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-router.patch('/users/:id/role', async (req, res, next) => {
+router.patch('/users/:id/role', requireAdmin, async (req, res, next) => {
   try {
-    const role = req.body?.role === 'admin' ? 'admin' : 'user';
+    const role = ['admin', 'moderator'].includes(req.body?.role) ? req.body.role : 'user';
     if (req.params.id === req.user.id && role !== 'admin') return res.status(400).json({ error: 'Du kannst dir nicht selbst die Admin-Rechte entziehen.' });
     await getMysqlPool().query('UPDATE users SET role = ?, token_version = token_version + 1 WHERE id = ?', [role, req.params.id]);
     res.json({ ok: true });
   } catch (error) { next(error); }
 });
 
-router.patch('/users/:id/status', async (req, res, next) => {
+router.patch('/users/:id/status', requireAdmin, async (req, res, next) => {
   try {
     const status = req.body?.status === 'suspended' ? 'suspended' : 'active';
     if (req.params.id === req.user.id && status !== 'active') return res.status(400).json({ error: 'Du kannst dein eigenes Konto nicht sperren.' });
@@ -508,7 +510,7 @@ router.get('/risk-overview', async (req, res, next) => {
 // Manual tariff grants: a temporary or hand-approved paid tariff, with a
 // full audit trail (who, why, when, until when) — see the user's own
 // instruction that this must never be an untracked UPDATE users.tariff.
-router.get('/tariff-grants', async (req, res, next) => {
+router.get('/tariff-grants', requireAdmin, async (req, res, next) => {
   try {
     const pool = getMysqlPool();
     const userId = req.query.userId ? String(req.query.userId) : null;
@@ -522,7 +524,7 @@ router.get('/tariff-grants', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-router.post('/tariff-grants', async (req, res, next) => {
+router.post('/tariff-grants', requireAdmin, async (req, res, next) => {
   try {
     const { userId, tariff, reason, endsAt } = req.body || {};
     if (!['collectorPlus', 'collectorPro', 'business'].includes(tariff)) return res.status(400).json({ error: 'Ungültiger Tarif' });
@@ -547,7 +549,7 @@ router.post('/tariff-grants', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-router.post('/tariff-grants/:id/revoke', async (req, res, next) => {
+router.post('/tariff-grants/:id/revoke', requireAdmin, async (req, res, next) => {
   try {
     const pool = getMysqlPool();
     const [[grant]] = await pool.query("SELECT * FROM tariff_grants WHERE id = ? AND status = 'active'", [req.params.id]);
@@ -565,7 +567,7 @@ router.post('/tariff-grants/:id/revoke', async (req, res, next) => {
 // admin looked at the profile's stated business info/contact details and
 // approved them here — never anything automated, and never a claim about
 // registry lookups we don't actually perform.
-router.get('/dealers', async (_req, res, next) => {
+router.get('/dealers', requireAdmin, async (_req, res, next) => {
   try {
     const [rows] = await getMysqlPool().query(
       `SELECT dp.*, u.name, u.username, u.email,
@@ -577,7 +579,7 @@ router.get('/dealers', async (_req, res, next) => {
   } catch (error) { next(error); }
 });
 
-router.patch('/dealers/:ownerId/verification', async (req, res, next) => {
+router.patch('/dealers/:ownerId/verification', requireAdmin, async (req, res, next) => {
   try {
     const status = String(req.body?.status || '');
     if (!['verified', 'rejected', 'pending'].includes(status)) return res.status(400).json({ error: 'Ungültiger Status' });
