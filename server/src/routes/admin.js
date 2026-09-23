@@ -10,16 +10,24 @@ const { logCatalogHistory } = require('../utils/catalogHistory');
 const { decideChangeRequest, CHANGE_TYPE_XP } = require('../utils/changeRequests');
 
 const router = express.Router();
-// Moderators get everything below except the routes explicitly re-guarded
-// with requireAdmin (user management, tariffs, dealer verification, forum).
-router.use(requireAuth, requireModerator);
+// Auth only at the router level — NOT requireAdmin, which would reject a
+// moderator before any per-route override below even runs. Every route is
+// individually gated instead: requireAdmin for admin-only routes,
+// requireModerator (admin OR moderator) for the handful of catalog-
+// submission routes moderators are explicitly let into — approving/
+// rejecting entries and photos, deciding change requests, merging
+// duplicates. Everything else (inbox/feedback/reports, XP, risk overview,
+// community-value moderation, tariffs, dealers, forum, users) stays
+// admin-only, on purpose: a moderator's access is meant to be narrow, not
+// "admin minus a few pages".
+router.use(requireAuth);
 
 const VALID_REVIEW_STATUSES = new Set(['pending', 'approved', 'rejected']);
 const VALID_ENTRY_STATUSES = new Set(['pending', 'approved', 'rejected', 'needs_changes', 'removed', 'reported']);
 const VALID_REPORT_STATUSES = new Set(['open', 'reviewed', 'dismissed']);
 const VALID_FEEDBACK_STATUSES = new Set(['open', 'reviewed', 'archived']);
 
-router.get('/summary', async (_req, res, next) => {
+router.get('/summary', requireAdmin, async (_req, res, next) => {
   try {
     const pool = getMysqlPool();
     const [[feedback], [reports], [entries], [photos], [categories], [users], [threads], [dealers]] = await Promise.all([
@@ -40,7 +48,7 @@ router.get('/summary', async (_req, res, next) => {
   } catch (error) { next(error); }
 });
 
-router.get('/inbox', async (_req, res, next) => {
+router.get('/inbox', requireAdmin, async (_req, res, next) => {
   try {
     const pool = getMysqlPool();
     const [feedback] = await pool.query(
@@ -55,7 +63,7 @@ router.get('/inbox', async (_req, res, next) => {
   } catch (error) { next(error); }
 });
 
-router.patch('/feedback/:id', async (req, res, next) => {
+router.patch('/feedback/:id', requireAdmin, async (req, res, next) => {
   try {
     const status = String(req.body?.status || '');
     if (!VALID_FEEDBACK_STATUSES.has(status)) return res.status(400).json({ error: 'Ungültiger Status' });
@@ -64,7 +72,7 @@ router.patch('/feedback/:id', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-router.patch('/reports/:id', async (req, res, next) => {
+router.patch('/reports/:id', requireAdmin, async (req, res, next) => {
   try {
     const status = String(req.body?.status || '');
     if (!VALID_REPORT_STATUSES.has(status)) return res.status(400).json({ error: 'Ungültiger Status' });
@@ -100,7 +108,7 @@ router.patch('/reports/:id', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-router.get('/catalog', async (req, res, next) => {
+router.get('/catalog', requireModerator, async (req, res, next) => {
   try {
     const pool = getMysqlPool();
     const [entries] = await pool.query("SELECT * FROM catalog_entries ORDER BY FIELD(status, 'pending', 'approved', 'rejected'), submitted_at DESC LIMIT 300");
@@ -118,7 +126,7 @@ router.get('/catalog', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-router.patch('/catalog/:kind/:id', async (req, res, next) => {
+router.patch('/catalog/:kind/:id', requireModerator, async (req, res, next) => {
   const status = String(req.body?.status || '');
   const isEntry = req.params.kind === 'entries';
   if (isEntry ? !VALID_ENTRY_STATUSES.has(status) : !VALID_REVIEW_STATUSES.has(status)) {
@@ -219,7 +227,7 @@ router.patch('/catalog/:kind/:id', async (req, res, next) => {
 // the user's own "Beitrags- und Prüfzentrum" proposal calls for: before/
 // after side by side (calculated_diff_json), the server-classified XP
 // category, and a way to override that category with a required reason.
-router.get('/change-requests', async (req, res, next) => {
+router.get('/change-requests', requireModerator, async (req, res, next) => {
   try {
     const pool = getMysqlPool();
     const status = ['pending', 'approved', 'rejected', 'needs_changes'].includes(req.query.status) ? req.query.status : 'pending';
@@ -236,7 +244,7 @@ router.get('/change-requests', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-router.post('/change-requests/:id/decide', async (req, res, next) => {
+router.post('/change-requests/:id/decide', requireModerator, async (req, res, next) => {
   try {
     const decision = String(req.body?.decision || '');
     if (!['approved', 'rejected', 'needs_changes'].includes(decision)) return res.status(400).json({ error: 'Ungültige Entscheidung' });
@@ -256,7 +264,7 @@ router.post('/change-requests/:id/decide', async (req, res, next) => {
 // insensitive) or an identical, non-empty EAN/ISBN/manufacturer number.
 // Heuristic only — an admin still decides whether they're really the same
 // product before merging.
-router.get('/catalog/duplicates', async (_req, res, next) => {
+router.get('/catalog/duplicates', requireModerator, async (_req, res, next) => {
   try {
     const pool = getMysqlPool();
     const [rows] = await pool.query(
@@ -292,7 +300,7 @@ async function resolveCanonical(pool, id) {
   return current;
 }
 
-router.post('/catalog/entries/:id/merge', async (req, res, next) => {
+router.post('/catalog/entries/:id/merge', requireModerator, async (req, res, next) => {
   try {
     const reason = String(req.body?.reason || '').trim();
     if (!reason) return res.status(400).json({ error: 'Bitte einen Grund für den Merge angeben.' });
@@ -416,7 +424,7 @@ router.patch('/users/:id/status', requireAdmin, async (req, res, next) => {
 // abuse (spec section 20). No manual XP *grant* endpoint here on purpose:
 // the only way to earn XP is through an actual approval, per "Administra-
 // toren pflegen keine Preise" style principle applied to XP too.
-router.get('/xp/:userId', async (req, res, next) => {
+router.get('/xp/:userId', requireAdmin, async (req, res, next) => {
   try {
     const pool = getMysqlPool();
     const [transactions] = await pool.query(
@@ -428,7 +436,7 @@ router.get('/xp/:userId', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-router.post('/xp-transactions/:id/reverse', async (req, res, next) => {
+router.post('/xp-transactions/:id/reverse', requireAdmin, async (req, res, next) => {
   try {
     const reason = String(req.body?.reason || '').trim();
     if (!reason) return res.status(400).json({ error: 'Ein Grund ist erforderlich.' });
@@ -450,7 +458,7 @@ function paginationParams(req, { defaultLimit = 50, maxLimit = 200 } = {}) {
   return { limit, offset };
 }
 
-router.get('/xp/withheld/list', async (req, res, next) => {
+router.get('/xp/withheld/list', requireAdmin, async (req, res, next) => {
   try {
     const { limit, offset } = paginationParams(req);
     const pool = getMysqlPool();
@@ -465,7 +473,7 @@ router.get('/xp/withheld/list', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-router.post('/xp-transactions/:id/release', async (req, res, next) => {
+router.post('/xp-transactions/:id/release', requireAdmin, async (req, res, next) => {
   try {
     const pool = getMysqlPool();
     const note = String(req.body?.note || '').trim();
@@ -482,7 +490,7 @@ router.post('/xp-transactions/:id/release', async (req, res, next) => {
 // feedback: "nicht automatisch sperren"). Two cheap, low-false-positive
 // signals for a lean pass: unusually high approved-contribution volume in
 // the last 24h, and accounts sitting on several withheld transactions.
-router.get('/risk-overview', async (req, res, next) => {
+router.get('/risk-overview', requireAdmin, async (req, res, next) => {
   try {
     const { limit, offset } = paginationParams(req, { defaultLimit: 50, maxLimit: 100 });
     const pool = getMysqlPool();
@@ -601,7 +609,7 @@ router.patch('/dealers/:ownerId/verification', requireAdmin, async (req, res, ne
 // estimates or pause a whole item's calculation. They can never set or
 // override a value directly (spec section 16).
 
-router.get('/community-values/flags', async (_req, res, next) => {
+router.get('/community-values/flags', requireAdmin, async (_req, res, next) => {
   try {
     const pool = getMysqlPool();
     // Heuristic v1: surface aggregates with low confidence-to-volume ratio
@@ -624,7 +632,7 @@ router.get('/community-values/flags', async (_req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.post('/community-values/estimates/:id/exclude', async (req, res, next) => {
+router.post('/community-values/estimates/:id/exclude', requireAdmin, async (req, res, next) => {
   try {
     const pool = getMysqlPool();
     const [rows] = await pool.query('SELECT * FROM community_value_estimates WHERE id = ?', [req.params.id]);
@@ -638,7 +646,7 @@ router.post('/community-values/estimates/:id/exclude', async (req, res, next) =>
   } catch (err) { next(err); }
 });
 
-router.post('/community-values/estimates/:id/restore', async (req, res, next) => {
+router.post('/community-values/estimates/:id/restore', requireAdmin, async (req, res, next) => {
   try {
     const pool = getMysqlPool();
     const [rows] = await pool.query('SELECT * FROM community_value_estimates WHERE id = ?', [req.params.id]);
@@ -652,7 +660,7 @@ router.post('/community-values/estimates/:id/restore', async (req, res, next) =>
 // "Pausing" an item's calculation means excluding every active estimate for
 // it without deleting them — recalculate() then reports Insufficient/no
 // public value until an admin restores them individually.
-router.post('/community-values/items/:id/pause', async (req, res, next) => {
+router.post('/community-values/items/:id/pause', requireAdmin, async (req, res, next) => {
   try {
     const pool = getMysqlPool();
     const [conditions] = await pool.query(

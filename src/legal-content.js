@@ -1,4 +1,91 @@
 export const TERMS_LAST_UPDATED = 'September 2026';
+export const PRIVACY_LAST_UPDATED = 'September 2026';
+
+export const PRIVACY_SECTIONS = [
+  {
+    title: '1. Verantwortlicher',
+    body: [
+      'Verantwortlicher für die Datenverarbeitung im Sinne der Datenschutz-Grundverordnung (DSGVO) ist:\nTeCrest Media – Demberger, Kapila, Müller und Schwarz GbR\nTunnelstraße 26\n66953 Pirmasens\nE-Mail: contact@tecrest-media.de\nImpressum: https://tecrest-media.de/impressum/',
+      'Ein betrieblicher Datenschutzbeauftragter ist gesetzlich nicht bestellungspflichtig. Anfragen zum Datenschutz richten Sie bitte an die oben genannte E-Mail-Adresse.'
+    ]
+  },
+  {
+    title: '2. Welche Daten wir verarbeiten',
+    body: [
+      'Kontodaten: E-Mail-Adresse, Passwort (nur als Hash gespeichert, niemals im Klartext), Anzeigename, ein automatisch vergebener Nutzername, Registrierungszeitpunkt, gewählter Tarif und Kontostatus.',
+      'Profil- und Einstellungsdaten: Profilbild, Design- und Farbeinstellungen, bevorzugte Währung, Benachrichtigungseinstellungen.',
+      'Sammlungsdaten: von Ihnen selbst angelegte Items mit Kategorie, Zustand, Menge, Wert, Kaufpreis, Notizen, Fotos und optionalen Story-Angaben (z. B. Ort und Datum des Erwerbs). Diese Daten sind standardmäßig privat und nur für Sie sichtbar.',
+      'Öffentliche Beiträge: Einreichungen und Korrekturvorschläge zum globalen Community-Katalog, hochgeladene Katalogbilder, Beiträge und Kommentare (soweit die jeweilige Funktion aktiviert ist), öffentliche Showcase-Inhalte, sowie damit verbundene Erfahrungspunkte und Sammlerlevel.',
+      'Kommunikationsdaten: Inhalte von Support-Anfragen, Feedback und Meldungen, sowie – soweit die jeweilige Funktion aktiviert ist – private Nachrichten und Forumsbeiträge.',
+      'Technische Daten: IP-Adresse und Zeitpunkt bei jeder Serveranfrage (kurzzeitig zur Absicherung und Fehlerbehebung verarbeitet), Geräte- bzw. Client-Kennung der verwendeten App-Version, Zeitstempel von Anmeldungen und Änderungen.',
+      'Zahlungsdaten werden von uns nicht verarbeitet: eine Zahlungsabwicklung für kostenpflichtige Tarife ist derzeit nicht angebunden (siehe Nutzungsbedingungen, Ziffer 11).'
+    ]
+  },
+  {
+    title: '3. Zwecke und Rechtsgrundlagen der Verarbeitung',
+    body: [
+      'Bereitstellung des Nutzerkontos, der Sammlungsverwaltung und der übrigen App-Funktionen: Art. 6 Abs. 1 lit. b DSGVO (Vertragserfüllung bzw. vorvertragliche Maßnahmen).',
+      'Versand von Bestätigungs-, Sicherheits- und Kontobezogenen E-Mails (z. B. E-Mail-Verifizierung, Passwort-Zurücksetzen): Art. 6 Abs. 1 lit. b und lit. f DSGVO (Vertragserfüllung sowie unser berechtigtes Interesse an einem funktionierenden, sicheren Kontosystem).',
+      'Betrieb des globalen Community-Katalogs, Moderation von Einreichungen, Bearbeitung von Meldungen und Durchsetzung der Nutzungsbedingungen: Art. 6 Abs. 1 lit. b und lit. f DSGVO (Vertragserfüllung sowie unser berechtigtes Interesse am Schutz der Plattform und ihrer Nutzer vor Missbrauch).',
+      'Absicherung des Betriebs, Fehlerbehebung, Verhinderung von Missbrauch und automatisierten Zugriffen (z. B. Rate-Limiting, Prüfung des Client-Kennzeichens): Art. 6 Abs. 1 lit. f DSGVO (berechtigtes Interesse an einem sicheren und stabilen Betrieb).',
+      'Sofern Sie uns freiwillig kontaktieren (Support, Feedback): Art. 6 Abs. 1 lit. f DSGVO bzw., soweit es der Anbahnung oder Erfüllung eines Vertrags dient, Art. 6 Abs. 1 lit. b DSGVO.'
+    ]
+  },
+  {
+    title: '4. Empfänger und Auftragsverarbeiter',
+    body: [
+      'Ihre Daten werden nicht verkauft und nicht zu Werbezwecken an Dritte weitergegeben.',
+      'Für den technischen Betrieb setzen wir folgende Dienstleister als Auftragsverarbeiter ein, mit denen jeweils ein Auftragsverarbeitungsvertrag nach Art. 28 DSGVO besteht bzw. abgeschlossen wird:',
+      [
+        'Hosting der Datenbank und des Servers sowie E-Mail-Versand: netcup GmbH, Deutschland.'
+      ],
+      'Eine Übermittlung in Staaten außerhalb der EU/des EWR findet nach aktuellem Stand nicht statt. Öffentliche Katalogbeiträge, Showcases und andere von Ihnen bewusst veröffentlichte Inhalte sind naturgemäß für andere Nutzer und, soweit öffentlich zugänglich gemacht, auch für Dritte einsehbar.'
+    ]
+  },
+  {
+    title: '5. Speicherdauer',
+    body: [
+      'Kontobezogene Daten werden gespeichert, solange Ihr Konto besteht. Nach einer selbst veranlassten oder von uns vorgenommenen Kontolöschung werden Ihre privaten Daten und Bilder gelöscht (siehe Ziffer 7).',
+      'Bereits genehmigte, veröffentlichte Beiträge zum Community-Katalog bleiben nach einer Kontolöschung als Teil der gemeinsamen Katalogdaten bestehen, jedoch ohne Zuordnung zu Ihrem Konto oder Ihrer Person.',
+      'Token zur E-Mail-Verifizierung und zum Zurücksetzen des Passworts sind einmalig verwendbar und laufen nach kurzer Zeit automatisch ab. Protokolldaten zur Absicherung des Betriebs werden nur so lange vorgehalten, wie dies zur Störungserkennung und -behebung erforderlich ist.'
+    ]
+  },
+  {
+    title: '6. Cookies und lokale Speicherung',
+    body: [
+      'Die Desktop-App verwendet keine Werbe- oder Tracking-Cookies. Zur Anmeldung wird ein Sitzungs-Token lokal auf Ihrem Gerät gespeichert, damit Sie nicht bei jedem Start erneut ein Passwort eingeben müssen.',
+      'Für rein technische, nicht personenbezogene Zwecke wird lokale Speicherung im Browser bzw. auf dem Gerät verwendet, etwa für die gewählte Sprache, die Position verschiebbarer Fenster oder zuletzt verwendete Import-Einstellungen. Diese Daten verlassen Ihr Gerät nicht und werden nicht zu Analyse- oder Werbezwecken ausgewertet.'
+    ]
+  },
+  {
+    title: '7. Ihre Rechte',
+    body: [
+      'Sie haben nach der DSGVO das Recht auf Auskunft (Art. 15), Berichtigung (Art. 16), Löschung (Art. 17), Einschränkung der Verarbeitung (Art. 18), Datenübertragbarkeit (Art. 20) sowie Widerspruch gegen Verarbeitungen auf Grundlage berechtigter Interessen (Art. 21).',
+      'Einen vollständigen, maschinenlesbaren Export Ihrer eigenen Daten können Sie jederzeit selbst über die App-Einstellungen anfordern. Die endgültige Löschung Ihres Kontos ist ebenfalls jederzeit selbst über die App-Einstellungen möglich (Eingabe des Passworts und einer zusätzlichen Sicherheitsbestätigung erforderlich).',
+      'Für alle diese Rechte sowie für sonstige Fragen zum Datenschutz können Sie sich jederzeit an contact@tecrest-media.de wenden.',
+      'Unabhängig davon haben Sie das Recht, sich bei einer Datenschutz-Aufsichtsbehörde zu beschweren, insbesondere in dem Mitgliedstaat Ihres Aufenthaltsorts, Arbeitsplatzes oder des Orts des mutmaßlichen Verstoßes. Zuständige Aufsichtsbehörde für den Sitz des Anbieters ist der Landesbeauftragte für den Datenschutz und die Informationsfreiheit Rheinland-Pfalz.'
+    ]
+  },
+  {
+    title: '8. Automatisierte Entscheidungen und Profiling',
+    body: [
+      'Eine automatisierte Entscheidungsfindung im Sinne von Art. 22 DSGVO mit rechtlicher oder ähnlich erheblicher Wirkung findet nicht statt. Der automatisch berechnete Community-Schätzwert und das Sammlerlevel sind unverbindliche, rein informative Orientierungswerte ohne rechtliche Wirkung für Ihr Konto (siehe Nutzungsbedingungen, Ziffer 8).'
+    ]
+  },
+  {
+    title: '9. Datensicherheit',
+    body: [
+      'Wir setzen technische und organisatorische Maßnahmen ein, um Ihre Daten angemessen zu schützen, u. a. eine gehashte Passwortspeicherung, verschlüsselte Übertragung, signierte und zeitlich begrenzte Zugriffs-Links für private Bilder sowie eine automatische Entfernung von Metadaten (z. B. Standortdaten) aus hochgeladenen Fotos.',
+      'Trotz aller Sorgfalt kann ein vollständiger Schutz vor jedem denkbaren Zugriff nicht garantiert werden.'
+    ]
+  },
+  {
+    title: '10. Änderungen dieser Datenschutzerklärung',
+    body: [
+      'Wir passen diese Datenschutzerklärung an, wenn sich die Datenverarbeitung, die Rechtslage oder unsere Dienstleister ändern. Die jeweils aktuelle Fassung ist in der App abrufbar.'
+    ]
+  }
+];
 
 export const TERMS_SECTIONS = [
   {
@@ -142,7 +229,7 @@ export const TERMS_SECTIONS = [
   {
     title: '15. Datenschutz',
     body: [
-      'Informationen zur Verarbeitung personenbezogener Daten, zu Zwecken, Rechtsgrundlagen, Empfängern, Speicherfristen und Betroffenenrechten enthält die separate Datenschutzerklärung. [Datenschutz-Link: noch zu ergänzen, sobald eine eigene Datenschutzerklärung für ItemCase veröffentlicht ist – die allgemeine TeCrest-Media-Datenschutzerklärung deckt die appspezifische Datenverarbeitung nicht ab.]',
+      'Informationen zur Verarbeitung personenbezogener Daten, zu Zwecken, Rechtsgrundlagen, Empfängern, Speicherfristen und Betroffenenrechten enthält die separate Datenschutzerklärung, abrufbar über denselben Menüpunkt wie diese Nutzungsbedingungen.',
       'Nutzer können jederzeit über die App-Einstellungen einen vollständigen, maschinenlesbaren Export ihrer eigenen Daten anfordern und ihr Konto endgültig löschen (siehe Ziffer 3). Öffentliche, bereits genehmigte Katalogbeiträge bleiben nach einer Kontolöschung als Teil des gemeinsamen Katalogs bestehen, jedoch ohne Zuordnung zum gelöschten Konto.',
       'Nutzer dürfen keine personenbezogenen Daten anderer Personen veröffentlichen, sofern hierfür keine rechtliche Grundlage oder Einwilligung besteht.'
     ]

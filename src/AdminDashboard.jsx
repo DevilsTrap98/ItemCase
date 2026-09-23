@@ -1,16 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
-// Dealer-Verifizierung, Forum-Moderation und Nutzerverwaltung bleiben
-// Admins vorbehalten (der Server lehnt sie einem Moderator ohnehin mit 403
-// ab, requireAdmin in server/src/routes/admin.js) — für Moderatoren wird
-// die Tab-Leiste entsprechend gekürzt, siehe TABS_FOR().
-const ADMIN_ONLY_TABS = new Set(['dealers', 'forum', 'users']);
+// A moderator gets deliberately narrow access: only the three tabs that
+// are strictly about handling catalog submissions (Freigaben, Korrekturen,
+// Duplikate) — everything else (Übersicht, Inbox, Risiko, Meldungen,
+// Händler, Forum, Nutzer) is admin-only, matching the server side (which
+// also blocks the admin-only routes with requireAdmin regardless of what
+// the UI shows).
+const MODERATOR_TABS = new Set(['catalog', 'changeRequests', 'duplicates']);
 const TABS = [
   ['overview', '📊', 'Übersicht'], ['inbox', '📥', 'Inbox'], ['catalog', '✅', 'Freigaben'],
   ['changeRequests', '📝', 'Korrekturen'], ['risk', '🛡️', 'Risiko'],
   ['duplicates', '🧩', 'Duplikate'], ['reports', '🚩', 'Meldungen'], ['dealers', '🏪', 'Händler'], ['forum', '💬', 'Forum'], ['users', '👥', 'Nutzer']
 ];
-const tabsFor = (isAdmin) => isAdmin ? TABS : TABS.filter(([id]) => !ADMIN_ONLY_TABS.has(id));
+const tabsFor = (isAdmin) => isAdmin ? TABS : TABS.filter(([id]) => MODERATOR_TABS.has(id));
 
 const dateTime = (value) => value ? new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '–';
 const money = (value) => value !== null && value !== undefined && value !== ''
@@ -29,7 +31,9 @@ function StatusPill({ value }) {
 }
 
 export default function AdminDashboard({ currentUser, onClose, onCatalogChanged }) {
-  const [tab, setTab] = useState('overview');
+  // A moderator has no Übersicht tab at all (see MODERATOR_TABS), so their
+  // panel has to open straight on a tab they can actually see.
+  const [tab, setTab] = useState(currentUser.role === 'admin' ? 'overview' : 'catalog');
   const [summary, setSummary] = useState({});
   const [inbox, setInbox] = useState({ feedback: [], reports: [] });
   const [catalog, setCatalog] = useState({ entries: [], photos: [], categories: [] });
@@ -151,7 +155,7 @@ export default function AdminDashboard({ currentUser, onClose, onCatalogChanged 
   const visibleTabs = tabsFor(isAdmin);
 
   return (
-    <div className="admin-shell">
+    <div className={`admin-shell${isAdmin ? '' : ' admin-role-moderator'}`}>
       <aside className="admin-sidebar">
         <div className="admin-brand"><span>◆</span><div><strong>ItemCase</strong><small>{isAdmin ? 'Administration' : 'Moderation'}</small></div></div>
         <nav>{visibleTabs.map(([id, icon, label]) => (

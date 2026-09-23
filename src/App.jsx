@@ -1304,7 +1304,7 @@ export default function App() {
         />
       )}
       {(user?.role === 'admin' || user?.role === 'moderator') && !showAdmin && (
-        <button type="button" className="admin-launcher" onClick={() => setShowAdmin(true)} title={user.role === 'admin' ? 'Admin-Dashboard öffnen' : 'Moderations-Panel öffnen'}>
+        <button type="button" className={`admin-launcher${user.role === 'moderator' ? ' admin-role-moderator' : ''}`} onClick={() => setShowAdmin(true)} title={user.role === 'admin' ? 'Admin-Dashboard öffnen' : 'Moderations-Panel öffnen'}>
           <span>◆</span><strong>{user.role === 'admin' ? 'Admin' : 'Moderation'}</strong>
         </button>
       )}
