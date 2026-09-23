@@ -185,7 +185,7 @@ export default function App() {
   // notifications) were previously only ever set on local React state and
   // never sent to the server at all — every restart silently reset them
   // back to defaults. This persists whichever of those fields changed.
-  const PROFILE_FIELDS = ['name', 'theme', 'colorTheme', 'designTheme', 'background', 'autoColor', 'autoBackground', 'currency', 'notifyOnImport'];
+  const PROFILE_FIELDS = ['name', 'theme', 'colorTheme', 'designTheme', 'background', 'autoColor', 'autoBackground', 'currency', 'notifyOnImport', 'avatarImage'];
   const handleSaveUser = async (updatedUser) => {
     if (updatedUser.tariff && updatedUser.tariff !== user?.tariff && window.api.setTariff) {
       const result = await window.api.setTariff(updatedUser.tariff);
@@ -204,6 +204,11 @@ export default function App() {
     if (result && !result.ok) {
       showAlert(result.error || t('errors.syncFailed'));
       setUser(user); // revert the optimistic update — persistence failed
+    } else if (result?.user) {
+      // Swap the locally-picked data: URL (avatarImage) for the server's
+      // real hosted URL now that it's been stored, so state doesn't keep
+      // holding onto a multi-hundred-KB base64 string longer than it has to.
+      setUser((current) => ({ ...current, ...result.user }));
     }
   };
 

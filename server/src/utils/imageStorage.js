@@ -159,7 +159,7 @@ function authorizePrivateImage(req, res, next) {
 // belong to shared public catalog data that survives account deletion
 // (attribution is pseudonymized instead, see schema.sql's ON DELETE SET
 // NULL constraints), not to the deleted account.
-const PER_USER_NAMESPACES = ['collections', 'market', 'dealer-logos', 'category-backgrounds', 'forum', 'catalog-proposals', 'showcase'];
+const PER_USER_NAMESPACES = ['collections', 'market', 'dealer-logos', 'category-backgrounds', 'forum', 'catalog-proposals', 'showcase', 'avatars'];
 
 async function removeAllUserFiles(userId) {
   for (const namespace of PER_USER_NAMESPACES) {

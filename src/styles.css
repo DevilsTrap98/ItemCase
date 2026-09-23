@@ -1934,6 +1934,13 @@ input:focus, select:focus, textarea:focus {
 .avatar-btn {
   border: none;
   cursor: pointer;
+  /* Buttons keep the browser's own default padding unless reset — left
+     unset here, that padding shrank the image's content box unevenly
+     (more horizontal than vertical), so the avatar photo rendered off-
+     center and non-square inside the circular 36px frame instead of
+     filling it. */
+  padding: 0;
+  margin: 0;
 }
 
 .avatar-lg {

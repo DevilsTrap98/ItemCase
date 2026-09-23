@@ -37,6 +37,10 @@ ALTER TABLE users ADD COLUMN auto_color TINYINT(1) NOT NULL DEFAULT 1;
 ALTER TABLE users ADD COLUMN auto_background TINYINT(1) NOT NULL DEFAULT 1;
 ALTER TABLE users ADD COLUMN currency VARCHAR(8) NOT NULL DEFAULT 'EUR';
 ALTER TABLE users ADD COLUMN notify_on_import TINYINT(1) NOT NULL DEFAULT 1;
+-- Avatar is stored as a file under uploads/avatars/<userId>/ (like every
+-- other image in this app), not as a base64 blob in the DB — this column
+-- is just the relative path, resolved to a public URL via publicImageUrl().
+ALTER TABLE users ADD COLUMN avatar_path VARCHAR(255) NULL;
 ALTER TABLE users ADD COLUMN password_reset_token_hash CHAR(64) NULL;
 ALTER TABLE users ADD COLUMN password_reset_expires_at DATETIME NULL;
 ALTER TABLE users ADD UNIQUE KEY uniq_users_reset_token (password_reset_token_hash);

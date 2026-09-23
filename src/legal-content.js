@@ -6,7 +6,7 @@ export const TERMS_SECTIONS = [
     body: [
       'Diese Nutzungsbedingungen gelten für die Nutzung der ItemCase-App, der ItemCase-Webseite und aller damit verbundenen Funktionen.',
       'In der aktuellen Version sind öffentlich nutzbar: die private Sammlungsverwaltung, der globale Community-Katalog mit Einreichungen und Korrekturvorschlägen, das Sammlerlevel mit Community-Schätzwert und Belohnungen, sowie öffentliche Showcases. Forum, Freundesliste, Gruppen, Direkt- und Gruppenchat, CommunityMarkt und der Händlermodus sind technisch vorbereitet, aber derzeit nicht öffentlich aktiviert; die zugehörigen Regelungen in diesen Nutzungsbedingungen gelten erst ab ihrer tatsächlichen Freischaltung.',
-      'Anbieter ist:\n[Unternehmensname]\n[Rechtsform]\n[Anschrift]\nE-Mail: [Support-E-Mail]\nImpressum: [Link]',
+      'Anbieter ist:\nTeCrest Media – Demberger, Kapila, Müller und Schwarz GbR\nTunnelstraße 26\n66953 Pirmasens\nE-Mail: contact@tecrest-media.de\nImpressum: https://tecrest-media.de/impressum/',
       'Soweit zusätzliche Bedingungen für einzelne Funktionen oder Zahlungen angezeigt werden, gelten diese ergänzend.'
     ]
   },
@@ -89,7 +89,7 @@ export const TERMS_SECTIONS = [
   {
     title: '10. Rechte Dritter und Beschwerdeweg',
     body: [
-      'Rechteinhaber und betroffene Personen können mutmaßlich rechtswidrige Inhalte über [Melde-Link] oder [Rechteinhaber-E-Mail] melden.',
+      'Rechteinhaber und betroffene Personen können mutmaßlich rechtswidrige Inhalte über die "Melden"-Funktion in der App oder per E-Mail an contact@tecrest-media.de melden.',
       'Die Meldung soll enthalten:',
       [
         'eine genaue Beschreibung des betroffenen Inhalts,',
@@ -98,7 +98,7 @@ export const TERMS_SECTIONS = [
         'soweit möglich, Angaben zur behaupteten Rechtsverletzung,',
         'Kontaktdaten für Rückfragen.'
       ],
-      'ItemCase kann Inhalte während der Prüfung vorläufig einschränken oder entfernen. Nutzer, deren Inhalte betroffen sind, können über [Beschwerde-Link oder E-Mail] eine Überprüfung beantragen.'
+      'ItemCase kann Inhalte während der Prüfung vorläufig einschränken oder entfernen. Nutzer, deren Inhalte betroffen sind, können per E-Mail an contact@tecrest-media.de eine Überprüfung beantragen.'
     ]
   },
   {
@@ -142,7 +142,7 @@ export const TERMS_SECTIONS = [
   {
     title: '15. Datenschutz',
     body: [
-      'Informationen zur Verarbeitung personenbezogener Daten, zu Zwecken, Rechtsgrundlagen, Empfängern, Speicherfristen und Betroffenenrechten enthält die separate Datenschutzerklärung unter [Datenschutz-Link].',
+      'Informationen zur Verarbeitung personenbezogener Daten, zu Zwecken, Rechtsgrundlagen, Empfängern, Speicherfristen und Betroffenenrechten enthält die separate Datenschutzerklärung. [Datenschutz-Link: noch zu ergänzen, sobald eine eigene Datenschutzerklärung für ItemCase veröffentlicht ist – die allgemeine TeCrest-Media-Datenschutzerklärung deckt die appspezifische Datenverarbeitung nicht ab.]',
       'Nutzer können jederzeit über die App-Einstellungen einen vollständigen, maschinenlesbaren Export ihrer eigenen Daten anfordern und ihr Konto endgültig löschen (siehe Ziffer 3). Öffentliche, bereits genehmigte Katalogbeiträge bleiben nach einer Kontolöschung als Teil des gemeinsamen Katalogs bestehen, jedoch ohne Zuordnung zum gelöschten Konto.',
       'Nutzer dürfen keine personenbezogenen Daten anderer Personen veröffentlichen, sofern hierfür keine rechtliche Grundlage oder Einwilligung besteht.'
     ]

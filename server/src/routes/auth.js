@@ -6,18 +6,19 @@ const { signToken, requireAuth } = require('../middleware/auth');
 const { loginLimiter, registrationLimiter, verificationLimiter, captchaLimiter } = require('../middleware/rateLimits');
 const { createCaptcha, verifyCaptcha } = require('../security/captcha');
 const { sendVerificationEmail, sendPasswordResetEmail } = require('../services/email');
-const { removeAllUserFiles } = require('../utils/imageStorage');
+const { removeAllUserFiles, storeDataUrl, removeStoredImage, publicImageUrl } = require('../utils/imageStorage');
 const { resetPasswordLimiter } = require('../middleware/rateLimits');
 
 const router = express.Router();
 
-function mapUser(row) {
+function mapUser(row, req) {
   return {
     id: row.id, name: row.name, email: row.email, username: row.username, role: row.role || 'user',
     tariff: row.tariff || 'free', tokenVersion: Number(row.token_version || 0),
     theme: row.ui_theme || 'dark', colorTheme: row.color_theme || 'indigo', designTheme: row.design_theme || 'classic',
     background: row.background_choice || 'auto', autoColor: !!row.auto_color, autoBackground: !!row.auto_background,
-    currency: row.currency || 'EUR', notifyOnImport: row.notify_on_import === undefined ? true : !!row.notify_on_import
+    currency: row.currency || 'EUR', notifyOnImport: row.notify_on_import === undefined ? true : !!row.notify_on_import,
+    avatarImage: req ? publicImageUrl(row.avatar_path, req) : null
   };
 }
 
@@ -143,7 +144,7 @@ router.post('/login', loginLimiter, async (req, res, next) => {
       return res.status(403).json({ error: 'Bitte bestätige zuerst deine E-Mail-Adresse.', code: 'EMAIL_NOT_VERIFIED', email: rows[0].email });
     }
 
-    const user = mapUser(rows[0]);
+    const user = mapUser(rows[0], req);
     const rememberMe = req.body?.rememberMe === true;
     res.json({ token: signToken(user, { rememberMe }), user });
   } catch (err) {
@@ -204,7 +205,7 @@ router.get('/me', requireAuth, async (req, res, next) => {
     const pool = getMysqlPool();
     const [rows] = await pool.query('SELECT * FROM users WHERE id = ?', [req.user.id]);
     if (rows.length === 0) return res.status(401).json({ error: 'user no longer exists' });
-    res.json({ user: mapUser(rows[0]) });
+    res.json({ user: mapUser(rows[0], req) });
   } catch (err) {
     next(err);
   }
@@ -224,7 +225,7 @@ router.patch('/tariff', requireAuth, async (req, res, next) => {
     const pool = getMysqlPool();
     await pool.query('UPDATE users SET tariff = ?, token_version = token_version + 1 WHERE id = ?', [tariff, req.user.id]);
     const [rows] = await pool.query('SELECT * FROM users WHERE id = ?', [req.user.id]);
-    const user = mapUser(rows[0]);
+    const user = mapUser(rows[0], req);
     res.json({ token: signToken(user), user });
   } catch (err) { next(err); }
 });
@@ -243,7 +244,7 @@ router.post('/change-password', requireAuth, loginLimiter, async (req, res, next
     }
     const passwordHash = await bcrypt.hash(newPassword, 12);
     await pool.query('UPDATE users SET password_hash = ?, token_version = token_version + 1 WHERE id = ?', [passwordHash, req.user.id]);
-    const user = mapUser({ ...rows[0], password_hash: passwordHash, token_version: Number(rows[0].token_version || 0) + 1 });
+    const user = mapUser({ ...rows[0], password_hash: passwordHash, token_version: Number(rows[0].token_version || 0) + 1 }, req);
     res.json({ token: signToken(user), user });
   } catch (err) {
     next(err);
@@ -277,12 +278,32 @@ router.patch('/profile', requireAuth, async (req, res, next) => {
       const value = typeof body[field] === 'boolean' ? (body[field] ? 1 : 0) : String(body[field]).slice(0, 32);
       sets.push(`${column} = ?`); params.push(value);
     }
+
+    // avatarImage arrives as a data: URL (the Electron avatar picker already
+    // pre-crops it to a square, see image:pickAvatar) or null to remove it —
+    // never a bare column write like the preference fields above, since it
+    // has to go through the same decode/re-encode/store pipeline every other
+    // uploaded image does (imageStorage.js), not sit as base64 in the users
+    // row. The old file is only deleted after the new one is safely written.
+    let previousAvatarPath;
+    if (body.avatarImage !== undefined) {
+      const [[current]] = await pool.query('SELECT avatar_path FROM users WHERE id = ?', [req.user.id]);
+      previousAvatarPath = current?.avatar_path || null;
+      if (body.avatarImage === null) {
+        sets.push('avatar_path = ?'); params.push(null);
+      } else {
+        const relativePath = await storeDataUrl(body.avatarImage, 'avatars', req.user.id, 'avatar');
+        sets.push('avatar_path = ?'); params.push(relativePath);
+      }
+    }
+
     if (!sets.length) return res.status(400).json({ error: 'Keine Änderungen angegeben.' });
 
     params.push(req.user.id);
     await pool.query(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`, params);
+    if (previousAvatarPath) await removeStoredImage(previousAvatarPath);
     const [rows] = await pool.query('SELECT * FROM users WHERE id = ?', [req.user.id]);
-    const user = mapUser(rows[0]);
+    const user = mapUser(rows[0], req);
     // Name is embedded in the JWT payload, so it needs a fresh token to
     // actually show up anywhere the token is decoded client-side;
     // preference-only changes don't touch the token at all.
