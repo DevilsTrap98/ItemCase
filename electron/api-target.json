@@ -1,0 +1,1 @@
+{ "target": "production", "production": "https://itemcase.tecrest-media.de", "local": "http://localhost:5100" }

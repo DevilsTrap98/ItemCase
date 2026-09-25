@@ -36,7 +36,12 @@ let sessionToken = null;
 
 // Development uses the server on this machine. Packaged clients connect to
 // the ItemCase host in the local WLAN unless explicitly overridden.
-const DEFAULT_API_ORIGIN = isDev ? 'http://localhost:5100' : 'http://192.168.2.39:5100';
+// Which server the packaged app talks to comes from electron/api-target.json
+// (switched by scripts/set-api-target.cjs: "npm run build" = production
+// domain, "npm run build:local" = localhost for testing server changes).
+// Dev mode (npm run dev) always uses localhost.
+const apiTarget = require('./api-target.json');
+const DEFAULT_API_ORIGIN = isDev ? apiTarget.local : (apiTarget[apiTarget.target] || apiTarget.production);
 const API_BASE_URL = process.env.ITEMCASE_API_URL || `${DEFAULT_API_ORIGIN}/api`;
 
 const MIME_TYPES = {
