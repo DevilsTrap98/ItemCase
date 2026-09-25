@@ -49,6 +49,17 @@ Beim Start bricht der Server bewusst ab, wenn `MYSQL_URL` oder `JWT_SECRET` fehl
 - **Backups:** Datenbank **und** `UPLOADS_DIR` gemeinsam sichern.
 - **Updates:** neuen Code einspielen → `npm install --omit=dev` → `npm run db:migrate` → Prozess neu starten.
 
+## Status-Abfrage (Monitoring)
+
+Zwei öffentliche Routen ohne Login und ohne Spezial-Header, z. B. für UptimeRobot oder die Hoster-Überwachung:
+
+| Route | Bedeutung | Antwort |
+|---|---|---|
+| `GET /ping` | Prozess läuft (kein Datenbankzugriff) | `200 {"ok":true}` |
+| `GET /health` | Prozess läuft **und** die Datenbank antwortet | `200 {"ok":true,"database":"up"}` bzw. `503 {"ok":false,"database":"down"}` |
+
+(`/api/health` existiert weiterhin, verlangt aber den App-Client-Header und ist daher für Monitoring ungeeignet.)
+
 ## Erste Schritte nach der Installation
 
 1. Über die App ein Konto registrieren (Bestätigungsmail muss ankommen).

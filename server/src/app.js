@@ -1,4 +1,5 @@
 const express = require('express');
+const { getMysqlPool } = require('./config/db-mysql');
 const helmet = require('helmet');
 const cors = require('cors');
 
@@ -56,6 +57,22 @@ function createApp() {
       res.setHeader('X-Content-Type-Options', 'nosniff');
     }
   }));
+
+  // Uptime-monitoring endpoints — deliberately public and mounted BEFORE the
+  // client filter below, so a monitor (UptimeRobot, the hoster's checker, a
+  // load balancer) needs no special header. They expose no data or details.
+  //   GET /ping   — process is up (no DB access, always cheap)
+  //   GET /health — process is up AND the database answers; 503 otherwise
+  app.get('/ping', (_req, res) => res.json({ ok: true }));
+  app.get('/health', async (_req, res) => {
+    try {
+      await getMysqlPool().query('SELECT 1');
+      res.json({ ok: true, database: 'up' });
+    } catch (error) {
+      console.error('[health] database check failed', error.message);
+      res.status(503).json({ ok: false, database: 'down' });
+    }
+  });
 
   // Restricts every /api/* route to requests carrying the app's own client
   // identifier (see clientFilter.js's own caveats — this is a coarse
