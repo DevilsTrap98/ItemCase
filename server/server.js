@@ -1,10 +1,8 @@
 require('dotenv').config();
 
 const http = require('http');
-const { Server } = require('socket.io');
 const { createApp } = require('./src/app');
 const { getMysqlPool } = require('./src/config/db-mysql');
-const { initRealtime } = require('./src/realtime');
 
 for (const name of ['MYSQL_URL', 'JWT_SECRET']) {
   if (!process.env[name]) {
@@ -27,22 +25,6 @@ getMysqlPool()
   .then(() => {
     const app = createApp();
     const httpServer = http.createServer(app);
-
-    const allowedOrigins = String(process.env.CLIENT_ORIGIN || '')
-      .split(',').map((origin) => origin.trim()).filter(Boolean);
-    const io = new Server(httpServer, {
-      cors: {
-        origin(origin, callback) {
-          if (!origin || allowedOrigins.includes('*') || allowedOrigins.includes(origin)) return callback(null, true);
-          return callback(new Error('Origin not allowed'));
-        },
-        methods: ['GET', 'POST']
-      }
-    });
-    initRealtime(io);
-    // Routes reach the socket layer via req.app.get('io') to push
-    // message/notification events after persisting them.
-    app.set('io', io);
 
     httpServer.listen(PORT, HOST, () => console.log(`[startup] ItemCase server listening on ${HOST}:${PORT}`));
   })

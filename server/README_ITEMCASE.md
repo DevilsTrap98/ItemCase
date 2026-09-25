@@ -33,7 +33,7 @@ Beim Start bricht der Server bewusst ab, wenn `MYSQL_URL` oder `JWT_SECRET` fehl
 | `NODE_ENV` | nein | `production` im Live-Betrieb |
 | `PUBLIC_BASE_URL` | für Produktion | Öffentliche HTTPS-Adresse des Servers **ohne** `/api`, z. B. `https://api.example.com`. Wird für Links in E-Mails (Bestätigung, Passwort-Reset) und Bild-URLs verwendet. Ohne Angabe wird der Host der jeweiligen Anfrage genutzt. |
 | `TRUST_PROXY` | hinter Proxy | `1`, wenn genau ein Reverse-Proxy vorgeschaltet ist (sonst sehen Rate-Limits nur die Proxy-IP). |
-| `CLIENT_ORIGIN` | nein | Komma-getrennte erlaubte Browser-Origins (für Web-Client/Socket.io). Die Desktop-App sendet keinen Origin. `*` erlaubt alle. |
+| `CLIENT_ORIGIN` | nein | Komma-getrennte erlaubte Browser-Origins (für den Web-Client). Die Desktop-App sendet keinen Origin. `*` erlaubt alle. |
 | `UPLOADS_DIR` | empfohlen | Absoluter Pfad für Bild-Uploads (Standard: `server/uploads`). Muss persistent sein und mitgesichert werden. |
 | `MAX_IMAGE_BYTES` | nein | Max. Größe pro Bild, Standard 6 MiB |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM` | ja für Registrierung | Ohne diese Werte startet der Server, verschickt aber keine Mails – Registrierungs-Bestätigung und „Passwort vergessen“ funktionieren dann nicht. `SMTP_SECURE=false` für Port 587 (STARTTLS), `true` für 465. |
@@ -44,7 +44,7 @@ Beim Start bricht der Server bewusst ab, wenn `MYSQL_URL` oder `JWT_SECRET` fehl
 ## Betrieb
 
 - **Prozess dauerhaft laufen lassen:** z. B. mit `pm2` (`pm2 start server.js --name itemcase`), systemd oder dem Node-Manager des Hosters. Bei Änderung an `.env` oder Code neu starten.
-- **Reverse-Proxy:** HTTPS terminieren und auf `http://127.0.0.1:5100` weiterleiten. WebSocket-Weiterleitung (Socket.io, Pfad `/socket.io`) muss aktiviert sein. Dazu `TRUST_PROXY=1` und `PUBLIC_BASE_URL` setzen.
+- **Reverse-Proxy:** HTTPS terminieren und auf `http://127.0.0.1:5100` weiterleiten. **Keine WebSockets nötig:** Live-Updates laufen per normalem HTTP-Polling (`GET /api/realtime/poll`, alle ~10 s), es funktioniert also auch auf Webhosting-Paketen. Der Event-Puffer liegt im Arbeitsspeicher – daher genau **einen** Node-Prozess betreiben. Dazu `TRUST_PROXY=1` und `PUBLIC_BASE_URL` setzen.
 - **Uploads:** Bilder liegen als Dateien unter `UPLOADS_DIR`. Private Bilder werden nur über zeitlich begrenzte, signierte URLs ausgeliefert (gültig ca. 1 Stunde).
 - **Backups:** Datenbank **und** `UPLOADS_DIR` gemeinsam sichern.
 - **Updates:** neuen Code einspielen → `npm install --omit=dev` → `npm run db:migrate` → Prozess neu starten.

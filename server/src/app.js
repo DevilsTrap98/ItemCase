@@ -18,6 +18,7 @@ const { renderShowcasePage } = require('./views/showcasePage');
 const reportsRoutes = require('./routes/reports');
 const feedbackRoutes = require('./routes/feedback');
 const adminRoutes = require('./routes/admin');
+const realtimeRoutes = require('./routes/realtime');
 const { FEATURES, requireFeature } = require('./config/featureFlags');
 const { errorHandler } = require('./middleware/errorHandler');
 const { globalLimiter, submissionLimiter } = require('./middleware/rateLimits');
@@ -80,6 +81,7 @@ function createApp() {
   app.use('/api/forum', requireFeature('forum'), forumRoutes);
   app.use('/api/conversations', requireFeature('chat'), conversationsRoutes);
   app.use('/api/notifications', notificationsRoutes);
+  app.use('/api/realtime', realtimeRoutes);
   app.use('/api/collection', collectionRoutes);
   app.use('/api/wishlist', wishlistRoutes);
   app.use('/api/market', requireFeature('market'), marketRoutes);

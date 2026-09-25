@@ -3,8 +3,8 @@ const { getMysqlPool } = require('../config/db-mysql');
 const { emitToUsers } = require('../realtime');
 
 // Persists a Notification Center entry and pushes it live if the recipient
-// is connected. `io` may be undefined (e.g. in tests) — persistence still
-// happens, just without the live push.
+// is polling (see realtime.js). `io` is a legacy, unused argument — kept so
+// existing call sites didn't need to change.
 async function notify(io, userId, type, payload) {
   const pool = getMysqlPool();
   const id = crypto.randomUUID();
@@ -12,7 +12,7 @@ async function notify(io, userId, type, payload) {
     id, userId, type, JSON.stringify(payload || {})
   ]);
   const notification = { id, type, payload, readAt: null, createdAt: new Date().toISOString() };
-  if (io) emitToUsers(io, [userId], 'notification:new', notification);
+  emitToUsers(io, [userId], 'notification:new', notification);
   return notification;
 }
 

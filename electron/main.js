@@ -7,7 +7,6 @@ const AdmZip = require('adm-zip');
 const sharp = require('sharp');
 const XLSX = require('xlsx');
 const PDFDocument = require('pdfkit');
-const { io } = require('socket.io-client');
 
 const isDev = process.env.NODE_ENV === 'development';
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
@@ -153,33 +152,53 @@ async function remoteCollectionCall(urlPath, options) {
   return db;
 }
 
-// Real-time push (new messages, notifications, typing) — the socket layer
-// is server/src/realtime.js. One connection per app instance, shared by
-// every renderer window; events are re-broadcast to all of them.
-const REALTIME_URL = API_BASE_URL.replace(/\/api\/?$/, '');
+// Live updates (new messages, notifications) by plain HTTP polling of
+// GET /api/realtime/poll (server/src/realtime.js) — shared web hosting
+// can't keep WebSockets open. One poller per app instance, shared by every
+// renderer window; events are re-broadcast to all of them. Every ~10s is
+// snappy enough for notifications/chat and doubles as the presence
+// heartbeat ("online" = polled recently).
+const REALTIME_POLL_MS = 10 * 1000;
+const REALTIME_CHANNELS = { 'message:new': 'rt:message', 'notification:new': 'rt:notification', typing: 'rt:typing' };
 
-let socket = null;
+let realtimeTimer = null;
+let realtimeCursor = null;
+let realtimeBusy = false;
 
 function broadcast(channel, payload) {
   BrowserWindow.getAllWindows().forEach((win) => win.webContents.send(channel, payload));
 }
 
-function connectRealtime() {
-  const token = loadAuthToken();
-  if (!token || socket) return;
+async function pollRealtime() {
+  if (realtimeBusy || !loadAuthToken()) return;
+  realtimeBusy = true;
+  try {
+    const query = realtimeCursor === null ? '' : `?since=${realtimeCursor}`;
+    const data = await apiFetch(`/realtime/poll${query}`, { auth: true });
+    realtimeCursor = data.cursor;
+    (data.events || []).forEach(({ event, payload }) => {
+      if (REALTIME_CHANNELS[event]) broadcast(REALTIME_CHANNELS[event], payload);
+    });
+  } catch (err) {
+    console.error('[itemcase-realtime] poll failed', err.message);
+  } finally {
+    realtimeBusy = false;
+  }
+}
 
-  socket = io(REALTIME_URL, { auth: { token } });
-  socket.on('message:new', (message) => broadcast('rt:message', message));
-  socket.on('notification:new', (notification) => broadcast('rt:notification', notification));
-  socket.on('typing', (payload) => broadcast('rt:typing', payload));
-  socket.on('connect_error', (err) => console.error('[itemcase-realtime] connect error', err.message));
+function connectRealtime() {
+  if (!loadAuthToken() || realtimeTimer) return;
+  realtimeCursor = null;
+  pollRealtime();
+  realtimeTimer = setInterval(pollRealtime, REALTIME_POLL_MS);
 }
 
 function disconnectRealtime() {
-  if (socket) {
-    socket.disconnect();
-    socket = null;
+  if (realtimeTimer) {
+    clearInterval(realtimeTimer);
+    realtimeTimer = null;
   }
+  realtimeCursor = null;
 }
 
 function demoCatalogEntries() {

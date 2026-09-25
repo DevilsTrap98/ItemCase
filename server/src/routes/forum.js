@@ -285,7 +285,7 @@ router.get('/leaderboard', async (req, res, next) => {
 
 // "Aktive Sammler" sidebar widget: users with the most recent forum
 // activity (thread or reply), each tagged with a genuine live online
-// status from the socket layer (see realtime.js) rather than a fake dot.
+// status from the polling layer (see realtime.js) rather than a fake dot.
 router.get('/active-collectors', async (req, res, next) => {
   try {
     const pool = getMysqlPool();

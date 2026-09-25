@@ -1,79 +1,66 @@
-const jwt = require('jsonwebtoken');
-const { getMysqlPool } = require('./config/db-mysql');
+// "Live" delivery without WebSockets: plain HTTP polling.
+//
+// Shared web-hosting packages generally can't hold WebSocket (Socket.io)
+// connections open, so events are instead queued per user in memory and
+// clients ask for anything new via GET /api/realtime/poll (see
+// routes/realtime.js) every few seconds. The producer API is unchanged —
+// emitToUsers(io, userIds, event, payload) — so notify() and the routes
+// that push messages didn't need to change (the `io` argument is unused).
+//
+// State is per Node process: fine for the usual single-process hosting; if
+// this were ever scaled to several processes the queue would have to move
+// into the database or Redis. Nothing is lost by a restart that matters:
+// notifications and messages are persisted in MySQL and fetched on load —
+// the queue is only the "push" hint on top of that.
 
-// Counts sockets per user rather than a plain Set, so a user connected
-// from two windows/devices doesn't flip to "offline" when only one of
-// them disconnects.
-const onlineCounts = new Map();
+const QUEUE_LIMIT = 200;          // events kept per user
+const QUEUE_TTL_MS = 5 * 60 * 1000;
+const ONLINE_WINDOW_MS = 45 * 1000; // "online" = polled within this window
 
-function markOnline(userId) {
-  onlineCounts.set(userId, (onlineCounts.get(userId) || 0) + 1);
-}
-
-function markOffline(userId) {
-  const next = (onlineCounts.get(userId) || 1) - 1;
-  if (next <= 0) onlineCounts.delete(userId);
-  else onlineCounts.set(userId, next);
-}
+const queues = new Map();   // userId -> [{ id, event, payload, at }]
+const lastSeen = new Map(); // userId -> ms timestamp of last poll
+let nextEventId = 1;
 
 function isOnline(userId) {
-  return onlineCounts.has(userId);
+  const seen = lastSeen.get(userId);
+  return !!seen && Date.now() - seen < ONLINE_WINDOW_MS;
 }
 
-// Every connected client joins exactly one room, `user:<id>` — events are
-// addressed to recipients by user id (looked up from conversation/group
-// membership at send-time in the routes) rather than by pre-joining
-// per-conversation rooms. That keeps delivery correct even when membership
-// changes without requiring the client to reconnect.
-function initRealtime(io) {
-  io.use(async (socket, next) => {
-    const token = socket.handshake.auth?.token;
-    if (!token) return next(new Error('unauthorized'));
-    try {
-      const payload = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'], issuer: 'itemcase-api', audience: 'itemcase-desktop' });
-      const pool = getMysqlPool();
-      const [rows] = await pool.query('SELECT token_version, account_status FROM users WHERE id = ?', [payload.id]);
-      if (!rows.length || rows[0].account_status !== 'active' || Number(rows[0].token_version) !== Number(payload.tokenVersion || 0)) throw new Error('revoked');
-      socket.user = payload;
-      next();
-    } catch (e) {
-      next(new Error('unauthorized'));
-    }
-  });
-
-  io.on('connection', (socket) => {
-    socket.join(`user:${socket.user.id}`);
-    markOnline(socket.user.id);
-
-    socket.on('disconnect', () => markOffline(socket.user.id));
-
-    socket.on('typing', async ({ conversationId, isTyping } = {}) => {
-      if (typeof conversationId !== 'string' || conversationId.length > 64) return;
-      try {
-        const pool = getMysqlPool();
-        const [membership] = await pool.query(
-          `SELECT 1 FROM conversation_members cm
-           JOIN users u ON u.id = cm.user_id
-           WHERE cm.conversation_id = ? AND cm.user_id = ? AND u.token_version = ? AND u.account_status = 'active'`,
-          [conversationId, socket.user.id, Number(socket.user.tokenVersion || 0)]
-        );
-        if (membership.length === 0) return;
-        const [members] = await pool.query(
-          'SELECT user_id FROM conversation_members WHERE conversation_id = ? AND user_id <> ?',
-          [conversationId, socket.user.id]
-        );
-        members.forEach(({ user_id: id }) => {
-          socket.to(`user:${id}`).emit('typing', { conversationId, userId: socket.user.id, isTyping: !!isTyping });
-        });
-      } catch (error) {
-        console.error('[realtime] typing authorization failed', error.message);
-      }
-    });
+function emitToUsers(_io, userIds, event, payload) {
+  const now = Date.now();
+  userIds.forEach((userId) => {
+    const queue = queues.get(userId) || [];
+    queue.push({ id: nextEventId++, event, payload, at: now });
+    while (queue.length > QUEUE_LIMIT) queue.shift();
+    queues.set(userId, queue);
   });
 }
 
-function emitToUsers(io, userIds, event, payload) {
-  userIds.forEach((id) => io.to(`user:${id}`).emit(event, payload));
+// Returns events newer than `since`. Without a cursor (first poll after
+// start-up/login) nothing is replayed — just the current cursor — because
+// anything older is already available through the normal list endpoints.
+function pollEvents(userId, since) {
+  lastSeen.set(userId, Date.now());
+  const now = Date.now();
+  const queue = (queues.get(userId) || []).filter((e) => now - e.at < QUEUE_TTL_MS);
+  if (queue.length) queues.set(userId, queue); else queues.delete(userId);
+
+  const latest = nextEventId - 1;
+  // No cursor, or one from before a server restart (ids restart at 1):
+  // resync to "now" instead of replaying or silently missing events.
+  if (!Number.isSafeInteger(since) || since > latest) return { cursor: latest, events: [] };
+  const events = queue.filter((e) => e.id > since).map(({ id, event, payload }) => ({ id, event, payload }));
+  return { cursor: events.length ? events[events.length - 1].id : since, events };
 }
 
-module.exports = { initRealtime, emitToUsers, isOnline };
+// Drops idle bookkeeping so the maps don't grow forever.
+setInterval(() => {
+  const now = Date.now();
+  for (const [userId, seen] of lastSeen) if (now - seen > ONLINE_WINDOW_MS * 4) lastSeen.delete(userId);
+  for (const [userId, queue] of queues) {
+    const fresh = queue.filter((e) => now - e.at < QUEUE_TTL_MS);
+    if (fresh.length) queues.set(userId, fresh); else queues.delete(userId);
+  }
+}, 60 * 1000).unref();
+
+module.exports = { emitToUsers, isOnline, pollEvents };

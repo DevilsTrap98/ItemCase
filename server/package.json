@@ -26,11 +26,9 @@
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
     "mysql2": "^3.11.0",
-    "nodemailer": "^10.0.10",
-    "socket.io": "^4.7.5"
+    "nodemailer": "^10.0.10"
   },
   "devDependencies": {
-    "nodemon": "^3.1.7",
-    "socket.io-client": "^4.7.5"
+    "nodemon": "^3.1.7"
   }
 }
